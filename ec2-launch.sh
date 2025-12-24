@@ -17,15 +17,19 @@ run_step() {
   local description="$1"
   shift
   echo -ne "${BLUE}→ ${description}...${RESET}"
-  if "$@" >/tmp/launch_step.log 2>&1; then
+  local log_file
+  log_file="$(mktemp "${TMPDIR:-/tmp}/launch_step.XXXXXX.log")"
+  if "$@" >"$log_file" 2>&1; then
     echo -e " ${GREEN}done${RESET}"
   else
     echo -e " ${RED}failed${RESET}"
     echo "--- command output ---"
-    cat /tmp/launch_step.log
+    cat "$log_file"
     echo "----------------------"
+    rm -f "$log_file"
     exit 1
   fi
+  rm -f "$log_file"
 }
 
 # Ensure we're in the repo and up to date
