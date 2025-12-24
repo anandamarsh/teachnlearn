@@ -1,0 +1,32 @@
+teacher.sitnstudy.com {
+  root * /var/www/teacher-portal
+  try_files {path} /index.html
+  file_server
+  encode gzip
+
+  log {
+    output file /var/log/caddy/app.log
+    format json
+  }
+}
+
+learner.sitnstudy.com {
+  root * /var/www/learner-portal
+  try_files {path} /index.html
+  file_server
+  encode gzip
+
+  log {
+    output file /var/log/caddy/app.log
+    format json
+  }
+}
+
+api.teacher.sitnstudy.com {
+  reverse_proxy localhost:9000
+
+  log {
+    output file /var/log/caddy/api.log
+    format json
+  }
+}
