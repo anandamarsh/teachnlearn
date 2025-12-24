@@ -41,3 +41,9 @@ uvicorn main:app --reload --port 8000
 - Build SPAs with `npm run build` and copy `dist/` to `/var/www/teacher-portal` and `/var/www/learner-portal`.
 - Run FastAPI on port 9000 (systemd or any process manager), e.g. `uvicorn main:app --host 0.0.0.0 --port 9000`.
 - See `Caddyfile` for routing.
+
+## Git hooks
+Enable local hooks:
+```
+git config core.hooksPath .githooks
+```

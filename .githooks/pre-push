@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+printf "%s\n" "[pre-push] Running teacher-portal typecheck..."
+(cd teacher-portal && npm run typecheck)
+
+printf "%s\n" "[pre-push] Running learner-portal typecheck..."
+(cd learner-portal && npm run typecheck)
