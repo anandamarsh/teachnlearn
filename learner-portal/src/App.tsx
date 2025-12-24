@@ -23,17 +23,9 @@ function App() {
     user,
   } = useAuth0();
   const [status, setStatus] = useState("idle");
-  const [timestamp, setTimestamp] = useState(null);
+  const [timestamp, setTimestamp] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [configError] = useState(!apiBaseUrl || !auth0Audience);
-
-  if (configError) {
-    return (
-      <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
-        <Typography color="error">Missing VITE_TEACHNLEARN_API or VITE_AUTH0_AUDIENCE.</Typography>
-      </Box>
-    );
-  }
+  const configError = !apiBaseUrl || !auth0Audience;
 
   const fetchTimestamp = async () => {
     setStatus("loading");
@@ -53,7 +45,8 @@ function App() {
       }
       setTimestamp(data.data?.timestamp || "No timestamp found");
     } catch (err) {
-      setError(err.message || "Fetch failed");
+      const detail = err instanceof Error ? err.message : "Fetch failed";
+      setError(detail);
       setTimestamp(null);
     } finally {
       setStatus("idle");
@@ -65,6 +58,14 @@ function App() {
       fetchTimestamp();
     }
   }, [isAuthenticated]);
+
+  if (configError) {
+    return (
+      <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
+        <Typography color="error">Missing VITE_TEACHNLEARN_API or VITE_AUTH0_AUDIENCE.</Typography>
+      </Box>
+    );
+  }
 
   if (isLoading) {
     return (

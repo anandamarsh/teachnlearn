@@ -24,15 +24,7 @@ function App() {
   } = useAuth0();
   const [status, setStatus] = useState("ready");
   const [message, setMessage] = useState("");
-  const [configError] = useState(!apiBaseUrl || !auth0Audience);
-
-  if (configError) {
-    return (
-      <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
-        <Typography color="error">Missing VITE_TEACHNLEARN_API or VITE_AUTH0_AUDIENCE.</Typography>
-      </Box>
-    );
-  }
+  const configError = !apiBaseUrl || !auth0Audience;
 
   const handleCreate = async () => {
     setStatus("creating");
@@ -53,11 +45,20 @@ function App() {
       }
       setMessage(`Created folder for ${data.folder}`);
     } catch (error) {
-      setMessage(error.message || "Create failed");
+      const detail = error instanceof Error ? error.message : "Create failed";
+      setMessage(detail);
     } finally {
       setStatus("ready");
     }
   };
+
+  if (configError) {
+    return (
+      <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
+        <Typography color="error">Missing VITE_TEACHNLEARN_API or VITE_AUTH0_AUDIENCE.</Typography>
+      </Box>
+    );
+  }
 
   if (isLoading) {
     return (
