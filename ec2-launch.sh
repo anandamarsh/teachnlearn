@@ -36,7 +36,11 @@ run_step "Pulling latest code" git pull origin main
 run_step "Removing .env.local overrides" find . -name '.env.local' -type f -print -delete
 
 # Stop services
-run_step "Stopping Teach-n-Learn API" sudo systemctl stop teachnlearn-api || true
+if systemctl list-unit-files | grep -q "^teachnlearn-api\\.service"; then
+  run_step "Stopping Teach-n-Learn API" sudo systemctl stop teachnlearn-api
+else
+  echo -e "${YELLOW}⚠ teachnlearn-api.service not found; skipping stop.${RESET}"
+fi
 run_step "Stopping Caddy" sudo systemctl stop caddy
 
 # Server dependencies (Python virtualenv)
