@@ -846,6 +846,31 @@ def lesson_delete(lesson_id: str, email: str | None = None) -> dict[str, Any]:
         return {"error": "lesson not found", "id": lesson_id}
     return {"status": "deleted", "id": lesson_id}
 
+@mcp.tool()
+def lesson_list(email: str | None = None) -> dict[str, Any]:
+    """List lessons for a user."""
+    if not email:
+        return {"error": "email is required"}
+    try:
+        lessons = store.list_all(email)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc)}
+    return {"lessons": [{"id": item.get("id"), "title": item.get("title")} for item in lessons]}
+
+
+@mcp.tool()
+def lesson_list_by_status(status: str, email: str | None = None) -> dict[str, Any]:
+    """List lessons for a user by status."""
+    if not email:
+        return {"error": "email is required"}
+    if not status:
+        return {"error": "status is required"}
+    try:
+        lessons = store.list_by_status(email, status)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc)}
+    return {"lessons": [{"id": item.get("id"), "title": item.get("title")} for item in lessons]}
+
 
 @mcp.tool()
 def lesson_section_put(
