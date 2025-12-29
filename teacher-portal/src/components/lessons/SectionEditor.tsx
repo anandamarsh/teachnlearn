@@ -1,0 +1,166 @@
+import { useEffect, useRef } from "react";
+import { Box, IconButton } from "@mui/material";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
+import { Editor, Viewer } from "@toast-ui/react-editor";
+import "@toast-ui/editor/dist/toastui-editor.css";
+
+type SectionEditorProps = {
+  content: string;
+  onChange: (content: string) => void;
+  onSave: () => void;
+  saving?: boolean;
+  disabled?: boolean;
+  dirty?: boolean;
+  editorKey: string;
+  isEditing: boolean;
+  onToggleEdit: () => void;
+  onCancelEdit: () => void;
+  onDirtyClose: () => void;
+};
+
+const SectionEditor = ({
+  content,
+  onChange,
+  onSave,
+  saving,
+  disabled,
+  dirty,
+  editorKey,
+  isEditing,
+  onToggleEdit,
+  onCancelEdit,
+  onDirtyClose,
+}: SectionEditorProps) => {
+  const editorRef = useRef<Editor>(null);
+  const isSyncingRef = useRef(true);
+  const viewerRef = useRef<Viewer>(null);
+
+  useEffect(() => {
+    if (!isEditing) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      const instance = editorRef.current?.getInstance();
+      if (!instance) {
+        return;
+      }
+      isSyncingRef.current = true;
+      if (instance.getMarkdown() !== content) {
+        instance.setMarkdown(content || "");
+      }
+      window.setTimeout(() => {
+        isSyncingRef.current = false;
+      }, 0);
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [content, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+    const instance = viewerRef.current?.getInstance?.();
+    if (!instance) {
+      return;
+    }
+    instance.setMarkdown(content || "");
+  }, [content, isEditing]);
+
+  return (
+    <Box sx={{ position: "relative" }}>
+      {isEditing ? (
+        <>
+          <IconButton
+            onClick={onSave}
+            disabled={Boolean(saving || disabled || !dirty)}
+            sx={{
+              position: "absolute",
+              top: 8,
+              right: 44,
+              zIndex: 2,
+              color: "text.secondary",
+            }}
+          >
+            <SaveRoundedIcon />
+          </IconButton>
+          <IconButton
+            onClick={() => {
+              if (dirty) {
+                onDirtyClose();
+              } else {
+                onCancelEdit();
+              }
+            }}
+            sx={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 2,
+              color: "text.secondary",
+            }}
+          >
+            <CloseRoundedIcon />
+          </IconButton>
+      <Editor
+        key={editorKey}
+        ref={editorRef}
+        initialValue={content || ""}
+        previewStyle="tab"
+        height="auto"
+        initialEditType="wysiwyg"
+        useCommandShortcut
+        hideModeSwitch
+            toolbarItems={[
+              ["heading", "bold", "italic", "strike"],
+              ["hr", "quote"],
+              ["ul", "ol", "task"],
+              ["link"],
+              ["code", "codeblock"],
+            ]}
+            onChange={() => {
+              const instance = editorRef.current?.getInstance();
+              if (!instance) {
+                return;
+              }
+              if (isSyncingRef.current) {
+                return;
+              }
+              onChange(instance.getMarkdown());
+            }}
+            readOnly={disabled}
+          />
+        </>
+      ) : (
+        <>
+          <IconButton
+            onClick={onToggleEdit}
+            sx={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 2,
+              color: "text.secondary",
+            }}
+          >
+            <EditRoundedIcon />
+          </IconButton>
+          <Box
+            sx={{
+              border: "1px solid rgba(0,0,0,0.12)",
+              borderRadius: "0.75rem",
+              padding: "1rem",
+              minHeight: 180,
+              backgroundColor: "#fff",
+            }}
+          >
+            <Viewer ref={viewerRef} initialValue={content || ""} />
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+};
+
+export default SectionEditor;

@@ -65,7 +65,10 @@ class LessonStore:
         return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/_meta/index.json"
 
     def _lesson_key(self, sanitized_email: str, lesson_id: str) -> str:
-        return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/lesson.json"
+        return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/index.json"
+
+    def _section_key(self, sanitized_email: str, lesson_id: str, filename: str) -> str:
+        return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/{filename}"
 
     def _load_index(self, sanitized_email: str) -> list[dict[str, Any]]:
         self._ensure_bucket()
@@ -129,6 +132,15 @@ class LessonStore:
             self._ensure_bucket()
             entries = self._load_index(sanitized)
             lesson_id = self._generate_id(entries)
+            sections = {
+                "assessment": "assessment.md",
+                "analysis": "analysis.md",
+                "profile": "profile.md",
+            }
+            sections_meta = {
+                key: {"key": key, "updatedAt": now, "version": 1}
+                for key in sections
+            }
             lesson = Lesson(
                 id=lesson_id,
                 title=title,
@@ -139,12 +151,14 @@ class LessonStore:
             )
             ensure_lesson_prefix(sanitized, lesson_id, self._settings)
             lesson_key = self._lesson_key(sanitized, lesson_id)
+            lesson_payload = lesson.__dict__ | {"sections": sections, "sectionsMeta": sections_meta}
             self._s3_client.put_object(
                 Bucket=self._settings.s3_bucket,
                 Key=lesson_key,
-                Body=json.dumps(lesson.__dict__, indent=2).encode("utf-8"),
+                Body=json.dumps(lesson_payload, indent=2).encode("utf-8"),
                 ContentType="application/json",
             )
+            self._initialize_sections(sanitized, lesson_id, sections)
             entries.append(
                 {
                     "id": lesson_id,
@@ -154,7 +168,19 @@ class LessonStore:
                 }
             )
             self._save_index(sanitized, entries)
-        return lesson.__dict__
+        return lesson_payload
+
+    def _initialize_sections(
+        self, sanitized_email: str, lesson_id: str, sections: dict[str, str]
+    ) -> None:
+        for filename in sections.values():
+            section_key = self._section_key(sanitized_email, lesson_id, filename)
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=section_key,
+                Body=b"",
+                ContentType="text/markdown",
+            )
 
     def update(
         self,
@@ -230,6 +256,90 @@ class LessonStore:
                 self._save_index(sanitized, remaining)
             delete_lesson_prefix(sanitized, lesson_id, self._settings)
         return True
+
+    def get_sections_index(self, email: str, lesson_id: str) -> dict[str, Any] | None:
+        lesson = self.get(email, lesson_id)
+        if not lesson:
+            return None
+        sections = lesson.get("sections") or {}
+        return {"sections": sections}
+
+    def get_section(self, email: str, lesson_id: str, section_key: str) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        index = self.get_sections_index(email, lesson_id)
+        if not index:
+            return None
+        filename = index.get("sections", {}).get(section_key)
+        if not filename:
+            return None
+        key = self._section_key(sanitized, lesson_id, filename)
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+                return None
+            raise
+        content = obj["Body"].read().decode("utf-8")
+        return {"key": section_key, "contentMd": content}
+
+    def get_section_meta(self, email: str, lesson_id: str, section_key: str) -> dict[str, Any] | None:
+        lesson = self.get(email, lesson_id)
+        if not lesson:
+            return None
+        meta_map = lesson.get("sectionsMeta") or {}
+        return meta_map.get(section_key)
+
+    def put_section(
+        self,
+        email: str,
+        lesson_id: str,
+        section_key: str,
+        content_md: str,
+        allow_create: bool,
+    ) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        lesson = self.get(email, lesson_id)
+        if not lesson:
+            return None
+        sections = lesson.get("sections") or {}
+        filename = sections.get(section_key)
+        if not filename:
+            return None
+        key = self._section_key(sanitized, lesson_id, filename)
+        try:
+            self._s3_client.head_object(Bucket=self._settings.s3_bucket, Key=key)
+            exists = True
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "404":
+                exists = False
+            elif exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+                exists = False
+            else:
+                raise
+        if not exists and not allow_create:
+            return None
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=key,
+            Body=content_md.encode("utf-8"),
+            ContentType="text/markdown",
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        meta_map = lesson.get("sectionsMeta") or {}
+        meta = meta_map.get(section_key) or {}
+        version = int(meta.get("version", 0)) + 1
+        meta_payload = {"key": section_key, "updatedAt": now, "version": version}
+        meta_map[section_key] = meta_payload
+        lesson["sectionsMeta"] = meta_map
+        lesson["updated_at"] = now
+        lesson_key = self._lesson_key(sanitized, lesson_id)
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=lesson_key,
+            Body=json.dumps(lesson, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+        return {"key": section_key, "contentMd": content_md}
 
 
 def sanitize_email(email: str) -> str:
@@ -349,7 +459,7 @@ def delete_lesson_prefix(sanitized_email: str, lesson_id: str, settings: Setting
         raise RuntimeError("S3 bucket not configured")
     s3_client = get_s3_client(settings)
     prefix = f"{settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/"
-    lesson_key = f"{prefix}lesson.json"
+    lesson_key = f"{prefix}index.json"
     # Best-effort deletes for common objects in the lesson folder.
     for key in (lesson_key, prefix):
         try:
@@ -453,6 +563,63 @@ async def get_lesson(request: Request) -> JSONResponse:
     return JSONResponse(lesson)
 
 
+@mcp.custom_route("/lesson/id/{lesson_id}/sections/index", methods=["GET"])
+async def get_sections_index(request: Request) -> JSONResponse:
+    email = get_request_email(request, None, settings)
+    if not email:
+        return _json_error("email is required", 400)
+    lesson_id = request.path_params.get("lesson_id", "").strip()
+    if not lesson_id:
+        return _json_error("lesson_id is required", 400)
+    try:
+        index = store.get_sections_index(email, lesson_id)
+    except (RuntimeError, ClientError) as exc:
+        return _json_error(str(exc), 500)
+    if index is None:
+        return _json_error("sections index not found", 404)
+    return JSONResponse(index)
+
+
+@mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["GET"])
+async def get_section(request: Request) -> JSONResponse:
+    email = get_request_email(request, None, settings)
+    if not email:
+        return _json_error("email is required", 400)
+    lesson_id = request.path_params.get("lesson_id", "").strip()
+    section_key = request.path_params.get("section_key", "").strip()
+    if not lesson_id:
+        return _json_error("lesson_id is required", 400)
+    if not section_key:
+        return _json_error("section_key is required", 400)
+    try:
+        section = store.get_section(email, lesson_id, section_key)
+    except (RuntimeError, ClientError) as exc:
+        return _json_error(str(exc), 500)
+    if section is None:
+        return _json_error("section not found", 404)
+    return JSONResponse(section)
+
+
+@mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}/meta", methods=["GET"])
+async def get_section_meta(request: Request) -> JSONResponse:
+    email = get_request_email(request, None, settings)
+    if not email:
+        return _json_error("email is required", 400)
+    lesson_id = request.path_params.get("lesson_id", "").strip()
+    section_key = request.path_params.get("section_key", "").strip()
+    if not lesson_id:
+        return _json_error("lesson_id is required", 400)
+    if not section_key:
+        return _json_error("section_key is required", 400)
+    try:
+        meta = store.get_section_meta(email, lesson_id, section_key)
+    except (RuntimeError, ClientError) as exc:
+        return _json_error(str(exc), 500)
+    if meta is None:
+        return _json_error("section meta not found", 404)
+    return JSONResponse(meta)
+
+
 @mcp.custom_route("/lesson", methods=["POST"])
 async def create_lesson(request: Request) -> JSONResponse:
     try:
@@ -500,6 +667,58 @@ async def update_lesson(request: Request) -> JSONResponse:
     return JSONResponse(lesson)
 
 
+@mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["PUT"])
+async def update_section(request: Request) -> JSONResponse:
+    email = get_request_email(request, None, settings)
+    if not email:
+        return _json_error("email is required", 400)
+    lesson_id = request.path_params.get("lesson_id", "").strip()
+    section_key = request.path_params.get("section_key", "").strip()
+    if not lesson_id:
+        return _json_error("lesson_id is required", 400)
+    if not section_key:
+        return _json_error("section_key is required", 400)
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return _json_error("invalid JSON body", 400)
+    content_md = payload.get("contentMd")
+    if content_md is None:
+        return _json_error("contentMd is required", 400)
+    try:
+        section = store.put_section(email, lesson_id, section_key, str(content_md), allow_create=False)
+    except (RuntimeError, ClientError) as exc:
+        return _json_error(str(exc), 500)
+    if section is None:
+        return _json_error("section not found", 404)
+    return JSONResponse(section)
+
+
+@mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["POST"])
+async def create_section(request: Request) -> JSONResponse:
+    email = get_request_email(request, None, settings)
+    if not email:
+        return _json_error("email is required", 400)
+    lesson_id = request.path_params.get("lesson_id", "").strip()
+    section_key = request.path_params.get("section_key", "").strip()
+    if not lesson_id:
+        return _json_error("lesson_id is required", 400)
+    if not section_key:
+        return _json_error("section_key is required", 400)
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return _json_error("invalid JSON body", 400)
+    content_md = payload.get("contentMd", "")
+    try:
+        section = store.put_section(email, lesson_id, section_key, str(content_md), allow_create=True)
+    except (RuntimeError, ClientError) as exc:
+        return _json_error(str(exc), 500)
+    if section is None:
+        return _json_error("section not found", 404)
+    return JSONResponse(section, status_code=201)
+
+
 @mcp.custom_route("/lesson/id/{lesson_id}", methods=["DELETE"])
 async def delete_lesson(request: Request) -> JSONResponse:
     lesson_id = request.path_params.get("lesson_id", "").strip()
@@ -542,6 +761,39 @@ def mcp_get_lesson(email: str, lesson_id: str) -> dict[str, Any]:
     if lesson is None:
         return {"error": "lesson not found", "id": lesson_id}
     return lesson
+
+
+@mcp.resource("lesson://user/{email}/id/{lesson_id}/sections/index")
+def mcp_get_sections_index(email: str, lesson_id: str) -> dict[str, Any]:
+    try:
+        index = store.get_sections_index(email, lesson_id)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc)}
+    if index is None:
+        return {"error": "sections index not found", "id": lesson_id}
+    return index
+
+
+@mcp.resource("lesson://user/{email}/id/{lesson_id}/sections/{section_key}")
+def mcp_get_section(email: str, lesson_id: str, section_key: str) -> dict[str, Any]:
+    try:
+        section = store.get_section(email, lesson_id, section_key)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc), "key": section_key}
+    if section is None:
+        return {"error": "section not found", "key": section_key}
+    return section
+
+
+@mcp.resource("lesson://user/{email}/id/{lesson_id}/sections/{section_key}/meta")
+def mcp_get_section_meta(email: str, lesson_id: str, section_key: str) -> dict[str, Any]:
+    try:
+        meta = store.get_section_meta(email, lesson_id, section_key)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc), "key": section_key}
+    if meta is None:
+        return {"error": "section meta not found", "key": section_key}
+    return meta
 
 
 @mcp.tool()
@@ -593,6 +845,44 @@ def lesson_delete(lesson_id: str, email: str | None = None) -> dict[str, Any]:
     if not deleted:
         return {"error": "lesson not found", "id": lesson_id}
     return {"status": "deleted", "id": lesson_id}
+
+
+@mcp.tool()
+def lesson_section_put(
+    lesson_id: str,
+    section_key: str,
+    content_md: str,
+    email: str | None = None,
+) -> dict[str, Any]:
+    """Update a lesson section."""
+    if not email:
+        return {"error": "email is required"}
+    try:
+        section = store.put_section(email, lesson_id, section_key, content_md, allow_create=False)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc), "key": section_key}
+    if section is None:
+        return {"error": "section not found", "key": section_key}
+    return section
+
+
+@mcp.tool()
+def lesson_section_create(
+    lesson_id: str,
+    section_key: str,
+    content_md: str = "",
+    email: str | None = None,
+) -> dict[str, Any]:
+    """Create a lesson section if missing."""
+    if not email:
+        return {"error": "email is required"}
+    try:
+        section = store.put_section(email, lesson_id, section_key, content_md, allow_create=True)
+    except (RuntimeError, ClientError) as exc:
+        return {"error": str(exc), "key": section_key}
+    if section is None:
+        return {"error": "section not found", "key": section_key}
+    return section
 
 
 app = mcp.http_app(middleware=middleware)

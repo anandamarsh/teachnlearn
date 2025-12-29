@@ -1,23 +1,31 @@
 import { useEffect, useState } from "react";
-import { Box, TextField, Typography } from "@mui/material";
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  LinearProgress,
+  TextField,
+  Typography,
+} from "@mui/material";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import { Lesson } from "../../state/lessonTypes";
+import { useLessonSections } from "../../hooks/useLessonSections";
+import SectionEditor from "./SectionEditor";
+import type { GetAccessTokenSilently } from "../../auth/buildAuthHeaders";
 
 type LessonWorkspaceProps = {
   lesson: Lesson | null;
   hasLessons: boolean;
   isAuthenticated: boolean;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
-};
-
-const statusChipColor = (status: string): "default" | "secondary" | "success" => {
-  const lowered = status.toLowerCase();
-  if (lowered.includes("publish") || lowered.includes("active")) {
-    return "success";
-  }
-  if (lowered.includes("draft")) {
-    return "default";
-  }
-  return "secondary";
+  onNotify: (message: string, severity: "success" | "error") => void;
+  getAccessTokenSilently: GetAccessTokenSilently;
 };
 
 const LessonWorkspace = ({
@@ -25,13 +33,57 @@ const LessonWorkspace = ({
   hasLessons,
   isAuthenticated,
   onUpdateTitle,
+  onNotify,
+  getAccessTokenSilently,
 }: LessonWorkspaceProps) => {
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState<string | null>(null);
+
+  const {
+    sections,
+    contents,
+    loadingIndex,
+    loadingSection,
+    savingSection,
+    error,
+    setError,
+    loadSection,
+    saveSection,
+  } = useLessonSections({
+    apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
+    auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
+    lessonId: lesson?.id || null,
+    isAuthenticated,
+    getAccessTokenSilently,
+  });
 
   useEffect(() => {
     setTitleDraft(lesson?.title || "");
   }, [lesson]);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    onNotify(error, "error");
+    setError("");
+  }, [error, onNotify, setError]);
+
+  useEffect(() => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      Object.entries(contents).forEach(([key, value]) => {
+        if (next[key] === undefined) {
+          next[key] = value;
+        }
+      });
+      return next;
+    });
+  }, [contents]);
 
   const handleSaveTitle = async () => {
     if (!lesson) {
@@ -45,6 +97,34 @@ const LessonWorkspace = ({
     setSavingTitle(true);
     await onUpdateTitle(lesson.id, trimmed);
     setSavingTitle(false);
+  };
+
+  const handleAccordionChange = (key: string) => (_: unknown, expanded: boolean) => {
+    setExpandedKeys((prev) => ({ ...prev, [key]: expanded }));
+    if (expanded) {
+      loadSection(key);
+    }
+  };
+
+  const handleSaveSection = async (key: string) => {
+    const contentMd = drafts[key] ?? "";
+    const saved = await saveSection(key, contentMd);
+    if (saved) {
+      onNotify("Section saved", "success");
+      setEditingKey(null);
+    }
+  };
+
+  const handleConfirmClose = () => {
+    if (!confirmClose) {
+      return;
+    }
+    setEditingKey(null);
+    setDrafts((prev) => ({
+      ...prev,
+      [confirmClose]: contents[confirmClose] ?? "",
+    }));
+    setConfirmClose(null);
   };
 
   if (!lesson) {
@@ -70,7 +150,7 @@ const LessonWorkspace = ({
           </>
         ) : (
           <>
-            <Typography variant="h3" sx={{ mb: 1, color: "success.main" }}>
+            <Typography variant="h3" sx={{ mb: 1, color: "#1565c0" }}>
               Create your first lesson
             </Typography>
             <Typography color="text.secondary">Press the + icon below</Typography>
@@ -140,6 +220,78 @@ const LessonWorkspace = ({
           </Box>
         </Box>
       </Box>
+      <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 0 }}>
+        {loadingIndex ? (
+          <Box display="flex" justifyContent="center">
+            <Box width="10rem">
+              <LinearProgress />
+            </Box>
+          </Box>
+        ) : (
+          sections.map((section) => {
+            const isExpanded = Boolean(expandedKeys[section.key]);
+            const content = drafts[section.key] ?? "";
+            return (
+              <Accordion
+                key={section.key}
+                expanded={isExpanded}
+                onChange={handleAccordionChange(section.key)}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
+                  <Typography variant="h3" sx={{ fontSize: "1.05rem", color: "#1565c0" }}>
+                    {section.key.charAt(0).toUpperCase() + section.key.slice(1)}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {loadingSection[section.key] ? (
+                    <Box display="flex" justifyContent="center">
+                      <Box width="10rem">
+                        <LinearProgress />
+                      </Box>
+                    </Box>
+                  ) : (
+                    <SectionEditor
+                      content={content}
+                      onChange={(value) =>
+                        setDrafts((prev) => ({ ...prev, [section.key]: value }))
+                      }
+                      onSave={() => handleSaveSection(section.key)}
+                      saving={savingSection[section.key]}
+                      disabled={loadingSection[section.key]}
+                      dirty={(drafts[section.key] ?? "") !== (contents[section.key] ?? "")}
+                      editorKey={section.key}
+                      isEditing={editingKey === section.key}
+                      onToggleEdit={() => setEditingKey(section.key)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setDrafts((prev) => ({
+                          ...prev,
+                          [section.key]: contents[section.key] ?? "",
+                        }));
+                      }}
+                      onDirtyClose={() => setConfirmClose(section.key)}
+                    />
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            );
+          })
+        )}
+      </Box>
+      <Dialog open={Boolean(confirmClose)} onClose={() => setConfirmClose(null)}>
+        <DialogTitle>Discard changes?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            You have unsaved changes. Closing will discard them.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmClose(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmClose}>
+            Discard
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };
