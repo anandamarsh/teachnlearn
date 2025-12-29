@@ -3,6 +3,7 @@ import { Box, Drawer } from "@mui/material";
 import LessonsList from "./LessonsList";
 import LessonWorkspace from "./LessonWorkspace";
 import { Lesson } from "../../state/lessonTypes";
+import type { GetAccessTokenSilently } from "../../auth/buildAuthHeaders";
 
 type LessonsPageProps = {
   lessons: Lesson[];
@@ -12,6 +13,8 @@ type LessonsPageProps = {
   isAuthenticated: boolean;
   onSelectLesson: (lessonId: string) => void;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
+  onNotify: (message: string, severity: "success" | "error") => void;
+  getAccessTokenSilently: GetAccessTokenSilently;
 };
 
 const LessonsPage = ({
@@ -22,6 +25,8 @@ const LessonsPage = ({
   isAuthenticated,
   onSelectLesson,
   onUpdateTitle,
+  onNotify,
+  getAccessTokenSilently,
 }: LessonsPageProps) => {
   const [leftOpen, setLeftOpen] = useState(false);
   const drawerWidth = leftOpen ? "16rem" : "5rem";
@@ -70,6 +75,8 @@ const LessonsPage = ({
               hasLessons={lessons.length > 0}
               isAuthenticated={isAuthenticated}
               onUpdateTitle={onUpdateTitle}
+              onNotify={onNotify}
+              getAccessTokenSilently={getAccessTokenSilently}
             />
           </Box>
         </Box>
