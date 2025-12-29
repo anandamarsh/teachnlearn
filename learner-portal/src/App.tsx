@@ -1,63 +1,13 @@
-import { useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Container,
-  Paper,
-  Typography,
-} from "@mui/material";
+import { Box, Button, CircularProgress, Container, Paper, Typography } from "@mui/material";
 import "./App.css";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API;
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE;
 
 function App() {
-  const {
-    isAuthenticated,
-    isLoading,
-    loginWithRedirect,
-    logout,
-    getAccessTokenSilently,
-    user,
-  } = useAuth0();
-  const [status, setStatus] = useState("idle");
-  const [timestamp, setTimestamp] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const { isAuthenticated, isLoading, loginWithRedirect, logout, user } = useAuth0();
   const configError = !apiBaseUrl || !auth0Audience;
-
-  const fetchTimestamp = async () => {
-    setStatus("loading");
-    setError("");
-    try {
-      const token = await getAccessTokenSilently({
-        authorizationParams: { audience: auth0Audience },
-      });
-      const response = await fetch(`${apiBaseUrl}/api/timestamp`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || "Fetch failed");
-      }
-      setTimestamp(data.data?.timestamp || "No timestamp found");
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : "Fetch failed";
-      setError(detail);
-      setTimestamp(null);
-    } finally {
-      setStatus("idle");
-    }
-  };
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchTimestamp();
-    }
-  }, [isAuthenticated]);
 
   if (configError) {
     return (
@@ -83,10 +33,10 @@ function App() {
             Learner Portal
           </Typography>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 2 }}>
-            Your workspace timestamp
+            Welcome
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
-            Sign in to read the timestamp file created by the Teacher Portal.
+            Sign in to access your learner workspace.
           </Typography>
           {!isAuthenticated ? (
             <Button variant="contained" size="large" onClick={() => loginWithRedirect()}>
@@ -98,14 +48,6 @@ function App() {
                 Signed in as {user?.email || user?.name}
               </Typography>
               <Button
-                variant="outlined"
-                size="large"
-                onClick={fetchTimestamp}
-                disabled={status === "loading"}
-              >
-                {status === "loading" ? "Refreshing..." : "Refresh"}
-              </Button>
-              <Button
                 variant="text"
                 color="secondary"
                 onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
@@ -114,16 +56,6 @@ function App() {
               </Button>
             </Box>
           )}
-          {timestamp ? (
-            <Typography sx={{ mt: 2 }} color="primary">
-              Timestamp: {timestamp}
-            </Typography>
-          ) : null}
-          {error ? (
-            <Typography sx={{ mt: 1 }} color="error">
-              {error}
-            </Typography>
-          ) : null}
         </Paper>
       </Container>
     </Box>

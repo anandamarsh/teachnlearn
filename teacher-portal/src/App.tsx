@@ -1,17 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
+  Alert,
   Box,
   Button,
-  CircularProgress,
-  Container,
-  Paper,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Fab,
+  LinearProgress,
+  Snackbar,
   Typography,
 } from "@mui/material";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import "./App.css";
+import Home from "./components/Home";
+import BottomNav from "./components/BottomNav";
+import LessonsPage from "./components/lessons/LessonsPage";
+import { useLessons } from "./hooks/useLessons";
 
-const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API;
-const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE;
+const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
+const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
+
+type PageKey = "home" | "lessons";
 
 function App() {
   const {
@@ -22,35 +35,90 @@ function App() {
     getAccessTokenSilently,
     user,
   } = useAuth0();
-  const [status, setStatus] = useState("ready");
-  const [message, setMessage] = useState("");
+
+  const [page, setPage] = useState<PageKey>("home");
   const configError = !apiBaseUrl || !auth0Audience;
 
-  const handleCreate = async () => {
-    setStatus("creating");
-    setMessage("");
-    try {
-      const token = await getAccessTokenSilently({
-        authorizationParams: { audience: auth0Audience },
-      });
-      const response = await fetch(`${apiBaseUrl}/api/create`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail || "Create failed");
-      }
-      setMessage(`Created folder for ${data.folder}`);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Create failed";
-      setMessage(detail);
-    } finally {
-      setStatus("ready");
+  const {
+    lessons,
+    selectedLesson,
+    selectedLessonId,
+    setSelectedLessonId,
+    loading,
+    error,
+    setError,
+    createLesson,
+    updateLessonTitle,
+    deleteLesson,
+  } = useLessons({
+    apiBaseUrl,
+    auth0Audience,
+    isAuthenticated,
+    getAccessTokenSilently,
+  });
+
+  const handleCreateLesson = async () => {
+    if (!isAuthenticated) {
+      loginWithRedirect();
+      return;
     }
+    const created = await createLesson();
+    if (created) {
+      setSnackbar({
+        open: true,
+        message: "Lesson created",
+        severity: "success",
+      });
+    }
+    setPage("lessons");
   };
+
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: "success" | "error";
+  }>({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
+  const handleUpdateTitle = async (lessonId: string, title: string) => {
+    const updated = await updateLessonTitle(lessonId, title);
+    if (updated) {
+      setSnackbar({
+        open: true,
+        message: "Lesson updated",
+        severity: "success",
+      });
+    }
+    return updated;
+  };
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!selectedLesson) {
+      setDeleteOpen(false);
+      return;
+    }
+    const deleted = await deleteLesson(selectedLesson.id);
+    if (deleted) {
+      setSnackbar({
+        open: true,
+        message: "Lesson deleted",
+        severity: "success",
+      });
+    }
+    setDeleteOpen(false);
+  };
+
+  useEffect(() => {
+    if (error) {
+      setSnackbar({ open: true, message: error, severity: "error" });
+      setError("");
+    }
+  }, [error, setError]);
 
   if (configError) {
     return (
@@ -60,60 +128,99 @@ function App() {
     );
   }
 
-  if (isLoading) {
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      loginWithRedirect();
+    }
+  }, [isAuthenticated, isLoading, loginWithRedirect]);
+
+  if (isLoading || !isAuthenticated) {
     return (
       <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
-        <CircularProgress />
+        <Box width="10rem">
+          <LinearProgress />
+        </Box>
       </Box>
     );
   }
 
   return (
-    <Box minHeight="100vh" display="flex" alignItems="center" bgcolor="#f6f3ef">
-      <Container maxWidth="sm">
-        <Paper elevation={3} sx={{ p: 4, borderRadius: 3 }}>
-          <Typography variant="overline" color="text.secondary">
-            Teacher Portal
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, mb: 2 }}>
-            Create learner workspace
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
-            Sign in to create a sanitized folder in S3 and drop a timestamp file.
-          </Typography>
-          {!isAuthenticated ? (
-            <Button variant="contained" size="large" onClick={() => loginWithRedirect()}>
-              Log in
-            </Button>
-          ) : (
-            <Box display="flex" flexDirection="column" gap={2}>
-              <Typography variant="body2" color="text.secondary">
-                Signed in as {user?.email || user?.name}
-              </Typography>
-              <Button
-                variant="contained"
-                size="large"
-                onClick={handleCreate}
-                disabled={status === "creating"}
-              >
-                {status === "creating" ? "Creating..." : "Create"}
-              </Button>
-              <Button
-                variant="text"
-                color="secondary"
-                onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
-              >
-                Log out
-              </Button>
-            </Box>
-          )}
-          {message ? (
-            <Typography sx={{ mt: 2 }} color="primary">
-              {message}
-            </Typography>
+    <Box minHeight="100vh" bgcolor="background.default" pb={page === "home" ? 0 : 10}>
+      {page === "home" ? (
+        <Home onLessonsClick={() => setPage("lessons")} />
+      ) : (
+        <LessonsPage
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          selectedLessonId={selectedLessonId}
+          loading={loading}
+          isAuthenticated={isAuthenticated}
+          onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
+          onUpdateTitle={handleUpdateTitle}
+        />
+      )}
+
+      <BottomNav
+        isAuthenticated={isAuthenticated}
+        userAvatar={user?.picture}
+        currentPage={page}
+        onHomeClick={() => setPage("home")}
+        onLessonsClick={() => setPage("lessons")}
+        onAuthClick={() => loginWithRedirect()}
+        onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+      />
+      {page === "lessons" ? (
+        <>
+          {selectedLesson ? (
+            <Fab
+              color="error"
+              onClick={() => setDeleteOpen(true)}
+              sx={{
+                position: "fixed",
+                right: "1rem",
+                bottom: "calc(56px + 1rem + 56px + 0.5rem)",
+              }}
+            >
+              <DeleteRoundedIcon />
+            </Fab>
           ) : null}
-        </Paper>
-      </Container>
+          <Fab
+            color="primary"
+            onClick={handleCreateLesson}
+            sx={{ position: "fixed", right: "1rem", bottom: "calc(56px + 1rem)" }}
+          >
+            <AddRoundedIcon />
+          </Fab>
+        </>
+      ) : null}
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+        <DialogTitle>Delete lesson</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            This will delete the lesson permanently.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
