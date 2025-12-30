@@ -236,6 +236,12 @@ const LessonWorkspace = ({
                 key={section.key}
                 expanded={isExpanded}
                 onChange={handleAccordionChange(section.key)}
+                sx={{
+                  "&:first-of-type": {
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                  },
+                }}
               >
                 <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
                   <Typography variant="h3" sx={{ fontSize: "1.05rem", color: "#1565c0" }}>
