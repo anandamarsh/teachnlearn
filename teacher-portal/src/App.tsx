@@ -51,6 +51,7 @@ function App() {
     createLesson,
     updateLessonTitle,
     updateLessonContent,
+    updateLessonStatus,
     deleteLesson,
   } = useLessons({
     apiBaseUrl,
@@ -103,6 +104,14 @@ function App() {
     const updated = await updateLessonContent(lessonId, content);
     if (updated) {
       notify("Lesson summary updated", "success");
+    }
+    return updated;
+  };
+
+  const handleUpdateStatus = async (lessonId: string, status: string) => {
+    const updated = await updateLessonStatus(lessonId, status);
+    if (updated) {
+      notify("Lesson status updated", "success");
     }
     return updated;
   };
@@ -170,6 +179,7 @@ function App() {
           onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           onUpdateTitle={handleUpdateTitle}
           onUpdateContent={handleUpdateContent}
+          onUpdateStatus={handleUpdateStatus}
           onNotify={notify}
           getAccessTokenSilently={getAccessTokenSilently}
           onPulse={(color) =>
