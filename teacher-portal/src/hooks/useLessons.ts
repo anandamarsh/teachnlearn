@@ -290,6 +290,31 @@ export const useLessons = ({
     [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
   );
 
+  const handleUpdateLessonStatus = useCallback(
+    async (lessonId: string, status: string) => {
+      if (!isAuthenticated || !lessonsEndpoint) {
+        return null;
+      }
+      setError("");
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        const data = await updateLesson(`${lessonsEndpoint}/id/${lessonId}`, headers, {
+          status,
+        });
+        const updated = normalizeLesson(data as Record<string, unknown>, lessonId);
+        setLessons((prev) =>
+          prev.map((lesson) => (lesson.id === lessonId ? updated : lesson))
+        );
+        return updated;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Failed to update lesson";
+        setError(detail);
+        return null;
+      }
+    },
+    [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
+  );
+
   const handleDeleteLesson = useCallback(
     async (lessonId: string) => {
       if (!isAuthenticated || !lessonsEndpoint) {
@@ -324,6 +349,7 @@ export const useLessons = ({
     createLesson: handleCreateLesson,
     updateLessonTitle: handleUpdateLessonTitle,
     updateLessonContent: handleUpdateLessonContent,
+    updateLessonStatus: handleUpdateLessonStatus,
     deleteLesson: handleDeleteLesson,
   };
 };

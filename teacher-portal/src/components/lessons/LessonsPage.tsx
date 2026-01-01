@@ -14,6 +14,7 @@ type LessonsPageProps = {
   onSelectLesson: (lessonId: string) => void;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
   onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
+  onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
@@ -28,6 +29,7 @@ const LessonsPage = ({
   onSelectLesson,
   onUpdateTitle,
   onUpdateContent,
+  onUpdateStatus,
   onNotify,
   getAccessTokenSilently,
   onPulse,
@@ -83,6 +85,7 @@ const LessonsPage = ({
               isAuthenticated={isAuthenticated}
               onUpdateTitle={onUpdateTitle}
               onUpdateContent={onUpdateContent}
+              onUpdateStatus={onUpdateStatus}
               onNotify={onNotify}
               getAccessTokenSilently={getAccessTokenSilently}
               onPulse={onPulse}
