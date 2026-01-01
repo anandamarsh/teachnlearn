@@ -23,3 +23,14 @@ body {
 button {
   font-family: inherit;
 }
+
+.toastui-editor-defaultUI,
+.toastui-editor-main,
+.toastui-editor-md-container,
+.toastui-editor-ww-container {
+  height: auto !important;
+}
+
+.toastui-editor-contents {
+  min-height: 180px;
+}

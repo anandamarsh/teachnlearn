@@ -1,23 +1,38 @@
-import { useEffect, useState } from "react";
-import { Box, TextField, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  LinearProgress,
+  TextField,
+  Typography,
+} from "@mui/material";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import { Lesson } from "../../state/lessonTypes";
+import { useLessonSections } from "../../hooks/useLessonSections";
+import SectionEditor from "./SectionEditor";
+import type { GetAccessTokenSilently } from "../../auth/buildAuthHeaders";
 
 type LessonWorkspaceProps = {
   lesson: Lesson | null;
   hasLessons: boolean;
   isAuthenticated: boolean;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
-};
-
-const statusChipColor = (status: string): "default" | "secondary" | "success" => {
-  const lowered = status.toLowerCase();
-  if (lowered.includes("publish") || lowered.includes("active")) {
-    return "success";
-  }
-  if (lowered.includes("draft")) {
-    return "default";
-  }
-  return "secondary";
+  onUpdateContent: (
+    lessonId: string,
+    content: string
+  ) => Promise<Lesson | null>;
+  onNotify: (message: string, severity: "success" | "error") => void;
+  getAccessTokenSilently: GetAccessTokenSilently;
+  onPulse?: (color: "success" | "error") => void;
 };
 
 const LessonWorkspace = ({
@@ -25,13 +40,77 @@ const LessonWorkspace = ({
   hasLessons,
   isAuthenticated,
   onUpdateTitle,
+  onUpdateContent,
+  onNotify,
+  getAccessTokenSilently,
+  onPulse,
 }: LessonWorkspaceProps) => {
   const [titleDraft, setTitleDraft] = useState("");
+  const [contentDraft, setContentDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
+  const [savingContent, setSavingContent] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState<string | null>(null);
+  const prevContentsRef = useRef<Record<string, string>>({});
+
+  const {
+    sections,
+    contents,
+    loadingIndex,
+    loadingSection,
+    savingSection,
+    error,
+    setError,
+    loadSection,
+    saveSection,
+  } = useLessonSections({
+    apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
+    auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
+    lessonId: lesson?.id || null,
+    isAuthenticated,
+    getAccessTokenSilently,
+    onPulse,
+  });
 
   useEffect(() => {
     setTitleDraft(lesson?.title || "");
+    setContentDraft(lesson?.content || "");
   }, [lesson]);
+
+  useEffect(() => {
+    setExpandedKeys({});
+    setDrafts({});
+    setEditingKey(null);
+    setConfirmClose(null);
+  }, [lesson?.id]);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    onNotify(error, "error");
+    setError("");
+  }, [error, onNotify, setError]);
+
+  useEffect(() => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      const previous = prevContentsRef.current;
+      Object.entries(contents).forEach(([key, value]) => {
+        const priorContent = previous[key];
+        const currentDraft = prev[key];
+        if (currentDraft === undefined || currentDraft === priorContent) {
+          next[key] = value ?? "";
+        }
+      });
+      prevContentsRef.current = { ...contents };
+      return next;
+    });
+  }, [contents]);
 
   const handleSaveTitle = async () => {
     if (!lesson) {
@@ -45,6 +124,50 @@ const LessonWorkspace = ({
     setSavingTitle(true);
     await onUpdateTitle(lesson.id, trimmed);
     setSavingTitle(false);
+  };
+
+  const handleSaveContent = async () => {
+    if (!lesson) {
+      return;
+    }
+    const trimmed = contentDraft.trim();
+    const current = (lesson.content || "").trim();
+    if (trimmed === current) {
+      setContentDraft(lesson.content || "");
+      return;
+    }
+    setSavingContent(true);
+    await onUpdateContent(lesson.id, trimmed);
+    setSavingContent(false);
+  };
+
+  const handleAccordionChange =
+    (key: string) => (_: unknown, expanded: boolean) => {
+      setExpandedKeys((prev) => ({ ...prev, [key]: expanded }));
+      if (expanded) {
+        loadSection(key);
+      }
+    };
+
+  const handleSaveSection = async (key: string) => {
+    const contentMd = drafts[key] ?? "";
+    const saved = await saveSection(key, contentMd);
+    if (saved) {
+      onNotify("Section saved", "success");
+      setEditingKey(null);
+    }
+  };
+
+  const handleConfirmClose = () => {
+    if (!confirmClose) {
+      return;
+    }
+    setEditingKey(null);
+    setDrafts((prev) => ({
+      ...prev,
+      [confirmClose]: contents[confirmClose] ?? "",
+    }));
+    setConfirmClose(null);
   };
 
   if (!lesson) {
@@ -70,10 +193,12 @@ const LessonWorkspace = ({
           </>
         ) : (
           <>
-            <Typography variant="h3" sx={{ mb: 1, color: "success.main" }}>
+            <Typography variant="h3" sx={{ mb: 1, color: "#1565c0" }}>
               Create your first lesson
             </Typography>
-            <Typography color="text.secondary">Press the + icon below</Typography>
+            <Typography color="text.secondary">
+              Press the + icon below
+            </Typography>
           </>
         )}
       </Box>
@@ -85,61 +210,294 @@ const LessonWorkspace = ({
       <Box
         sx={{
           display: "flex",
-          alignItems: "flex-start",
-          gap: 2,
-          flexWrap: "wrap",
-          maxWidth: 720,
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 0,
+          width: "100%",
         }}
       >
-        <TextField
-          label="Title"
-          value={titleDraft}
-          onChange={(event) => setTitleDraft(event.target.value)}
-          onBlur={handleSaveTitle}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              handleSaveTitle();
-            }
-          }}
-          fullWidth
-          disabled={!isAuthenticated || savingTitle}
+        <Box
           sx={{
-            flex: 1,
-            minWidth: 260,
-            "& .MuiOutlinedInput-root": { borderRadius: "1rem" },
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 0,
+            flexWrap: "nowrap",
+            width: "100%",
           }}
-        />
-        <Box sx={{ minWidth: 140 }}>
-          <Typography variant="body2" sx={{ color: "text.secondary", mb: 1 }}>
-            {lesson.id}
-          </Typography>
+        >
           <Box
             sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              px: 1.5,
-              py: 0.5,
-              borderRadius: "5rem",
-              backgroundColor:
-                lesson.status.toLowerCase().includes("publish") ||
-                lesson.status.toLowerCase().includes("active")
-                  ? "success.main"
-                  : "grey.300",
-              color:
-                lesson.status.toLowerCase().includes("publish") ||
-                lesson.status.toLowerCase().includes("active")
-                  ? "common.white"
-                  : "text.primary",
-              fontSize: "0.8rem",
-              fontWeight: 600,
-              textTransform: "capitalize",
+              position: "relative",
+              flex: 1,
+              minWidth: 260,
+              maxWidth: "100%",
+              "&:hover .lesson-edit-button": { opacity: 1 },
             }}
           >
-            {lesson.status}
+            {editingTitle ? (
+              <TextField
+                label="Title"
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={() => {
+                  handleSaveTitle();
+                  setEditingTitle(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleSaveTitle();
+                    setEditingTitle(false);
+                  }
+                }}
+                autoFocus
+                fullWidth
+                disabled={!isAuthenticated || savingTitle}
+                sx={{
+                  "& .MuiOutlinedInput-root": { borderRadius: "1rem" },
+                }}
+              />
+            ) : (
+              <Box
+                onClick={() => setEditingTitle(true)}
+                sx={{
+                  border: "1px solid transparent",
+                  borderRadius: "1rem",
+                  px: 0,
+                  py: 0,
+                  minHeight: 64,
+                  display: "flex",
+                  alignItems: "center",
+                  cursor: "text",
+                  backgroundColor: "transparent",
+                }}
+              >
+                <Typography variant="h2">
+                  {titleDraft || "Untitled lesson"}
+                </Typography>
+              </Box>
+            )}
+            {!editingTitle ? (
+              <IconButton
+                className="lesson-edit-button"
+                onClick={() => setEditingTitle(true)}
+                sx={{
+                  position: "absolute",
+                  top: 8,
+                  right: "2rem",
+                  opacity: 0,
+                  transition: "opacity 0.2s ease",
+                  color: "primary.main",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  "&:hover": { backgroundColor: "action.hover" },
+                }}
+              >
+                <EditRoundedIcon />
+              </IconButton>
+            ) : null}
+          </Box>
+          <Box sx={{ minWidth: 140, marginLeft: "auto", textAlign: "right" }}>
+            <Box
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                mt: 1,
+                px: 1.5,
+                py: 0.5,
+                borderRadius: "5rem",
+                backgroundColor:
+                  lesson.status.toLowerCase().includes("publish") ||
+                  lesson.status.toLowerCase().includes("active")
+                    ? "success.main"
+                    : "warning.main",
+                color:
+                  lesson.status.toLowerCase().includes("publish") ||
+                  lesson.status.toLowerCase().includes("active")
+                    ? "common.white"
+                    : "common.white",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                textTransform: "capitalize",
+              }}
+            >
+              {lesson.status}
+            </Box>
+            <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+              {lesson.id}
+            </Typography>
           </Box>
         </Box>
+        <Box
+          sx={{
+            position: "relative",
+            width: "100%",
+            mt: 1,
+            "&:hover .lesson-edit-button": { opacity: 1 },
+          }}
+        >
+          {editingSummary ? (
+            <TextField
+              label="Summary"
+              value={contentDraft}
+              onChange={(event) => setContentDraft(event.target.value)}
+              onBlur={() => {
+                handleSaveContent();
+                setEditingSummary(false);
+              }}
+              fullWidth
+              disabled={!isAuthenticated || savingContent}
+              minRows={2}
+              maxRows={2}
+              multiline
+              autoFocus
+              sx={{
+                "& .MuiOutlinedInput-root": { borderRadius: "1rem" },
+              }}
+            />
+          ) : (
+            <Box
+              onClick={() => setEditingSummary(true)}
+              sx={{
+                border: "1px solid transparent",
+                borderRadius: "1rem",
+                px: 0,
+                py: 0,
+                minHeight: 96,
+                cursor: "text",
+                backgroundColor: "transparent",
+              }}
+            >
+              <Typography variant="h6" color="text.secondary">
+                {contentDraft || "Add a short report summary."}
+              </Typography>
+            </Box>
+          )}
+          {!editingSummary ? (
+            <IconButton
+              className="lesson-edit-button"
+              onClick={() => setEditingSummary(true)}
+              sx={{
+                position: "absolute",
+                top: 8,
+                right: 0,
+                opacity: 0,
+                transition: "opacity 0.2s ease",
+                color: "primary.main",
+                backgroundColor: "transparent",
+                border: "none",
+                "&:hover": { backgroundColor: "action.hover" },
+              }}
+            >
+              <EditRoundedIcon />
+            </IconButton>
+          ) : null}
+        </Box>
       </Box>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 0, mt: -1 }}>
+        {loadingIndex ? (
+          <Box display="flex" justifyContent="center">
+            <Box width="10rem">
+              <LinearProgress />
+            </Box>
+          </Box>
+        ) : (
+          sections.map((section) => {
+            const isExpanded = Boolean(expandedKeys[section.key]);
+            const isEditingSection = editingKey === section.key;
+            const content = isEditingSection
+              ? drafts[section.key] ?? ""
+              : contents[section.key] ?? drafts[section.key] ?? "";
+            return (
+              <Accordion
+                key={section.key}
+                expanded={isExpanded}
+                onChange={handleAccordionChange(section.key)}
+                sx={{
+                  "&:first-of-type": {
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                  },
+                }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
+                  <Typography
+                    variant="h3"
+                    sx={{ fontSize: "1.05rem", color: "#1565c0" }}
+                  >
+                    {section.key
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (char) => char.toUpperCase())}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 0,
+                    p: 0,
+                    mt: -4,
+                  }}
+                >
+                  {loadingSection[section.key] ? (
+                    <Box display="flex" justifyContent="center">
+                      <Box width="10rem">
+                        <LinearProgress />
+                      </Box>
+                    </Box>
+                  ) : (
+                    <SectionEditor
+                      content={content}
+                      onChange={(value) =>
+                        setDrafts((prev) => ({ ...prev, [section.key]: value }))
+                      }
+                      onSave={() => handleSaveSection(section.key)}
+                      saving={savingSection[section.key]}
+                      disabled={loadingSection[section.key]}
+                      dirty={
+                        (drafts[section.key] ?? "") !==
+                        (contents[section.key] ?? "")
+                      }
+                      editorKey={section.key}
+                      isEditing={isEditingSection}
+                      onToggleEdit={() => setEditingKey(section.key)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setDrafts((prev) => ({
+                          ...prev,
+                          [section.key]: contents[section.key] ?? "",
+                        }));
+                      }}
+                      onDirtyClose={() => setConfirmClose(section.key)}
+                    />
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            );
+          })
+        )}
+      </Box>
+      <Dialog
+        open={Boolean(confirmClose)}
+        onClose={() => setConfirmClose(null)}
+      >
+        <DialogTitle>Discard changes?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            You have unsaved changes. Closing will discard them.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmClose(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmClose}
+          >
+            Discard
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

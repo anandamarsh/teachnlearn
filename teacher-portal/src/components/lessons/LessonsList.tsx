@@ -91,6 +91,7 @@ const LessonsList = ({
                       borderRadius: "8px",
                       backgroundImage:
                         "linear-gradient(135deg, rgba(230,81,0,0.35) 0%, rgba(2,136,209,0.35) 100%)",
+                      my: "0.25rem",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
