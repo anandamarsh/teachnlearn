@@ -20,6 +20,23 @@
   }
 }
 
+.print-only {
+  display: none;
+}
+
+@media print {
+  .app-shell {
+    display: block;
+  }
+  .app-shell *:not(.print-only):not(.print-only *) {
+    display: none !important;
+  }
+  .print-only {
+    display: block;
+    padding: 24px;
+  }
+}
+
 @keyframes ws-blip {
   0% {
     opacity: 0;
