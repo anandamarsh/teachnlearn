@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import PrintRoundedIcon from "@mui/icons-material/PrintRounded";
 import { Lesson } from "../../state/lessonTypes";
 import { useLessonSections } from "../../hooks/useLessonSections";
 import SectionEditor from "./SectionEditor";
@@ -30,6 +31,7 @@ type LessonWorkspaceProps = {
     lessonId: string,
     content: string
   ) => Promise<Lesson | null>;
+  onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
@@ -41,6 +43,7 @@ const LessonWorkspace = ({
   isAuthenticated,
   onUpdateTitle,
   onUpdateContent,
+  onUpdateStatus,
   onNotify,
   getAccessTokenSilently,
   onPulse,
@@ -51,6 +54,7 @@ const LessonWorkspace = ({
   const [savingContent, setSavingContent] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -87,6 +91,15 @@ const LessonWorkspace = ({
     setEditingKey(null);
     setConfirmClose(null);
   }, [lesson?.id]);
+
+  useEffect(() => {
+    if (!lesson) {
+      return;
+    }
+    sections.forEach((section) => {
+      loadSection(section.key);
+    });
+  }, [lesson, loadSection, sections]);
 
   useEffect(() => {
     if (!error) {
@@ -139,6 +152,14 @@ const LessonWorkspace = ({
     setSavingContent(true);
     await onUpdateContent(lesson.id, trimmed);
     setSavingContent(false);
+  };
+
+  const handlePublish = async () => {
+    if (!lesson) {
+      return;
+    }
+    await onUpdateStatus(lesson.id, "published");
+    setPublishOpen(false);
   };
 
   const handleAccordionChange =
@@ -205,6 +226,15 @@ const LessonWorkspace = ({
     );
   }
 
+  const statusValue = lesson.status?.toLowerCase() || "draft";
+  const isPublished =
+    statusValue.includes("publish") || statusValue.includes("active");
+  const canEdit = !isPublished;
+  const allSectionsFilled =
+    sections.length > 0 &&
+    sections.every((section) => (contents[section.key] || "").trim().length > 0);
+  const statusLabel = isPublished ? "Published" : allSectionsFilled ? "Ready" : "Draft";
+
   return (
     <>
       <Box
@@ -259,7 +289,11 @@ const LessonWorkspace = ({
               />
             ) : (
               <Box
-                onClick={() => setEditingTitle(true)}
+                onClick={() => {
+                  if (canEdit) {
+                    setEditingTitle(true);
+                  }
+                }}
                 sx={{
                   border: "1px solid transparent",
                   borderRadius: "1rem",
@@ -268,7 +302,7 @@ const LessonWorkspace = ({
                   minHeight: 64,
                   display: "flex",
                   alignItems: "center",
-                  cursor: "text",
+                  cursor: canEdit ? "text" : "default",
                   backgroundColor: "transparent",
                 }}
               >
@@ -277,7 +311,7 @@ const LessonWorkspace = ({
                 </Typography>
               </Box>
             )}
-            {!editingTitle ? (
+            {!editingTitle && canEdit ? (
               <IconButton
                 className="lesson-edit-button"
                 onClick={() => setEditingTitle(true)}
@@ -297,35 +331,66 @@ const LessonWorkspace = ({
               </IconButton>
             ) : null}
           </Box>
-          <Box sx={{ minWidth: 140, marginLeft: "auto", textAlign: "right" }}>
-            <Box
+          <Box
+            sx={{
+              minWidth: 180,
+              marginLeft: "auto",
+              textAlign: "right",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "flex-end",
+              gap: 2,
+            }}
+          >
+            <IconButton
+              onClick={() => onNotify("Report generation coming soon.", "success")}
+              disabled={!isPublished}
               sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                mt: 1,
-                px: 1.5,
-                py: 0.5,
-                borderRadius: "5rem",
-                backgroundColor:
-                  lesson.status.toLowerCase().includes("publish") ||
-                  lesson.status.toLowerCase().includes("active")
-                    ? "success.main"
-                    : "warning.main",
-                color:
-                  lesson.status.toLowerCase().includes("publish") ||
-                  lesson.status.toLowerCase().includes("active")
-                    ? "common.white"
-                    : "common.white",
-                fontSize: "0.8rem",
-                fontWeight: 600,
-                textTransform: "capitalize",
+                height: 56,
+                width: 44,
+                borderRadius: "0.75rem",
+                color: isPublished ? "primary.main" : "text.disabled",
+                backgroundColor: "transparent",
+                "&:hover": { backgroundColor: isPublished ? "action.hover" : "transparent" },
               }}
             >
-              {lesson.status}
+              <PrintRoundedIcon />
+            </IconButton>
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+              <Box
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: "5rem",
+                  backgroundColor: isPublished
+                    ? "success.main"
+                    : statusLabel === "Ready"
+                      ? "warning.main"
+                      : "error.main",
+                  color: "common.white",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  textTransform: "capitalize",
+                  cursor: statusLabel === "Ready" ? "pointer" : "default",
+                  animation:
+                    statusLabel === "Ready"
+                      ? "statusPulse 1.8s ease-in-out infinite"
+                      : "none",
+                }}
+                onClick={() => {
+                  if (statusLabel === "Ready") {
+                    setPublishOpen(true);
+                  }
+                }}
+              >
+                {statusLabel}
+              </Box>
+              <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+                {lesson.id}
+              </Typography>
             </Box>
-            <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
-              {lesson.id}
-            </Typography>
           </Box>
         </Box>
         <Box
@@ -357,14 +422,18 @@ const LessonWorkspace = ({
             />
           ) : (
             <Box
-              onClick={() => setEditingSummary(true)}
+              onClick={() => {
+                if (canEdit) {
+                  setEditingSummary(true);
+                }
+              }}
               sx={{
                 border: "1px solid transparent",
                 borderRadius: "1rem",
                 px: 0,
                 py: 0,
                 minHeight: 96,
-                cursor: "text",
+                cursor: canEdit ? "text" : "default",
                 backgroundColor: "transparent",
               }}
             >
@@ -373,7 +442,7 @@ const LessonWorkspace = ({
               </Typography>
             </Box>
           )}
-          {!editingSummary ? (
+          {!editingSummary && canEdit ? (
             <IconButton
               className="lesson-edit-button"
               onClick={() => setEditingSummary(true)}
@@ -453,14 +522,18 @@ const LessonWorkspace = ({
                       }
                       onSave={() => handleSaveSection(section.key)}
                       saving={savingSection[section.key]}
-                      disabled={loadingSection[section.key]}
+                      disabled={loadingSection[section.key] || !canEdit}
                       dirty={
                         (drafts[section.key] ?? "") !==
                         (contents[section.key] ?? "")
                       }
                       editorKey={section.key}
                       isEditing={isEditingSection}
-                      onToggleEdit={() => setEditingKey(section.key)}
+                      onToggleEdit={() => {
+                        if (canEdit) {
+                          setEditingKey(section.key);
+                        }
+                      }}
                       onCancelEdit={() => {
                         setEditingKey(null);
                         setDrafts((prev) => ({
@@ -495,6 +568,20 @@ const LessonWorkspace = ({
             onClick={handleConfirmClose}
           >
             Discard
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={publishOpen} onClose={() => setPublishOpen(false)}>
+        <DialogTitle>Publish lesson?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            This will publish the lesson. Once published, it can’t be unpublished.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPublishOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handlePublish}>
+            Publish
           </Button>
         </DialogActions>
       </Dialog>

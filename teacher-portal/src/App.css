@@ -8,6 +8,18 @@
   min-height: 0;
 }
 
+@keyframes statusPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(255, 152, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0);
+  }
+}
+
 @keyframes ws-blip {
   0% {
     opacity: 0;
