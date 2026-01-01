@@ -191,13 +191,14 @@ const SectionEditor = ({
               </IconButton>
             ) : null}
             <Box
+              data-section-preview={editorKey}
               sx={{
                 "&:hover .section-edit-button": {
                   opacity: disabled ? 0 : 1,
                 },
               }}
             >
-            <Viewer ref={viewerRef} initialValue={content || ""} />
+              <Viewer ref={viewerRef} initialValue={content || ""} />
             </Box>
           </Box>
         </>

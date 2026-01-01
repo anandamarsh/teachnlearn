@@ -73,3 +73,32 @@ export const fetchLesson = async (endpoint: string, headers: Record<string, stri
   }
   return data;
 };
+
+export const fetchLessonReport = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, { headers });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Report not found"));
+  }
+  return data as { url?: string };
+};
+
+export const createLessonReport = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: { html: string }
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to create report"));
+  }
+  return data as { url?: string };
+};
