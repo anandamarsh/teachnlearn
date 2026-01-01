@@ -94,7 +94,7 @@ run_step "Enabling Teach-n-Learn API" sudo systemctl enable teachnlearn-api
 run_step "Restarting Teach-n-Learn API" sudo systemctl restart teachnlearn-api
 
 # Client build and deploy
-run_step "Installing TP dependencies" npm --prefix teacher-portal install
+run_step "Installing TP dependencies" npm --prefix teacher-portal install --legacy-peer-deps
 run_step "Building TP" npm --prefix teacher-portal run build
 if [[ -d "teacher-portal/dist" ]]; then
   run_step "Creating /var/www/teacher-portal directory" sudo mkdir -p /var/www/teacher-portal
@@ -105,7 +105,7 @@ else
   exit 1
 fi
 
-run_step "Installing LP dependencies" npm --prefix learner-portal install
+run_step "Installing LP dependencies" npm --prefix learner-portal install --legacy-peer-deps
 run_step "Building LP" npm --prefix learner-portal run build
 if [[ -d "learner-portal/dist" ]]; then
   run_step "Creating /var/www/learner-portal directory" sudo mkdir -p /var/www/learner-portal
