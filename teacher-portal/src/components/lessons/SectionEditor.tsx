@@ -166,32 +166,34 @@ const SectionEditor = ({
               minHeight: "auto",
               backgroundColor: "transparent",
               "&:hover .section-edit-button": {
-                opacity: 1,
+                opacity: disabled ? 0 : 1,
               },
             }}
           >
-            <IconButton
-              onClick={onToggleEdit}
-              sx={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                zIndex: 2,
-                color: "primary.main",
-                backgroundColor: "transparent",
-                border: "none",
-                "&:hover": { backgroundColor: "action.hover" },
-                opacity: 0,
-                transition: "opacity 0.2s ease",
-              }}
-              className="section-edit-button"
-            >
-              <EditRoundedIcon />
-            </IconButton>
+            {!disabled ? (
+              <IconButton
+                onClick={onToggleEdit}
+                sx={{
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  zIndex: 2,
+                  color: "primary.main",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  "&:hover": { backgroundColor: "action.hover" },
+                  opacity: 0,
+                  transition: "opacity 0.2s ease",
+                }}
+                className="section-edit-button"
+              >
+                <EditRoundedIcon />
+              </IconButton>
+            ) : null}
             <Box
               sx={{
                 "&:hover .section-edit-button": {
-                  opacity: 1,
+                  opacity: disabled ? 0 : 1,
                 },
               }}
             >
