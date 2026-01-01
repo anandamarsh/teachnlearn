@@ -13,8 +13,10 @@ type LessonsPageProps = {
   isAuthenticated: boolean;
   onSelectLesson: (lessonId: string) => void;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
+  onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
+  onPulse?: (color: "success" | "error") => void;
 };
 
 const LessonsPage = ({
@@ -25,8 +27,10 @@ const LessonsPage = ({
   isAuthenticated,
   onSelectLesson,
   onUpdateTitle,
+  onUpdateContent,
   onNotify,
   getAccessTokenSilently,
+  onPulse,
 }: LessonsPageProps) => {
   const [leftOpen, setLeftOpen] = useState(false);
   const drawerWidth = leftOpen ? "16rem" : "5rem";
@@ -46,6 +50,9 @@ const LessonsPage = ({
             borderRight: "1px solid rgba(0,0,0,0.08)",
             p: 0,
             borderRadius: 0,
+            backgroundColor: "#fff",
+            opacity: 1,
+            zIndex: 1200,
           },
         }}
       >
@@ -75,8 +82,10 @@ const LessonsPage = ({
               hasLessons={lessons.length > 0}
               isAuthenticated={isAuthenticated}
               onUpdateTitle={onUpdateTitle}
+              onUpdateContent={onUpdateContent}
               onNotify={onNotify}
               getAccessTokenSilently={getAccessTokenSilently}
+              onPulse={onPulse}
             />
           </Box>
         </Box>

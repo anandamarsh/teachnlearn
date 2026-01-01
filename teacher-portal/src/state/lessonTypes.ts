@@ -3,6 +3,7 @@ export type Lesson = {
   title: string;
   status: string;
   iconUrl?: string | null;
+  content?: string | null;
 };
 
 export const normalizeLesson = (
@@ -21,10 +22,16 @@ export const normalizeLesson = (
     "Untitled lesson";
   const status = (item.status as string) || (item.state as string) || "Draft";
   const iconUrl = (item.iconUrl as string) || (item.icon as string) || null;
+  const content =
+    (item.content as string) ||
+    (item.description as string) ||
+    (item.summary as string) ||
+    null;
   return {
     id: String(id),
     title,
     status,
     iconUrl,
+    content,
   };
 };

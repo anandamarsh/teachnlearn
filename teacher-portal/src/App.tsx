@@ -36,6 +36,10 @@ function App() {
   const [page, setPage] = useState<PageKey>("home");
   const configError = !apiBaseUrl || !auth0Audience;
 
+  const [wsPulse, setWsPulse] = useState<{ id: number; color: "success" | "error" } | null>(
+    null
+  );
+
   const {
     lessons,
     selectedLesson,
@@ -46,12 +50,19 @@ function App() {
     setError,
     createLesson,
     updateLessonTitle,
+    updateLessonContent,
     deleteLesson,
   } = useLessons({
     apiBaseUrl,
     auth0Audience,
     isAuthenticated,
     getAccessTokenSilently,
+    onPulse: (color) => {
+      setWsPulse((prev) => ({
+        id: (prev?.id ?? 0) + 1,
+        color,
+      }));
+    },
   });
 
   const [snackbar, setSnackbar] = useState<{
@@ -84,6 +95,14 @@ function App() {
     const updated = await updateLessonTitle(lessonId, title);
     if (updated) {
       notify("Lesson updated", "success");
+    }
+    return updated;
+  };
+
+  const handleUpdateContent = async (lessonId: string, content: string) => {
+    const updated = await updateLessonContent(lessonId, content);
+    if (updated) {
+      notify("Lesson summary updated", "success");
     }
     return updated;
   };
@@ -150,8 +169,15 @@ function App() {
           isAuthenticated={isAuthenticated}
           onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           onUpdateTitle={handleUpdateTitle}
+          onUpdateContent={handleUpdateContent}
           onNotify={notify}
           getAccessTokenSilently={getAccessTokenSilently}
+          onPulse={(color) =>
+            setWsPulse((prev) => ({
+              id: (prev?.id ?? 0) + 1,
+              color,
+            }))
+          }
         />
       )}
 
@@ -191,10 +217,29 @@ function App() {
           severity={snackbar.severity}
           onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
           variant="filled"
+          sx={{ py: 0.5 }}
         >
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {wsPulse ? (
+        <Box
+          key={wsPulse.id}
+          className="ws-status-blip"
+          sx={{
+            position: "fixed",
+            top: 12,
+            right: 16,
+            width: 12,
+            height: 12,
+            borderRadius: "999px",
+            bgcolor: wsPulse.color === "success" ? "success.main" : "error.main",
+            boxShadow: "0 0 0 2px rgba(255,255,255,0.9)",
+            zIndex: 1300,
+          }}
+          aria-label={wsPulse.color === "success" ? "WebSocket activity" : "WebSocket error"}
+        />
+      ) : null}
     </Box>
   );
 }

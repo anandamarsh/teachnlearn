@@ -30,6 +30,8 @@ def sanitize_email(email: str) -> str:
     return "".join(sanitized).strip("_")
 
 
+
+
 def ensure_lesson_prefix(sanitized_email: str, lesson_id: str, settings: Settings) -> None:
     if not settings.s3_bucket:
         raise RuntimeError("S3 bucket not configured")
@@ -77,6 +79,7 @@ class LessonStore:
         self._settings = settings
         self._lock = threading.Lock()
         self._s3_client = get_s3_client(settings)
+        self._sections = settings.lesson_sections
 
     def _ensure_bucket(self) -> None:
         if not self._settings.s3_bucket:
@@ -153,11 +156,7 @@ class LessonStore:
             self._ensure_bucket()
             entries = self._load_index(sanitized)
             lesson_id = self._generate_id(entries)
-            sections = {
-                "assessment": "assessment.md",
-                "analysis": "analysis.md",
-                "profile": "profile.md",
-            }
+            sections = {key: f"{key}.md" for key in self._sections}
             sections_meta = {
                 key: {"key": key, "updatedAt": now, "version": 1}
                 for key in sections
@@ -284,6 +283,9 @@ class LessonStore:
             return None
         sections = lesson.get("sections") or {}
         return {"sections": sections}
+
+    def is_valid_section_key(self, section_key: str) -> bool:
+        return section_key in self._sections
 
     def get_section(self, email: str, lesson_id: str, section_key: str) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)

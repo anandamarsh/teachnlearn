@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Box, IconButton } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import { Editor, Viewer } from "@toast-ui/react-editor";
@@ -77,13 +78,32 @@ const SectionEditor = ({
             disabled={Boolean(saving || disabled || !dirty)}
             sx={{
               position: "absolute",
-              top: 8,
+              top: "2rem",
+              mt: "3px",
               right: 44,
               zIndex: 2,
               color: "text.secondary",
             }}
           >
             <SaveRoundedIcon />
+          </IconButton>
+          <IconButton
+            onClick={() => {
+              if (!content) {
+                return;
+              }
+              navigator.clipboard.writeText(content);
+            }}
+            sx={{
+              position: "absolute",
+              top: "2rem",
+              mt: "3px",
+              right: 88,
+              zIndex: 2,
+              color: "text.secondary",
+            }}
+          >
+            <ContentCopyRoundedIcon />
           </IconButton>
           <IconButton
             onClick={() => {
@@ -95,7 +115,8 @@ const SectionEditor = ({
             }}
             sx={{
               position: "absolute",
-              top: 8,
+              top: "2rem",
+              mt: "3px",
               right: 8,
               zIndex: 2,
               color: "text.secondary",
@@ -103,59 +124,79 @@ const SectionEditor = ({
           >
             <CloseRoundedIcon />
           </IconButton>
-      <Editor
-        key={editorKey}
-        ref={editorRef}
-        initialValue={content || ""}
-        previewStyle="tab"
-        height="auto"
-        initialEditType="wysiwyg"
-        useCommandShortcut
-        hideModeSwitch
-            toolbarItems={[
-              ["heading", "bold", "italic", "strike"],
-              ["hr", "quote"],
-              ["ul", "ol", "task"],
-              ["link"],
-              ["code", "codeblock"],
-            ]}
-            onChange={() => {
-              const instance = editorRef.current?.getInstance();
-              if (!instance) {
-                return;
-              }
-              if (isSyncingRef.current) {
-                return;
-              }
-              onChange(instance.getMarkdown());
-            }}
-            readOnly={disabled}
-          />
+          <Box sx={{ pt: "2rem" }}>
+            <Editor
+              key={editorKey}
+              ref={editorRef}
+              initialValue={content || ""}
+              previewStyle="tab"
+              height="auto"
+              initialEditType="wysiwyg"
+              useCommandShortcut
+              hideModeSwitch
+              toolbarItems={[
+                ["heading", "bold", "italic", "strike"],
+                ["hr", "quote"],
+                ["ul", "ol", "task"],
+                ["link"],
+                ["code", "codeblock"],
+              ]}
+              onChange={() => {
+                const instance = editorRef.current?.getInstance();
+                if (!instance) {
+                  return;
+                }
+                if (isSyncingRef.current) {
+                  return;
+                }
+                onChange(instance.getMarkdown());
+              }}
+              readOnly={disabled}
+            />
+          </Box>
         </>
       ) : (
         <>
-          <IconButton
-            onClick={onToggleEdit}
-            sx={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              zIndex: 2,
-              color: "text.secondary",
-            }}
-          >
-            <EditRoundedIcon />
-          </IconButton>
           <Box
             sx={{
-              border: "1px solid rgba(0,0,0,0.12)",
+              position: "relative",
+              border: "1px solid transparent",
               borderRadius: "0.75rem",
               padding: "1rem",
-              minHeight: 180,
-              backgroundColor: "#fff",
+              minHeight: "auto",
+              backgroundColor: "transparent",
+              "&:hover .section-edit-button": {
+                opacity: 1,
+              },
             }}
           >
+            <IconButton
+              onClick={onToggleEdit}
+              sx={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                zIndex: 2,
+                color: "primary.main",
+                backgroundColor: "transparent",
+                border: "none",
+                "&:hover": { backgroundColor: "action.hover" },
+                opacity: 0,
+                transition: "opacity 0.2s ease",
+              }}
+              className="section-edit-button"
+            >
+              <EditRoundedIcon />
+            </IconButton>
+            <Box
+              sx={{
+                "&:hover .section-edit-button": {
+                  opacity: 1,
+                },
+              }}
+            >
             <Viewer ref={viewerRef} initialValue={content || ""} />
+            </Box>
           </Box>
         </>
       )}

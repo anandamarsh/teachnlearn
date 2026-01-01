@@ -1,4 +1,6 @@
+import json
 import os
+from pathlib import Path
 from functools import lru_cache
 
 
@@ -14,6 +16,12 @@ class Settings:
             for origin in os.getenv("CORS_ORIGINS", "").split(",")
             if origin.strip()
         ]
+        self.lesson_sections_path = os.getenv("LESSON_SECTIONS_FILE") or str(
+            Path(__file__).resolve().parents[2] / "lesson_sections.json"
+        )
+        self.lesson_sections, self.lesson_section_descriptions = _load_lesson_sections(
+            self.lesson_sections_path
+        )
 
 
 @lru_cache
@@ -27,3 +35,30 @@ def parse_cors_origins() -> list[str]:
         for origin in os.getenv("CORS_ORIGINS", "").split(",")
         if origin.strip()
     ]
+
+
+def _load_lesson_sections(path: str) -> tuple[list[str], dict[str, str]]:
+    default = ["assessment", "samples", "concepts", "background", "lesson", "references", "exercises"]
+    descriptions: dict[str, str] = {}
+    if not path:
+        return default, descriptions
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default, descriptions
+    if isinstance(payload, list):
+        sections = payload
+    else:
+        if isinstance(payload, dict):
+            sections = payload.get("sections", [])
+            payload_descriptions = payload.get("descriptions")
+            if isinstance(payload_descriptions, dict):
+                descriptions = {
+                    str(key).strip().lower(): str(value).strip()
+                    for key, value in payload_descriptions.items()
+                    if str(key).strip() and str(value).strip()
+                }
+        else:
+            sections = []
+    cleaned = [str(item).strip().lower() for item in sections if str(item).strip()]
+    return cleaned or default, descriptions
