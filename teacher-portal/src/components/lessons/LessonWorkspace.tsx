@@ -17,8 +17,7 @@ import {
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
-import PrintRoundedIcon from "@mui/icons-material/PrintRounded";
-import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { Viewer } from "@toast-ui/react-editor";
 import { Lesson } from "../../state/lessonTypes";
 import { useLessonSections } from "../../hooks/useLessonSections";
@@ -410,33 +409,6 @@ const LessonWorkspace = ({
     return created.url || null;
   };
 
-  const handlePrint = async () => {
-    if (!lesson) {
-      return;
-    }
-    const url = await ensureReportUrl({ forceCreate: true });
-    if (!url) {
-      return;
-    }
-    const response = await fetch(url, { cache: "no-store" });
-    const html = await response.text();
-    const printHtml = html.replace(
-      "</body>",
-      `<script>
-        window.onload = () => { window.print(); };
-      </script></body>`
-    );
-    const blob = new Blob([printHtml], { type: "text/html" });
-    const blobUrl = URL.createObjectURL(blob);
-    const printWindow = window.open(blobUrl, "_blank");
-    if (!printWindow) {
-      return;
-    }
-    printWindow.addEventListener("beforeunload", () => {
-      URL.revokeObjectURL(blobUrl);
-    });
-  };
-
   const handleOpenReport = async () => {
     if (!lesson) {
       return;
@@ -635,53 +607,11 @@ const LessonWorkspace = ({
               gap: 2,
             }}
           >
-            <IconButton
-              onClick={() => {
-                if (!isPublished) {
-                  return;
-                }
-                handleOpenReport();
-              }}
-              disabled={!isPublished}
-              sx={{
-                height: 56,
-                width: 44,
-                borderRadius: "0.75rem",
-                color: isPublished ? "primary.main" : "text.disabled",
-                backgroundColor: "transparent",
-                "&:hover": {
-                  backgroundColor: isPublished ? "action.hover" : "transparent",
-                },
-              }}
-            >
-              <LinkRoundedIcon />
-            </IconButton>
-            <IconButton
-              onClick={() => {
-                if (!isPublished) {
-                  return;
-                }
-                handlePrint();
-              }}
-              disabled={!isPublished}
-              sx={{
-                height: 56,
-                width: 44,
-                borderRadius: "0.75rem",
-                color: isPublished ? "primary.main" : "text.disabled",
-                backgroundColor: "transparent",
-                "&:hover": {
-                  backgroundColor: isPublished ? "action.hover" : "transparent",
-                },
-              }}
-            >
-              <PrintRoundedIcon />
-            </IconButton>
             <Box
               sx={{
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "flex-end",
+                alignItems: "center",
               }}
             >
               <Box
@@ -716,11 +646,32 @@ const LessonWorkspace = ({
               </Box>
               <Typography
                 variant="body2"
-                sx={{ color: "text.secondary", mt: 1 }}
+                sx={{ color: "text.secondary", mt: 1, textAlign: "center" }}
               >
                 {lesson.id}
               </Typography>
             </Box>
+            <IconButton
+              onClick={() => {
+                if (!isPublished) {
+                  return;
+                }
+                handleOpenReport();
+              }}
+              disabled={!isPublished}
+              sx={{
+                height: 56,
+                width: 44,
+                borderRadius: "0.75rem",
+                color: isPublished ? "primary.main" : "text.disabled",
+                backgroundColor: "transparent",
+                "&:hover": {
+                  backgroundColor: isPublished ? "action.hover" : "transparent",
+                },
+              }}
+            >
+              <OpenInNewRoundedIcon />
+            </IconButton>
           </Box>
         </Box>
         <Box
