@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Alert,
@@ -8,13 +8,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Fab,
   LinearProgress,
   Snackbar,
   Typography,
 } from "@mui/material";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import "./App.css";
 import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
@@ -39,6 +36,10 @@ function App() {
   const [page, setPage] = useState<PageKey>("home");
   const configError = !apiBaseUrl || !auth0Audience;
 
+  const [wsPulse, setWsPulse] = useState<{ id: number; color: "success" | "error" } | null>(
+    null
+  );
+
   const {
     lessons,
     selectedLesson,
@@ -49,29 +50,20 @@ function App() {
     setError,
     createLesson,
     updateLessonTitle,
+    updateLessonContent,
     deleteLesson,
   } = useLessons({
     apiBaseUrl,
     auth0Audience,
     isAuthenticated,
     getAccessTokenSilently,
+    onPulse: (color) => {
+      setWsPulse((prev) => ({
+        id: (prev?.id ?? 0) + 1,
+        color,
+      }));
+    },
   });
-
-  const handleCreateLesson = async () => {
-    if (!isAuthenticated) {
-      loginWithRedirect();
-      return;
-    }
-    const created = await createLesson();
-    if (created) {
-      setSnackbar({
-        open: true,
-        message: "Lesson created",
-        severity: "success",
-      });
-    }
-    setPage("lessons");
-  };
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -83,14 +75,34 @@ function App() {
     severity: "success",
   });
 
+  const notify = useCallback((message: string, severity: "success" | "error") => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
+
+  const handleCreateLesson = async () => {
+    if (!isAuthenticated) {
+      loginWithRedirect();
+      return;
+    }
+    const created = await createLesson();
+    if (created) {
+      notify("Lesson created", "success");
+    }
+    setPage("lessons");
+  };
+
   const handleUpdateTitle = async (lessonId: string, title: string) => {
     const updated = await updateLessonTitle(lessonId, title);
     if (updated) {
-      setSnackbar({
-        open: true,
-        message: "Lesson updated",
-        severity: "success",
-      });
+      notify("Lesson updated", "success");
+    }
+    return updated;
+  };
+
+  const handleUpdateContent = async (lessonId: string, content: string) => {
+    const updated = await updateLessonContent(lessonId, content);
+    if (updated) {
+      notify("Lesson summary updated", "success");
     }
     return updated;
   };
@@ -115,10 +127,10 @@ function App() {
 
   useEffect(() => {
     if (error) {
-      setSnackbar({ open: true, message: error, severity: "error" });
+      notify(error, "error");
       setError("");
     }
-  }, [error, setError]);
+  }, [error, notify, setError]);
 
   if (configError) {
     return (
@@ -157,6 +169,15 @@ function App() {
           isAuthenticated={isAuthenticated}
           onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           onUpdateTitle={handleUpdateTitle}
+          onUpdateContent={handleUpdateContent}
+          onNotify={notify}
+          getAccessTokenSilently={getAccessTokenSilently}
+          onPulse={(color) =>
+            setWsPulse((prev) => ({
+              id: (prev?.id ?? 0) + 1,
+              color,
+            }))
+          }
         />
       )}
 
@@ -166,33 +187,12 @@ function App() {
         currentPage={page}
         onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
+        onCreateLesson={handleCreateLesson}
+        onDeleteLesson={() => setDeleteOpen(true)}
+        showDelete={page === "lessons" && Boolean(selectedLesson)}
         onAuthClick={() => loginWithRedirect()}
         onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
       />
-      {page === "lessons" ? (
-        <>
-          {selectedLesson ? (
-            <Fab
-              color="error"
-              onClick={() => setDeleteOpen(true)}
-              sx={{
-                position: "fixed",
-                right: "1rem",
-                bottom: "calc(56px + 1rem + 56px + 0.5rem)",
-              }}
-            >
-              <DeleteRoundedIcon />
-            </Fab>
-          ) : null}
-          <Fab
-            color="primary"
-            onClick={handleCreateLesson}
-            sx={{ position: "fixed", right: "1rem", bottom: "calc(56px + 1rem)" }}
-          >
-            <AddRoundedIcon />
-          </Fab>
-        </>
-      ) : null}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete lesson</DialogTitle>
         <DialogContent>
@@ -217,10 +217,29 @@ function App() {
           severity={snackbar.severity}
           onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
           variant="filled"
+          sx={{ py: 0.5 }}
         >
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {wsPulse ? (
+        <Box
+          key={wsPulse.id}
+          className="ws-status-blip"
+          sx={{
+            position: "fixed",
+            top: 12,
+            right: 16,
+            width: 12,
+            height: 12,
+            borderRadius: "999px",
+            bgcolor: wsPulse.color === "success" ? "success.main" : "error.main",
+            boxShadow: "0 0 0 2px rgba(255,255,255,0.9)",
+            zIndex: 1300,
+          }}
+          aria-label={wsPulse.color === "success" ? "WebSocket activity" : "WebSocket error"}
+        />
+      ) : null}
     </Box>
   );
 }
