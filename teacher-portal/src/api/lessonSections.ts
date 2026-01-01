@@ -22,6 +22,18 @@ export const fetchSectionsIndex = async (
   return data as { sections?: Record<string, string> };
 };
 
+export const fetchSectionsList = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, { headers });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to load sections list"));
+  }
+  return data as { sections?: string[]; descriptions?: Record<string, string> };
+};
+
 export const fetchSectionContent = async (
   endpoint: string,
   headers: Record<string, string>

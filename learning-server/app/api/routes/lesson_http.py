@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from app.core.auth import get_request_email
 from app.core.settings import Settings
+from app.services.lesson_events import LessonEventHub
 from app.services.lesson_store import LessonStore
 
 
@@ -14,10 +15,24 @@ def _json_error(detail: str, status_code: int) -> JSONResponse:
     return JSONResponse({"detail": detail}, status_code=status_code)
 
 
-def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
+def register_routes(
+    mcp: Any, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
+) -> None:
     @mcp.custom_route("/health", methods=["GET"])
     async def health_check(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "service": "learning-server"})
+
+    @mcp.custom_route("/lesson/sections/list", methods=["GET"])
+    async def list_configured_sections(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return _json_error("email is required", 400)
+        return JSONResponse(
+            {
+                "sections": settings.lesson_sections,
+                "descriptions": settings.lesson_section_descriptions,
+            }
+        )
 
     @mcp.custom_route("/lesson", methods=["GET"])
     async def list_lessons(request: Request) -> JSONResponse:
@@ -85,6 +100,8 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error("lesson_id is required", 400)
         if not section_key:
             return _json_error("section_key is required", 400)
+        if not store.is_valid_section_key(section_key):
+            return _json_error("invalid section_key", 400)
         try:
             section = store.get_section(email, lesson_id, section_key)
         except (RuntimeError, ClientError) as exc:
@@ -104,6 +121,8 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error("lesson_id is required", 400)
         if not section_key:
             return _json_error("section_key is required", 400)
+        if not store.is_valid_section_key(section_key):
+            return _json_error("invalid section_key", 400)
         try:
             meta = store.get_section_meta(email, lesson_id, section_key)
         except (RuntimeError, ClientError) as exc:
@@ -130,6 +149,11 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             lesson = store.create(email, title=title, status=status, content=content)
         except (RuntimeError, ClientError) as exc:
             return _json_error(str(exc), 500)
+        if events:
+            events.publish(
+                email,
+                {"type": "lesson.created", "lessonId": lesson.get("id")},
+            )
         return JSONResponse(lesson, status_code=201)
 
     @mcp.custom_route("/lesson/id/{lesson_id}", methods=["PUT"])
@@ -155,6 +179,11 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error(str(exc), 500)
         if lesson is None:
             return _json_error("lesson not found", 404)
+        if events:
+            events.publish(
+                email,
+                {"type": "lesson.updated", "lessonId": lesson_id},
+            )
         return JSONResponse(lesson)
 
     @mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["PUT"])
@@ -168,6 +197,8 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error("lesson_id is required", 400)
         if not section_key:
             return _json_error("section_key is required", 400)
+        if not store.is_valid_section_key(section_key):
+            return _json_error("invalid section_key", 400)
         try:
             payload = await request.json()
         except json.JSONDecodeError:
@@ -181,6 +212,15 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error(str(exc), 500)
         if section is None:
             return _json_error("section not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.updated",
+                    "lessonId": lesson_id,
+                    "sectionKey": section_key,
+                },
+            )
         return JSONResponse(section)
 
     @mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["POST"])
@@ -194,6 +234,8 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error("lesson_id is required", 400)
         if not section_key:
             return _json_error("section_key is required", 400)
+        if not store.is_valid_section_key(section_key):
+            return _json_error("invalid section_key", 400)
         try:
             payload = await request.json()
         except json.JSONDecodeError:
@@ -205,6 +247,15 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error(str(exc), 500)
         if section is None:
             return _json_error("section not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.created",
+                    "lessonId": lesson_id,
+                    "sectionKey": section_key,
+                },
+            )
         return JSONResponse(section, status_code=201)
 
     @mcp.custom_route("/lesson/id/{lesson_id}", methods=["DELETE"])
@@ -221,4 +272,6 @@ def register_routes(mcp: Any, store: LessonStore, settings: Settings) -> None:
             return _json_error(str(exc), 500)
         if not deleted:
             return _json_error("lesson not found", 404)
+        if events:
+            events.publish(email, {"type": "lesson.deleted", "lessonId": lesson_id})
         return JSONResponse({"status": "deleted", "id": lesson_id})

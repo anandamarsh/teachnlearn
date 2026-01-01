@@ -74,6 +74,13 @@ def get_request_email(request: Request, payload: dict | None, settings: Settings
             payload_data = decode_jwt(token, settings)
             email = payload_data.get("email")
             if not email:
+                email = payload_data.get("https://sitnstudy.com/email")
+            if not email:
+                for key, value in payload_data.items():
+                    if key.endswith("/email"):
+                        email = value
+                        break
+            if not email:
                 email = fetch_userinfo_email(token, settings.auth0_domain)
             return email
         except ValueError:
@@ -81,3 +88,23 @@ def get_request_email(request: Request, payload: dict | None, settings: Settings
     if payload and payload.get("email"):
         return str(payload["email"]).strip()
     return request.headers.get("x-user-email")
+
+
+def get_email_from_token(token: str, settings: Settings) -> str | None:
+    if not token or not settings.auth0_domain or not settings.auth0_audience:
+        return None
+    try:
+        payload_data = decode_jwt(token, settings)
+    except ValueError:
+        return None
+    email = payload_data.get("email")
+    if not email:
+        email = payload_data.get("https://sitnstudy.com/email")
+    if not email:
+        for key, value in payload_data.items():
+            if key.endswith("/email"):
+                email = value
+                break
+    if email:
+        return str(email)
+    return fetch_userinfo_email(token, settings.auth0_domain)

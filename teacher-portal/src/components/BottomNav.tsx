@@ -50,7 +50,9 @@ const BottomNav = ({
         justifyContent: "space-between",
         borderTop: "1px solid rgba(0,0,0,0.08)",
         backgroundColor: "#fff",
+        opacity: 1,
         borderRadius: 0,
+        zIndex: 1300,
       }}
     >
       <Box display="flex" alignItems="stretch" width="100%" justifyContent="space-around">
