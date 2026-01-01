@@ -166,7 +166,12 @@ function App() {
   }
 
   return (
-    <Box minHeight="100vh" bgcolor="background.default" pb={page === "home" ? 0 : 10}>
+    <Box
+      className="app-shell"
+      minHeight="100vh"
+      bgcolor="background.default"
+      pb={page === "home" ? 0 : 10}
+    >
       {page === "home" ? (
         <Home onLessonsClick={() => setPage("lessons")} />
       ) : (

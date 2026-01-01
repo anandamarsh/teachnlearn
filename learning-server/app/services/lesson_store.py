@@ -94,6 +94,15 @@ class LessonStore:
     def _section_key(self, sanitized_email: str, lesson_id: str, filename: str) -> str:
         return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/{filename}"
 
+    def _report_key(self, sanitized_email: str, lesson_id: str) -> str:
+        return (
+            f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/public-lesson.html"
+        )
+
+    def report_key(self, email: str, lesson_id: str) -> str:
+        sanitized = sanitize_email(email)
+        return self._report_key(sanitized, lesson_id)
+
     def _load_index(self, sanitized_email: str) -> list[dict[str, Any]]:
         self._ensure_bucket()
         key = self._index_key(sanitized_email)
@@ -363,3 +372,26 @@ class LessonStore:
             ContentType="application/json",
         )
         return {"key": section_key, "contentMd": content_md}
+
+    def report_exists(self, email: str, lesson_id: str) -> bool:
+        sanitized = sanitize_email(email)
+        key = self._report_key(sanitized, lesson_id)
+        try:
+            self._s3_client.head_object(Bucket=self._settings.s3_bucket, Key=key)
+            return True
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey"}:
+                return False
+            raise
+
+    def put_report(self, email: str, lesson_id: str, html: str) -> str:
+        sanitized = sanitize_email(email)
+        self._ensure_bucket()
+        key = self._report_key(sanitized, lesson_id)
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=key,
+            Body=html.encode("utf-8"),
+            ContentType="text/html",
+        )
+        return key

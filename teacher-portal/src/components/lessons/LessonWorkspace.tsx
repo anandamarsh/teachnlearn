@@ -5,6 +5,7 @@ import {
   AccordionSummary,
   Box,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -17,9 +18,13 @@ import {
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import PrintRoundedIcon from "@mui/icons-material/PrintRounded";
+import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
+import { Viewer } from "@toast-ui/react-editor";
 import { Lesson } from "../../state/lessonTypes";
 import { useLessonSections } from "../../hooks/useLessonSections";
 import SectionEditor from "./SectionEditor";
+import { buildAuthHeaders } from "../../auth/buildAuthHeaders";
+import { createLessonReport, fetchLessonReport } from "../../api/lessons";
 import type { GetAccessTokenSilently } from "../../auth/buildAuthHeaders";
 
 type LessonWorkspaceProps = {
@@ -55,6 +60,9 @@ const LessonWorkspace = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [printSelections, setPrintSelections] = useState<
+    Record<string, boolean>
+  >({});
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -71,6 +79,7 @@ const LessonWorkspace = ({
     setError,
     loadSection,
     saveSection,
+    refreshSection,
   } = useLessonSections({
     apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
     auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
@@ -100,6 +109,20 @@ const LessonWorkspace = ({
       loadSection(section.key);
     });
   }, [lesson, loadSection, sections]);
+
+  useEffect(() => {
+    if (!sections.length) {
+      setPrintSelections({});
+      return;
+    }
+    setPrintSelections((prev) => {
+      const next: Record<string, boolean> = {};
+      sections.forEach((section) => {
+        next[section.key] = prev[section.key] ?? true;
+      });
+      return next;
+    });
+  }, [sections]);
 
   useEffect(() => {
     if (!error) {
@@ -159,7 +182,271 @@ const LessonWorkspace = ({
       return;
     }
     await onUpdateStatus(lesson.id, "published");
+    try {
+      await ensureReportUrl();
+    } catch {
+      // Report generation is best-effort on publish.
+    }
     setPublishOpen(false);
+  };
+
+  const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
+  const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
+
+  const buildReportHtml = (includePrintScript: boolean) => {
+    if (!lesson) {
+      return "";
+    }
+    const selectedSections = sections.filter(
+      (section) => printSelections[section.key] ?? true
+    );
+    const escapeHtml = (value: string) =>
+      value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    const summaryHtml = contentDraft
+      ? `<p class="summary">${escapeHtml(contentDraft)}</p>`
+      : "";
+    const hasSections = selectedSections.length > 0;
+    const footerHtml =
+      "(C) TeachNLearn - Individualised Lessons for each child";
+    const tocHtml = selectedSections
+      .map((section) => {
+        const heading = section.key
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+        return `<li><a href="#section-${section.key}">${escapeHtml(
+          heading
+        )}</a></li>`;
+      })
+      .join("");
+    const sectionHtml = selectedSections
+      .map((section) => {
+        const heading = section.key
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+        const bodyHtml = document.querySelector(
+          `[data-section-preview="${section.key}"]`
+        )?.innerHTML;
+        return `
+          <section class="section-block" id="section-${section.key}">
+            <h2>${escapeHtml(heading)}</h2>
+            <div class="section-body">${bodyHtml || ""}</div>
+          </section>
+        `;
+      })
+      .join("");
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(titleDraft || lesson.title || "Lesson")}</title>
+          <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.css">
+          <style>
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px; color: #1f2933; }
+            h1 { font-size: 24px; margin: 0 0 8px; }
+            h2 { font-size: 18px; margin: 24px 0 8px; color: #1f63b5; }
+            .summary { margin: 0; color: #4b5563; text-align: left; max-width: 720px; }
+            .section-body {
+              line-height: 1.6;
+              border: none;
+              border-radius: 12px;
+              padding: 16px;
+              background: #fff;
+            }
+            .section-block {
+              position: relative;
+              padding-bottom: 48px;
+            }
+            .section-block + .section-block {
+              break-before: page;
+              page-break-before: always;
+            }
+            .section-body table,
+            .section-body th,
+            .section-body td {
+              border: none !important;
+            }
+            .cover-page {
+              break-after: page;
+              page-break-after: always;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: flex-start;
+              gap: 10rem;
+            }
+            .cover-logo { margin-top: 4rem; }
+            .cover-title { text-align: center; margin: 0; }
+            .cover-title-wrap {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: 100%;
+            }
+            .cover-summary {
+              margin: 0;
+              width: 100%;
+              max-width: 720px;
+              align-self: flex-start;
+            }
+            .cover-summary .summary { text-align: left; }
+            .toc-block {
+              margin-top: -6rem;
+            }
+            .toc { margin: 24px 0 0; padding-left: 18px; }
+            .toc li { margin-bottom: 6px; }
+            .toc a { color: #1f63b5; text-decoration: none; }
+            .toc a:hover { text-decoration: underline; }
+            .logo { max-width: 160px; margin: 0; }
+            .page-footer {
+              position: fixed;
+              bottom: 16px;
+              left: 0;
+              right: 0;
+              text-align: center;
+              font-size: 12px;
+              color: #6b7280;
+            }
+          </style>
+        </head>
+        <body>
+          <section class="cover-page">
+            <img class="logo cover-logo" src="${
+              window.location.origin
+            }/logo.png" alt="Logo" />
+            <div class="cover-title-wrap">
+              <h1 class="cover-title">${escapeHtml(
+                titleDraft || lesson.title || "Lesson"
+              )}</h1>
+            </div>
+            <div class="cover-summary">
+              ${summaryHtml}
+            </div>
+          ${
+            hasSections
+              ? `<div class="toc-block">
+              <h2>Table of Contents</h2>
+              <ol class="toc">${tocHtml}</ol>
+            </div>`
+              : ""
+          }
+          </section>
+          ${sectionHtml}
+          <footer class="page-footer">${escapeHtml(footerHtml)}</footer>
+          ${
+            includePrintScript
+              ? `<script>
+            window.onload = () => {
+              window.print();
+            };
+          </script>`
+              : `<script>
+            window.onload = () => {
+            };
+          </script>`
+          }
+        </body>
+      </html>
+    `;
+  };
+
+  const ensureSectionPreviews = async (keys: string[]) => {
+    if (!keys.length) {
+      return;
+    }
+    await Promise.all(keys.map((key) => loadSection(key)));
+    const waitForPreview = (key: string) =>
+      new Promise<void>((resolve) => {
+        let attempts = 0;
+        const check = () => {
+          const node = document.querySelector(`[data-section-preview="${key}"]`);
+          if (node?.innerHTML) {
+            resolve();
+            return;
+          }
+          attempts += 1;
+          if (attempts > 20) {
+            resolve();
+            return;
+          }
+          window.setTimeout(check, 50);
+        };
+        check();
+      });
+    await Promise.all(keys.map((key) => waitForPreview(key)));
+  };
+
+  const ensureReportUrl = async (options?: { forceCreate?: boolean }) => {
+    if (!lesson || !apiBaseUrl || !auth0Audience) {
+      return null;
+    }
+    const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+    const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/report`;
+    if (!options?.forceCreate) {
+      try {
+        const existing = await fetchLessonReport(endpoint, headers);
+        if (existing.url) {
+          return existing.url;
+        }
+      } catch {
+        // continue
+      }
+    }
+    const selectedKeys = sections
+      .filter((section) => printSelections[section.key] ?? true)
+      .map((section) => section.key);
+    await ensureSectionPreviews(selectedKeys);
+    const html = buildReportHtml(false);
+    if (!html) {
+      return null;
+    }
+    const created = await createLessonReport(endpoint, headers, { html });
+    return created.url || null;
+  };
+
+  const handlePrint = async () => {
+    if (!lesson) {
+      return;
+    }
+    const url = await ensureReportUrl({ forceCreate: true });
+    if (!url) {
+      return;
+    }
+    const response = await fetch(url, { cache: "no-store" });
+    const html = await response.text();
+    const printHtml = html.replace(
+      "</body>",
+      `<script>
+        window.onload = () => { window.print(); };
+      </script></body>`
+    );
+    const blob = new Blob([printHtml], { type: "text/html" });
+    const blobUrl = URL.createObjectURL(blob);
+    const printWindow = window.open(blobUrl, "_blank");
+    if (!printWindow) {
+      return;
+    }
+    printWindow.addEventListener("beforeunload", () => {
+      URL.revokeObjectURL(blobUrl);
+    });
+  };
+
+  const handleOpenReport = async () => {
+    if (!lesson) {
+      return;
+    }
+    const url = await ensureReportUrl({ forceCreate: true });
+    if (!url) {
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const handleAccordionChange =
@@ -232,8 +519,14 @@ const LessonWorkspace = ({
   const canEdit = !isPublished;
   const allSectionsFilled =
     sections.length > 0 &&
-    sections.every((section) => (contents[section.key] || "").trim().length > 0);
-  const statusLabel = isPublished ? "Published" : allSectionsFilled ? "Ready" : "Draft";
+    sections.every(
+      (section) => (contents[section.key] || "").trim().length > 0
+    );
+  const statusLabel = isPublished
+    ? "Published"
+    : allSectionsFilled
+    ? "Ready"
+    : "Draft";
 
   return (
     <>
@@ -343,7 +636,12 @@ const LessonWorkspace = ({
             }}
           >
             <IconButton
-              onClick={() => onNotify("Report generation coming soon.", "success")}
+              onClick={() => {
+                if (!isPublished) {
+                  return;
+                }
+                handleOpenReport();
+              }}
               disabled={!isPublished}
               sx={{
                 height: 56,
@@ -351,12 +649,41 @@ const LessonWorkspace = ({
                 borderRadius: "0.75rem",
                 color: isPublished ? "primary.main" : "text.disabled",
                 backgroundColor: "transparent",
-                "&:hover": { backgroundColor: isPublished ? "action.hover" : "transparent" },
+                "&:hover": {
+                  backgroundColor: isPublished ? "action.hover" : "transparent",
+                },
+              }}
+            >
+              <LinkRoundedIcon />
+            </IconButton>
+            <IconButton
+              onClick={() => {
+                if (!isPublished) {
+                  return;
+                }
+                handlePrint();
+              }}
+              disabled={!isPublished}
+              sx={{
+                height: 56,
+                width: 44,
+                borderRadius: "0.75rem",
+                color: isPublished ? "primary.main" : "text.disabled",
+                backgroundColor: "transparent",
+                "&:hover": {
+                  backgroundColor: isPublished ? "action.hover" : "transparent",
+                },
               }}
             >
               <PrintRoundedIcon />
             </IconButton>
-            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+              }}
+            >
               <Box
                 sx={{
                   display: "inline-flex",
@@ -367,8 +694,8 @@ const LessonWorkspace = ({
                   backgroundColor: isPublished
                     ? "success.main"
                     : statusLabel === "Ready"
-                      ? "warning.main"
-                      : "error.main",
+                    ? "warning.main"
+                    : "error.main",
                   color: "common.white",
                   fontSize: "0.8rem",
                   fontWeight: 600,
@@ -387,7 +714,10 @@ const LessonWorkspace = ({
               >
                 {statusLabel}
               </Box>
-              <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{ color: "text.secondary", mt: 1 }}
+              >
                 {lesson.id}
               </Typography>
             </Box>
@@ -490,14 +820,32 @@ const LessonWorkspace = ({
                 }}
               >
                 <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
-                  <Typography
-                    variant="h3"
-                    sx={{ fontSize: "1.05rem", color: "#1565c0" }}
-                  >
-                    {section.key
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (char) => char.toUpperCase())}
-                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    {isPublished ? (
+                      <Checkbox
+                        checked={printSelections[section.key] ?? true}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onChange={(event) => {
+                          setPrintSelections((prev) => ({
+                            ...prev,
+                            [section.key]: event.target.checked,
+                          }));
+                        }}
+                        size="small"
+                        sx={{ p: 0.5 }}
+                      />
+                    ) : null}
+                    <Typography
+                      variant="h3"
+                      sx={{ fontSize: "1.05rem", color: "#1565c0" }}
+                    >
+                      {section.key
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (char) => char.toUpperCase())}
+                    </Typography>
+                  </Box>
                 </AccordionSummary>
                 <AccordionDetails
                   sx={{
@@ -575,7 +923,8 @@ const LessonWorkspace = ({
         <DialogTitle>Publish lesson?</DialogTitle>
         <DialogContent>
           <Typography color="text.secondary">
-            This will publish the lesson. Once published, it can’t be unpublished.
+            This will publish the lesson. Once published, it can’t be
+            unpublished.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -585,6 +934,44 @@ const LessonWorkspace = ({
           </Button>
         </DialogActions>
       </Dialog>
+      <Box sx={{ display: "none" }}>
+        {sections.map((section) => {
+          const value = contents[section.key] || "";
+          const hash = value
+            .split("")
+            .reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0);
+          return (
+            <Box
+              key={`render-${section.key}-${hash}`}
+              data-section-preview={section.key}
+            >
+              <Viewer initialValue={value} />
+            </Box>
+          );
+        })}
+      </Box>
+      <Box className="print-only">
+        <Typography variant="h2" sx={{ mb: 1 }}>
+          {titleDraft || lesson.title}
+        </Typography>
+        {contentDraft ? (
+          <Typography variant="subtitle1" sx={{ mb: 3 }}>
+            {contentDraft}
+          </Typography>
+        ) : null}
+        {sections
+          .filter((section) => printSelections[section.key] ?? true)
+          .map((section) => (
+            <Box key={`print-${section.key}`} sx={{ mb: 3 }}>
+              <Typography variant="h4" sx={{ mb: 1 }}>
+                {section.key
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (char) => char.toUpperCase())}
+              </Typography>
+              <Viewer initialValue={contents[section.key] || ""} />
+            </Box>
+          ))}
+      </Box>
     </>
   );
 };
