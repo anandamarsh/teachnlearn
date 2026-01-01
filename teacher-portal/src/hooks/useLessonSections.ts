@@ -29,6 +29,7 @@ const DEFAULT_ORDER = [
   "lesson",
   "references",
   "exercises",
+  "answers",
 ];
 
 const buildLessonsWsUrl = (apiBaseUrl: string, token: string) => {

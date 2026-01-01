@@ -38,7 +38,16 @@ def parse_cors_origins() -> list[str]:
 
 
 def _load_lesson_sections(path: str) -> tuple[list[str], dict[str, str]]:
-    default = ["assessment", "samples", "concepts", "background", "lesson", "references", "exercises"]
+    default = [
+        "assessment",
+        "samples",
+        "concepts",
+        "background",
+        "lesson",
+        "references",
+        "exercises",
+        "answers",
+    ]
     descriptions: dict[str, str] = {}
     if not path:
         return default, descriptions
