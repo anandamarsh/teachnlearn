@@ -20,7 +20,9 @@ type TitleHeaderProps = {
   onTitleChange: (value: string) => void;
   onFinishTitle: () => void;
   onPublishClick: () => void;
+  onUnpublishClick: () => void;
   onOpenReport: () => void;
+  openingReport: boolean;
 };
 
 const TitleHeader = ({
@@ -36,7 +38,9 @@ const TitleHeader = ({
   onTitleChange,
   onFinishTitle,
   onPublishClick,
+  onUnpublishClick,
   onOpenReport,
+  openingReport,
 }: TitleHeaderProps) => (
   <Box
     sx={{
@@ -153,7 +157,10 @@ const TitleHeader = ({
             fontSize: "0.8rem",
             fontWeight: 600,
             textTransform: "capitalize",
-            cursor: statusLabel === "Ready" ? "pointer" : "default",
+            cursor:
+              statusLabel === "Ready" || statusLabel === "Published"
+                ? "pointer"
+                : "default",
             animation:
               statusLabel === "Ready"
                 ? "statusPulse 1.8s ease-in-out infinite"
@@ -162,6 +169,10 @@ const TitleHeader = ({
           onClick={() => {
             if (statusLabel === "Ready") {
               onPublishClick();
+              return;
+            }
+            if (statusLabel === "Published") {
+              onUnpublishClick();
             }
           }}
         >
@@ -176,24 +187,26 @@ const TitleHeader = ({
       </Box>
       <IconButton
         onClick={() => {
-          if (!isPublished) {
-            return;
-          }
           onOpenReport();
         }}
-        disabled={!isPublished}
         sx={{
           height: 56,
           width: 44,
           borderRadius: "0.75rem",
-          color: isPublished ? "primary.main" : "text.disabled",
+          color: "primary.main",
           backgroundColor: "transparent",
           "&:hover": {
-            backgroundColor: isPublished ? "action.hover" : "transparent",
+            backgroundColor: "action.hover",
           },
         }}
       >
-        <OpenInNewRoundedIcon />
+        <OpenInNewRoundedIcon
+          sx={{
+            animation: openingReport
+              ? "reportSpin 1.8s linear infinite"
+              : "none",
+          }}
+        />
       </IconButton>
     </Box>
   </Box>

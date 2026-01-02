@@ -54,6 +54,8 @@ const LessonWorkspace = ({
     setEditingSummary,
     publishOpen,
     setPublishOpen,
+    unpublishOpen,
+    setUnpublishOpen,
     printSelections,
     setPrintSelections,
     expandedKeys,
@@ -66,7 +68,9 @@ const LessonWorkspace = ({
     handleSaveTitle,
     handleSaveContent,
     handlePublish,
+    handleUnpublish,
     handleOpenReport,
+    openingReport,
     handleAccordionChange,
     handleSaveSection,
     handleConfirmClose,
@@ -116,7 +120,9 @@ const LessonWorkspace = ({
             setEditingTitle(false);
           }}
           onPublishClick={() => setPublishOpen(true)}
+          onUnpublishClick={() => setUnpublishOpen(true)}
           onOpenReport={handleOpenReport}
+          openingReport={openingReport}
         />
         <SummaryEditor
           contentDraft={contentDraft}
@@ -144,6 +150,7 @@ const LessonWorkspace = ({
         canEdit={canEdit}
         contents={contents}
         drafts={drafts}
+        sectionsMeta={lesson.sectionsMeta}
         setDrafts={setDrafts}
         editingKey={editingKey}
         setEditingKey={setEditingKey}
@@ -158,6 +165,9 @@ const LessonWorkspace = ({
         publishOpen={publishOpen}
         onCancelPublish={() => setPublishOpen(false)}
         onConfirmPublish={handlePublish}
+        unpublishOpen={unpublishOpen}
+        onCancelUnpublish={() => setUnpublishOpen(false)}
+        onConfirmUnpublish={handleUnpublish}
       />
       <SectionPreviewCache sections={sections} contents={contents} />
       <PrintOnly

@@ -4,6 +4,16 @@ export type Lesson = {
   status: string;
   iconUrl?: string | null;
   content?: string | null;
+  sections?: Record<string, string>;
+  sectionsMeta?: Record<
+    string,
+    {
+      key?: string;
+      updatedAt?: string;
+      version?: number;
+      contentLength?: number;
+    }
+  >;
 };
 
 export const normalizeLesson = (
@@ -27,11 +37,25 @@ export const normalizeLesson = (
     (item.description as string) ||
     (item.summary as string) ||
     null;
+  const sections = item.sections as Record<string, string> | undefined;
+  const sectionsMeta = item.sectionsMeta as
+    | Record<
+        string,
+        {
+          key?: string;
+          updatedAt?: string;
+          version?: number;
+          contentLength?: number;
+        }
+      >
+    | undefined;
   return {
     id: String(id),
     title,
     status,
     iconUrl,
     content,
+    sections,
+    sectionsMeta,
   };
 };

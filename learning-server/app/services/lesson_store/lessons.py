@@ -40,9 +40,9 @@ class LessonStoreLessons:
             self._ensure_bucket()
             entries = self._load_index(sanitized)
             lesson_id = self._generate_id(entries)
-            sections = {key: f"{key}.md" for key in self._sections}
+            sections = {key: f"{key}.html" for key in self._sections}
             sections_meta = {
-                key: {"key": key, "updatedAt": now, "version": 1}
+                key: {"key": key, "updatedAt": now, "version": 1, "contentLength": 0}
                 for key in sections
             }
             lesson = Lesson(
@@ -162,7 +162,7 @@ class LessonStoreLessons:
             title = lesson.get("title") or "Untitled lesson"
             if not str(title).lower().endswith("(copy)"):
                 title = f"{title} (Copy)"
-            sections = lesson.get("sections") or {key: f"{key}.md" for key in self._sections}
+            sections = lesson.get("sections") or {key: f"{key}.html" for key in self._sections}
             sections_meta = {
                 key: {"key": key, "updatedAt": now, "version": 1}
                 for key in sections
@@ -193,7 +193,7 @@ class LessonStoreLessons:
                         Bucket=self._settings.s3_bucket,
                         CopySource={"Bucket": self._settings.s3_bucket, "Key": source_key},
                         Key=dest_key,
-                        ContentType="text/markdown",
+                        ContentType="text/html",
                     )
                 except ClientError as exc:
                     if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
@@ -201,7 +201,7 @@ class LessonStoreLessons:
                             Bucket=self._settings.s3_bucket,
                             Key=dest_key,
                             Body=b"",
-                            ContentType="text/markdown",
+                            ContentType="text/html",
                         )
                     else:
                         raise

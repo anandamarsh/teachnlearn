@@ -152,9 +152,9 @@ function App() {
     setDuplicateOpen(false);
   };
 
+  const normalizedStatus = (selectedLesson?.status || "").toLowerCase().trim();
   const isSelectedPublished =
-    selectedLesson?.status?.toLowerCase().includes("publish") ||
-    selectedLesson?.status?.toLowerCase().includes("active");
+    normalizedStatus.includes("publish") || normalizedStatus.includes("active");
 
   useEffect(() => {
     if (error) {
