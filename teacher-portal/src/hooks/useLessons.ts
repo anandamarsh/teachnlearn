@@ -6,6 +6,7 @@ import {
   duplicateLesson,
   fetchLesson,
   listLessons,
+  uploadLessonIcon,
   updateLesson,
 } from "../api/lessons";
 import { Lesson, normalizeLesson } from "../state/lessonTypes";
@@ -288,6 +289,37 @@ export const useLessons = ({
     [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
   );
 
+  const handleUploadLessonIcon = useCallback(
+    async (lessonId: string, file: File) => {
+      if (!isAuthenticated || !lessonsEndpoint) {
+        return null;
+      }
+      setError("");
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        const data = await uploadLessonIcon(
+          `${lessonsEndpoint}/id/${lessonId}/icon`,
+          headers,
+          file
+        );
+        const iconUrl = data?.url || null;
+        if (iconUrl) {
+          setLessons((prev) =>
+            prev.map((lesson) =>
+              lesson.id === lessonId ? { ...lesson, iconUrl } : lesson
+            )
+          );
+        }
+        return iconUrl;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Failed to upload icon";
+        setError(detail);
+        return null;
+      }
+    },
+    [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
+  );
+
   return {
     lessons,
     selectedLesson,
@@ -304,5 +336,6 @@ export const useLessons = ({
     updateLessonStatus: handleUpdateLessonStatus,
     deleteLesson: handleDeleteLesson,
     duplicateLesson: handleDuplicateLesson,
+    uploadLessonIcon: handleUploadLessonIcon,
   };
 };

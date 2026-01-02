@@ -1,6 +1,9 @@
 import json
+from io import BytesIO
 
 from botocore.exceptions import ClientError
+from PIL import Image
+from starlette.datastructures import UploadFile
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -9,7 +12,7 @@ from app.core.settings import Settings
 from app.services.lesson_events import LessonEventHub
 from app.services.lesson_store import LessonStore
 
-from .common import json_error
+from .common import json_error, public_object_url
 
 
 def register_lesson_routes(
@@ -108,6 +111,50 @@ def register_lesson_routes(
                 {"type": "lesson.updated", "lessonId": lesson_id},
             )
         return JSONResponse(lesson)
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/icon", methods=["POST"])
+    async def upload_lesson_icon(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        form = await request.form()
+        upload = form.get("file")
+        if not isinstance(upload, UploadFile):
+            return json_error("file is required", 400)
+        payload = await upload.read()
+        if not payload:
+            return json_error("file is empty", 400)
+        try:
+            image = Image.open(BytesIO(payload))
+            image.load()
+        except OSError:
+            return json_error("icon must be a png, jpeg, or webp image", 400)
+        if image.width != image.height:
+            return json_error("icon must be square", 400)
+        if image.width < 64 or image.height < 64:
+            return json_error("icon must be at least 64x64", 400)
+        format_name = (image.format or "").lower()
+        if format_name not in {"png", "jpeg", "webp"}:
+            return json_error("icon must be a png, jpeg, or webp image", 400)
+        extension = "jpg" if format_name == "jpeg" else format_name
+        content_type = upload.content_type or f"image/{format_name}"
+        try:
+            key = store.put_icon(email, lesson_id, payload, content_type, extension)
+            url = public_object_url(settings, key)
+            updated = store.update_icon_url(email, lesson_id, url)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if not updated:
+            return json_error("lesson not found", 404)
+        if events:
+            events.publish(
+                email,
+                {"type": "lesson.updated", "lessonId": lesson_id},
+            )
+        return JSONResponse({"url": url})
 
     @mcp.custom_route("/lesson/id/{lesson_id}", methods=["DELETE"])
     async def delete_lesson(request: Request) -> JSONResponse:

@@ -55,6 +55,7 @@ function App() {
     updateLessonContent,
     updateLessonStatus,
     deleteLesson,
+    uploadLessonIcon,
   } = useLessons({
     apiBaseUrl,
     auth0Audience,
@@ -116,6 +117,14 @@ function App() {
       notify("Lesson status updated", "success");
     }
     return updated;
+  };
+
+  const handleUploadIcon = async (lessonId: string, file: File) => {
+    const url = await uploadLessonIcon(lessonId, file);
+    if (url) {
+      notify("Lesson icon updated", "success");
+    }
+    return url;
   };
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -214,6 +223,7 @@ function App() {
           onUpdateTitle={handleUpdateTitle}
           onUpdateContent={handleUpdateContent}
           onUpdateStatus={handleUpdateStatus}
+          onUploadIcon={handleUploadIcon}
           onNotify={notify}
           getAccessTokenSilently={getAccessTokenSilently}
           onPulse={(color) =>
