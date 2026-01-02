@@ -217,7 +217,13 @@ LessonHtmlEditor.defaultConfig = {
       "imageStyle:side",
       "imageStyle:block",
     ],
-    styles: ["alignLeft", "alignCenter", "alignRight", "side", "block"],
+    styles: [
+      { name: "alignLeft" },
+      { name: "alignCenter" },
+      { name: "alignRight" },
+      { name: "side" },
+      { name: "block" },
+    ],
     resizeOptions: [
       {
         name: "resizeImage:original",
@@ -387,7 +393,11 @@ const SectionEditor = ({
       jsonModeRef.current = { readOnly, theme: sourceTheme };
       return;
     }
-    const currentDoc = jsonViewRef.current.state.doc.toString();
+    const view = jsonViewRef.current;
+    if (!view) {
+      return;
+    }
+    const currentDoc = view.state.doc.toString();
     if (currentDoc !== docValue) {
       const state = EditorState.create({
         doc: docValue,
@@ -402,7 +412,7 @@ const SectionEditor = ({
           readOnly
         ),
       });
-      jsonViewRef.current.setState(state);
+      view.setState(state);
     }
   }, [content, isJsonSection, onChange, sourceTheme]);
 
