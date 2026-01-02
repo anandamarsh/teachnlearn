@@ -30,7 +30,7 @@ const LessonsList = ({
   onToggleLeft,
 }: LessonsListProps) => {
   const getStatusBadgeColor = (status?: string | null) => {
-    const normalized = (status || "").toLowerCase();
+    const normalized = (status || "").toLowerCase().trim();
     if (normalized.includes("publish") || normalized.includes("active")) {
       return "success.main";
     }
@@ -41,7 +41,7 @@ const LessonsList = ({
   };
 
   const getStatusHighlight = (status?: string | null) => {
-    const normalized = (status || "").toLowerCase();
+    const normalized = (status || "").toLowerCase().trim();
     if (normalized.includes("publish") || normalized.includes("active")) {
       return {
         background: "rgba(46,125,50,0.18)",

@@ -1,6 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { buildAuthHeaders, type GetAccessTokenSilently } from "../../../../auth/buildAuthHeaders";
-import { createLessonReport, fetchLessonReport } from "../../../../api/lessons";
+import {
+  createLessonReport,
+  deleteLessonReport,
+  fetchLessonReport,
+} from "../../../../api/lessons";
 import { Lesson } from "../../../../state/lessonTypes";
 import { buildReportHtml } from "../utils/reportHtml";
 
@@ -14,7 +18,9 @@ type UseLessonReportOptions = {
   contentDraft: string;
   sections: SectionKey[];
   printSelections: Record<string, boolean>;
+  contents: Record<string, string>;
   loadSection: (key: string) => Promise<void> | void;
+  isPublished: boolean;
   apiBaseUrl: string;
   auth0Audience: string;
   getAccessTokenSilently: GetAccessTokenSilently;
@@ -29,7 +35,7 @@ const ensureSectionPreviews = async (
   loadSection: (key: string) => Promise<void> | void
 ) => {
   if (!keys.length) {
-    return;
+    return {} as Record<string, string>;
   }
   await Promise.all(keys.map((key) => loadSection(key)));
   const waitForPreview = (key: string) =>
@@ -37,12 +43,13 @@ const ensureSectionPreviews = async (
       let attempts = 0;
       const check = () => {
         const node = document.querySelector(`[data-section-preview="${key}"]`);
-        if (node?.innerHTML) {
+        const state = node?.getAttribute("data-content-state");
+        if (state === "loaded") {
           resolve();
           return;
         }
         attempts += 1;
-        if (attempts > 20) {
+        if (attempts > 80) {
           resolve();
           return;
         }
@@ -51,6 +58,11 @@ const ensureSectionPreviews = async (
       check();
     });
   await Promise.all(keys.map((key) => waitForPreview(key)));
+  return keys.reduce<Record<string, string>>((acc, key) => {
+    const node = document.querySelector(`[data-section-preview="${key}"]`);
+    acc[key] = node?.innerHTML ?? "";
+    return acc;
+  }, {});
 };
 
 export const useLessonReport = ({
@@ -59,11 +71,14 @@ export const useLessonReport = ({
   contentDraft,
   sections,
   printSelections,
+  contents,
   loadSection,
+  isPublished,
   apiBaseUrl,
   auth0Audience,
   getAccessTokenSilently,
 }: UseLessonReportOptions) => {
+  const [openingReport, setOpeningReport] = useState(false);
   const ensureReportUrl = useCallback(
     async (options?: EnsureReportOptions) => {
       if (!lesson || !apiBaseUrl || !auth0Audience) {
@@ -87,7 +102,7 @@ export const useLessonReport = ({
       const selectedKeys = sections
         .filter((section) => printSelections[section.key] ?? true)
         .map((section) => section.key);
-      await ensureSectionPreviews(selectedKeys, loadSection);
+      const previewMap = await ensureSectionPreviews(selectedKeys, loadSection);
       const html = buildReportHtml({
         lesson,
         titleDraft,
@@ -95,6 +110,7 @@ export const useLessonReport = ({
         sections,
         printSelections,
         includePrintScript: false,
+        contentsByKey: previewMap,
       });
       if (!html) {
         return null;
@@ -116,16 +132,72 @@ export const useLessonReport = ({
   );
 
   const handleOpenReport = useCallback(async () => {
+    setOpeningReport(true);
     if (!lesson) {
+      setOpeningReport(false);
       return;
+    }
+    if (!isPublished) {
+      const selectedKeys = sections
+        .filter((section) => printSelections[section.key] ?? true)
+        .map((section) => section.key);
+      const previewMap = await ensureSectionPreviews(selectedKeys, loadSection);
+      const html = buildReportHtml({
+        lesson,
+        titleDraft,
+        contentDraft,
+        sections,
+        printSelections,
+        includePrintScript: false,
+        contentsByKey: previewMap,
+      });
+      if (!html) {
+        setOpeningReport(false);
+        return;
+      }
+      const blob = new Blob([html], { type: "text/html" });
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 20000);
+      setOpeningReport(false);
+      return;
+    }
+    if (apiBaseUrl && auth0Audience) {
+      try {
+        const headers = await buildAuthHeaders(
+          getAccessTokenSilently,
+          auth0Audience
+        );
+        await deleteLessonReport(
+          `${apiBaseUrl}/lesson/id/${lesson.id}/report`,
+          headers
+        );
+      } catch {
+        // Ignore delete failures (missing report, etc).
+      }
     }
     const url = await ensureReportUrl({ forceCreate: true });
     if (!url) {
+      setOpeningReport(false);
       return;
     }
     await navigator.clipboard.writeText(url);
     window.open(url, "_blank", "noopener,noreferrer");
-  }, [ensureReportUrl, lesson]);
+    setOpeningReport(false);
+  }, [
+    apiBaseUrl,
+    auth0Audience,
+    contentDraft,
+    ensureReportUrl,
+    isPublished,
+    lesson,
+    loadSection,
+    getAccessTokenSilently,
+    contents,
+    printSelections,
+    sections,
+    titleDraft,
+  ]);
 
-  return { ensureReportUrl, handleOpenReport };
+  return { ensureReportUrl, handleOpenReport, openingReport };
 };

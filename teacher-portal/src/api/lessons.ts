@@ -117,3 +117,15 @@ export const createLessonReport = async (
   }
   return data as { url?: string };
 };
+
+export const deleteLessonReport = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, { method: "DELETE", headers });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to delete report"));
+  }
+  return data as { status?: string };
+};

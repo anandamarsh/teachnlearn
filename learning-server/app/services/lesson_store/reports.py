@@ -26,3 +26,17 @@ class LessonStoreReports:
             ContentType="text/html",
         )
         return key
+
+    def delete_report(self, email: str, lesson_id: str) -> bool:
+        sanitized = sanitize_email(email)
+        key = self._report_key(sanitized, lesson_id)
+        try:
+            self._s3_client.delete_object(
+                Bucket=self._settings.s3_bucket,
+                Key=key,
+            )
+            return True
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey"}:
+                return False
+            raise

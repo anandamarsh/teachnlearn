@@ -98,7 +98,20 @@ const BottomNav = ({
               height: "100%",
             }}
           >
-            <AddRoundedIcon />
+            <Box
+              sx={{
+                width: 28,
+                height: 28,
+                borderRadius: "999px",
+                border: "2px solid",
+                borderColor: "primary.main",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <AddRoundedIcon />
+            </Box>
           </Button>
         ) : null}
         {isLessons && showDuplicate ? (
@@ -152,7 +165,7 @@ const BottomNav = ({
               width: 36,
               height: 36,
               bgcolor: "secondary.main",
-              border: "1px solid",
+              border: "2px solid",
               borderColor: "primary.main",
             }}
           />
