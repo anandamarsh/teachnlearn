@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildAuthHeaders, type GetAccessTokenSilently } from "../auth/buildAuthHeaders";
 import {
   fetchSectionContent,
@@ -58,11 +58,13 @@ export const useLessonSections = ({
 }: UseLessonSectionsOptions) => {
   const [sections, setSections] = useState<SectionSummary[]>([]);
   const [sectionOrder, setSectionOrder] = useState<string[]>([]);
+  const sectionOrderRef = useRef<string[]>([]);
   const [contents, setContents] = useState<Record<string, string>>({});
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [loadingSection, setLoadingSection] = useState<Record<string, boolean>>({});
   const [savingSection, setSavingSection] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
+  const loadedKeysRef = useRef<Set<string>>(new Set());
 
   const baseEndpoint = useMemo(() => {
     if (!apiBaseUrl || !lessonId) {
@@ -78,6 +80,10 @@ export const useLessonSections = ({
     return `${apiBaseUrl}/lesson/sections/list`;
   }, [apiBaseUrl]);
 
+  useEffect(() => {
+    sectionOrderRef.current = sectionOrder;
+  }, [sectionOrder]);
+
   const loadIndex = useCallback(async () => {
     if (!isAuthenticated || !baseEndpoint) {
       setSections([]);
@@ -87,11 +93,12 @@ export const useLessonSections = ({
     setError("");
     try {
       const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-      let order = sectionOrder;
+      let order = sectionOrderRef.current;
       if (!order.length && sectionsListEndpoint) {
         const listData = await fetchSectionsList(sectionsListEndpoint, headers);
         order = listData.sections || [];
         setSectionOrder(order);
+        sectionOrderRef.current = order;
       }
       const data = await fetchSectionsIndex(`${baseEndpoint}/index`, headers);
       const entries = Object.entries(data.sections || {}).map(([key, filename]) => ({
@@ -111,7 +118,6 @@ export const useLessonSections = ({
     baseEndpoint,
     getAccessTokenSilently,
     isAuthenticated,
-    sectionOrder,
     sectionsListEndpoint,
   ]);
 
@@ -125,6 +131,7 @@ export const useLessonSections = ({
     setLoadingSection({});
     setSavingSection({});
     setError("");
+    loadedKeysRef.current = new Set();
   }, [lessonId]);
 
   const loadSection = useCallback(
@@ -132,7 +139,7 @@ export const useLessonSections = ({
       if (!isAuthenticated || !baseEndpoint) {
         return;
       }
-      if (contents[key]) {
+      if (loadedKeysRef.current.has(key) || loadingSection[key]) {
         return;
       }
       setLoadingSection((prev) => ({ ...prev, [key]: true }));
@@ -141,6 +148,7 @@ export const useLessonSections = ({
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
         setContents((prev) => ({ ...prev, [key]: data.contentMd || "" }));
+        loadedKeysRef.current.add(key);
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to load section";
         setError(detail);
@@ -148,7 +156,7 @@ export const useLessonSections = ({
         setLoadingSection((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [auth0Audience, baseEndpoint, contents, getAccessTokenSilently, isAuthenticated]
+    [auth0Audience, baseEndpoint, getAccessTokenSilently, isAuthenticated, loadingSection]
   );
 
   const refreshSection = useCallback(
