@@ -9,7 +9,7 @@ type SummaryEditorProps = {
   canEdit: boolean;
   onEditSummary: () => void;
   onSummaryChange: (value: string) => void;
-  onFinishSummary: () => void;
+  onFinishSummary: (value: string) => void;
 };
 
 const SummaryEditor = ({
@@ -35,7 +35,7 @@ const SummaryEditor = ({
         label="Summary"
         value={contentDraft}
         onChange={(event) => onSummaryChange(event.target.value)}
-        onBlur={onFinishSummary}
+        onBlur={(event) => onFinishSummary(event.target.value)}
         fullWidth
         disabled={!isAuthenticated || savingContent}
         minRows={2}

@@ -126,8 +126,8 @@ const LessonWorkspace = ({
           canEdit={canEdit}
           onEditSummary={() => setEditingSummary(true)}
           onSummaryChange={setContentDraft}
-          onFinishSummary={() => {
-            handleSaveContent();
+          onFinishSummary={(value) => {
+            handleSaveContent(value);
             setEditingSummary(false);
           }}
         />

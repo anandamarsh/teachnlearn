@@ -79,6 +79,25 @@ export const useLessons = ({
     }
   }, [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]);
 
+  const refreshLesson = useCallback(
+    async (lessonId: string) => {
+      if (!isAuthenticated || !lessonsEndpoint || !lessonId) {
+        return;
+      }
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        const data = await fetchLesson(`${lessonsEndpoint}/id/${lessonId}`, headers);
+        const updated = normalizeLesson(data as Record<string, unknown>, lessonId);
+        setLessons((prev) =>
+          prev.map((lesson) => (lesson.id === lessonId ? updated : lesson))
+        );
+      } catch {
+        // Ignore detail fetch failures to avoid breaking list view.
+      }
+    },
+    [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
+  );
+
   useEffect(() => {
     fetchLessons();
   }, [fetchLessons]);
@@ -116,6 +135,7 @@ export const useLessons = ({
     getAccessTokenSilently,
     onPulse,
     onRefresh: fetchLessons,
+    onLessonUpdated: refreshLesson,
   });
 
   const handleCreateLesson = useCallback(async () => {
