@@ -33,6 +33,7 @@ import { vscodeDark, vscodeLight } from "@uiw/codemirror-theme-vscode";
 import prettier from "prettier/standalone";
 import parserHtml from "prettier/plugins/html";
 import parserBabel from "prettier/plugins/babel";
+import parserEstree from "prettier/plugins/estree";
 import { CKEditor } from "@ckeditor/ckeditor5-react";
 import { ClassicEditor } from "@ckeditor/ckeditor5-editor-classic";
 import { Essentials } from "@ckeditor/ckeditor5-essentials";
@@ -107,19 +108,26 @@ const baseSourceTheme = EditorView.theme({
 const buildSourceExtensions = (
   language: "html" | "json",
   theme: SourceThemeKey,
-  onChange: (value: string) => void
-) => [
-  language === "json" ? jsonLanguage() : htmlLanguage(),
-  syntaxHighlighting(defaultHighlightStyle),
-  EditorView.lineWrapping,
-  EditorView.updateListener.of((update) => {
-    if (update.docChanged) {
-      onChange(update.state.doc.toString());
-    }
-  }),
-  baseSourceTheme,
-  themeExtensions[theme],
-];
+  onChange: (value: string) => void,
+  readOnly = false
+) => {
+  const extensions: Extension[] = [
+    language === "json" ? jsonLanguage() : htmlLanguage(),
+    syntaxHighlighting(defaultHighlightStyle),
+    EditorView.lineWrapping,
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        onChange(update.state.doc.toString());
+      }
+    }),
+    baseSourceTheme,
+    themeExtensions[theme],
+  ];
+  if (readOnly) {
+    extensions.push(EditorState.readOnly.of(true), EditorView.editable.of(false));
+  }
+  return extensions;
+};
 
 const stripEditorArtifacts = (value: string) =>
   value
@@ -256,7 +264,7 @@ LessonHtmlEditor.defaultConfig = {
 type SectionEditorProps = {
   content: string;
   onChange: (content: string) => void;
-  onSave: () => void;
+  onSave: (contentOverride?: string) => void;
   saving?: boolean;
   disabled?: boolean;
   dirty?: boolean;
@@ -288,8 +296,14 @@ const SectionEditor = ({
   const [sourceError, setSourceError] = useState("");
   const [sourceTheme, setSourceTheme] =
     useState<SourceThemeKey>("vscodeLight");
+  const [suppressJsonAutoOpen, setSuppressJsonAutoOpen] = useState(false);
   const sourceContainerRef = useRef<HTMLDivElement | null>(null);
   const sourceViewRef = useRef<EditorView | null>(null);
+  const jsonContainerRef = useRef<HTMLDivElement | null>(null);
+  const jsonViewRef = useRef<EditorView | null>(null);
+  const jsonModeRef = useRef<{ readOnly: boolean; theme: SourceThemeKey } | null>(null);
+  const jsonContainerNodeRef = useRef<HTMLDivElement | null>(null);
+  const isJsonSection = editorKey === "exercises";
 
   useEffect(() => {
     if (!isEditing) {
@@ -307,6 +321,87 @@ const SectionEditor = ({
       }, 0);
     }
   }, [content, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setSuppressJsonAutoOpen(false);
+    }
+    if (!isJsonSection || !isEditing || sourceOpen) {
+      return;
+    }
+    if (suppressJsonAutoOpen) {
+      return;
+    }
+    setSourceValue(content || "");
+    setSourceError("");
+    setSourceLanguage("json");
+    setSourceOpen(true);
+  }, [content, isEditing, isJsonSection, sourceOpen, suppressJsonAutoOpen]);
+
+  useEffect(() => {
+    if (!isJsonSection) {
+      jsonViewRef.current?.destroy();
+      jsonViewRef.current = null;
+      jsonModeRef.current = null;
+      jsonContainerNodeRef.current = null;
+      return;
+    }
+    const container = jsonContainerRef.current;
+    if (!container) {
+      return;
+    }
+    const containerChanged = jsonContainerNodeRef.current !== container;
+    if (containerChanged) {
+      jsonContainerNodeRef.current = container;
+    }
+    const readOnly = true;
+    const docValue = typeof content === "string" ? content : "";
+    const mode = jsonModeRef.current;
+    const shouldRebuild =
+      containerChanged ||
+      !jsonViewRef.current ||
+      !mode ||
+      mode.readOnly !== readOnly ||
+      mode.theme !== sourceTheme;
+    if (shouldRebuild) {
+      jsonViewRef.current?.destroy();
+      jsonViewRef.current = new EditorView({
+        parent: container,
+        state: EditorState.create({
+          doc: docValue,
+          extensions: buildSourceExtensions(
+            "json",
+            sourceTheme,
+            (value) => {
+              if (!readOnly) {
+                onChange(value);
+              }
+            },
+            readOnly
+          ),
+        }),
+      });
+      jsonModeRef.current = { readOnly, theme: sourceTheme };
+      return;
+    }
+    const currentDoc = jsonViewRef.current.state.doc.toString();
+    if (currentDoc !== docValue) {
+      const state = EditorState.create({
+        doc: docValue,
+        extensions: buildSourceExtensions(
+          "json",
+          sourceTheme,
+          (value) => {
+            if (!readOnly) {
+              onChange(value);
+            }
+          },
+          readOnly
+        ),
+      });
+      jsonViewRef.current.setState(state);
+    }
+  }, [content, isJsonSection, onChange, sourceTheme]);
 
   const handleSourceLanguageChange = (event: SelectChangeEvent) => {
     const value = event.target.value === "json" ? "json" : "html";
@@ -359,7 +454,7 @@ const SectionEditor = ({
     try {
       const formatted = await prettier.format(value, {
         parser: language,
-        plugins: language === "html" ? [parserHtml] : [parserBabel],
+        plugins: language === "html" ? [parserHtml] : [parserBabel, parserEstree],
       });
       return { formatted, error: "" };
     } catch (error) {
@@ -369,12 +464,21 @@ const SectionEditor = ({
     }
   };
 
+  const handleCloseSourceModal = () => {
+    setSourceOpen(false);
+    if (isJsonSection) {
+      setSuppressJsonAutoOpen(true);
+      setSourceError("");
+      onCancelEdit();
+    }
+  };
+
   return (
     <Box sx={{ position: "relative" }}>
       {isEditing ? (
         <>
           <IconButton
-            onClick={onSave}
+            onClick={() => onSave()}
             disabled={Boolean(saving || disabled || !dirty)}
             sx={{
               position: "absolute",
@@ -426,13 +530,14 @@ const SectionEditor = ({
           </IconButton>
           <IconButton
             onClick={async () => {
-              const startValue = stripEditorArtifacts(
-                editorRef.current?.getData() ?? content ?? ""
-              );
-              const { formatted, error } = await formatSource(startValue, "html");
+              const startValue = isJsonSection
+                ? content ?? ""
+                : stripEditorArtifacts(editorRef.current?.getData() ?? content ?? "");
+              const language = isJsonSection ? "json" : "html";
+              const { formatted, error } = await formatSource(startValue, language);
               setSourceValue(formatted);
               setSourceError(error);
-              setSourceLanguage("html");
+              setSourceLanguage(language);
               setSourceOpen(true);
             }}
             disabled={Boolean(disabled)}
@@ -448,26 +553,41 @@ const SectionEditor = ({
             <CodeRoundedIcon />
           </IconButton>
           <Box sx={{ pt: "2rem" }}>
-            <CKEditor
-              key={editorKey}
-              editor={LessonHtmlEditor}
-              data={content || ""}
-              disabled={disabled}
-              onReady={(editor) => {
-                editorRef.current = editor;
-              }}
-              onChange={() => {
-                const instance = editorRef.current;
-                if (!instance || isSyncingRef.current) {
-                  return;
-                }
-                onChange(stripEditorArtifacts(instance.getData()));
-              }}
-            />
+            {isJsonSection ? (
+              <Box
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  overflow: "hidden",
+                  minHeight: "18rem",
+                  backgroundColor: "background.paper",
+                }}
+              >
+                <Box ref={jsonContainerRef} sx={{ height: "100%", minHeight: "18rem" }} />
+              </Box>
+            ) : (
+              <CKEditor
+                key={editorKey}
+                editor={LessonHtmlEditor}
+                data={content || ""}
+                disabled={disabled}
+                onReady={(editor) => {
+                  editorRef.current = editor;
+                }}
+                onChange={() => {
+                  const instance = editorRef.current;
+                  if (!instance || isSyncingRef.current) {
+                    return;
+                  }
+                  onChange(stripEditorArtifacts(instance.getData()));
+                }}
+              />
+            )}
           </Box>
           <Dialog
             open={sourceOpen}
-            onClose={() => setSourceOpen(false)}
+            onClose={handleCloseSourceModal}
             fullScreen
             PaperProps={{
               sx: {
@@ -507,6 +627,7 @@ const SectionEditor = ({
                   value={sourceLanguage}
                   onChange={handleSourceLanguageChange}
                   sx={{ minWidth: 110 }}
+                  disabled={isJsonSection}
                 >
                   <MenuItem value="html">HTML</MenuItem>
                   <MenuItem value="json">JSON</MenuItem>
@@ -531,7 +652,7 @@ const SectionEditor = ({
                 </Select>
               </Box>
               <Box sx={{ display: "flex", gap: 1 }}>
-                <Button onClick={() => setSourceOpen(false)}>Cancel</Button>
+                <Button onClick={handleCloseSourceModal}>Cancel</Button>
                 <Button
                   onClick={async () => {
                     const { formatted, error } = await formatSource(
@@ -558,17 +679,20 @@ const SectionEditor = ({
                     const cleaned = stripEditorArtifacts(formatted);
                     setSourceValue(cleaned);
                     const instance = editorRef.current;
-                    if (!instance) {
-                      setSourceOpen(false);
-                      return;
-                    }
                     if (sourceLanguage === "html") {
+                      if (!instance) {
+                        setSourceOpen(false);
+                        return;
+                      }
                       isSyncingRef.current = true;
                       instance.setData(cleaned);
                       onChange(cleaned);
                       window.setTimeout(() => {
                         isSyncingRef.current = false;
                       }, 0);
+                    } else {
+                      onChange(cleaned);
+                      onSave(cleaned);
                     }
                     setSourceOpen(false);
                   }}
@@ -622,7 +746,22 @@ const SectionEditor = ({
                 },
               }}
             >
-              <HtmlPreview value={content || ""} />
+              {isJsonSection ? (
+                <Box
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    overflow: "hidden",
+                    minHeight: "12rem",
+                    backgroundColor: "background.paper",
+                  }}
+                >
+                  <Box ref={jsonContainerRef} sx={{ height: "100%", minHeight: "12rem" }} />
+                </Box>
+              ) : (
+                <HtmlPreview value={content || ""} />
+              )}
             </Box>
           </Box>
         </>

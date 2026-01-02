@@ -39,7 +39,7 @@ type SectionsListProps = {
   handleAccordionChange: (
     key: string
   ) => (_: unknown, expanded: boolean) => void;
-  handleSaveSection: (key: string) => void;
+  handleSaveSection: (key: string, contentOverride?: string) => void;
   onDirtyClose: (key: string) => void;
 };
 
@@ -199,7 +199,9 @@ const SectionsList = ({
                       [section.key]: value,
                     })
                   }
-                  onSave={() => handleSaveSection(section.key)}
+                  onSave={(contentOverride) =>
+                    handleSaveSection(section.key, contentOverride)
+                  }
                   saving={savingSection[section.key]}
                   disabled={loadingSection[section.key] || !canEdit}
                   dirty={
