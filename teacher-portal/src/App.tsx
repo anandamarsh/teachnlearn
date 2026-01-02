@@ -10,6 +10,7 @@ import {
   DialogTitle,
   LinearProgress,
   Snackbar,
+  TextField,
   Typography,
 } from "@mui/material";
 import "./App.css";
@@ -118,11 +119,16 @@ function App() {
   };
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [duplicateOpen, setDuplicateOpen] = useState(false);
 
   const handleConfirmDelete = async () => {
     if (!selectedLesson) {
       setDeleteOpen(false);
+      setDeleteConfirmText("");
+      return;
+    }
+    if (deleteConfirmText.trim().toLowerCase() !== "delete") {
       return;
     }
     const deleted = await deleteLesson(selectedLesson.id);
@@ -134,6 +140,7 @@ function App() {
       });
     }
     setDeleteOpen(false);
+    setDeleteConfirmText("");
   };
 
   const handleConfirmDuplicate = async () => {
@@ -232,16 +239,42 @@ function App() {
         onAuthClick={() => loginWithRedirect()}
         onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
       />
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+      <Dialog
+        open={deleteOpen}
+        onClose={() => {
+          setDeleteOpen(false);
+          setDeleteConfirmText("");
+        }}
+      >
         <DialogTitle>Delete lesson</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mt: 1 }}>
             This will delete the lesson permanently.
           </Alert>
+          <TextField
+            fullWidth
+            label='Type "Delete" to confirm'
+            value={deleteConfirmText}
+            onChange={(event) => setDeleteConfirmText(event.target.value)}
+            autoFocus
+            margin="normal"
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleConfirmDelete}>
+          <Button
+            onClick={() => {
+              setDeleteOpen(false);
+              setDeleteConfirmText("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmDelete}
+            disabled={deleteConfirmText.trim().toLowerCase() !== "delete"}
+          >
             Delete
           </Button>
         </DialogActions>
