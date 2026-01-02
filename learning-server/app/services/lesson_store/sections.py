@@ -112,3 +112,64 @@ class LessonStoreSections:
             ContentType="application/json",
         )
         return {"key": section_key, "contentHtml": content_html}
+
+    def append_exercises(
+        self,
+        email: str,
+        lesson_id: str,
+        items: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        lesson = self.get(email, lesson_id)
+        if not lesson:
+            return None
+        sections = lesson.get("sections") or {}
+        filename = sections.get("exercises")
+        if not filename:
+            return None
+        key = self._section_key(sanitized, lesson_id, filename)
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+            raw = obj["Body"].read().decode("utf-8")
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                raw = ""
+            else:
+                raise
+        existing: list[Any]
+        if raw.strip():
+            payload = json.loads(raw)
+            if not isinstance(payload, list):
+                raise RuntimeError("exercises payload must be a JSON array")
+            existing = payload
+        else:
+            existing = []
+        existing.extend(items)
+        updated_payload = json.dumps(existing, indent=2)
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=key,
+            Body=updated_payload.encode("utf-8"),
+            ContentType=self._section_content_type("exercises"),
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        meta_map = lesson.get("sectionsMeta") or {}
+        meta = meta_map.get("exercises") or {}
+        version = int(meta.get("version", 0)) + 1
+        meta_payload = {
+            "key": "exercises",
+            "updatedAt": now,
+            "version": version,
+            "contentLength": len(updated_payload.strip()),
+        }
+        meta_map["exercises"] = meta_payload
+        lesson["sectionsMeta"] = meta_map
+        lesson["updated_at"] = now
+        lesson_key = self._lesson_key(sanitized, lesson_id)
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=lesson_key,
+            Body=json.dumps(lesson, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+        return {"key": "exercises", "appended": len(items), "total": len(existing)}

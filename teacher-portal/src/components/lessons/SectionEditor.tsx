@@ -99,9 +99,12 @@ const baseSourceTheme = EditorView.theme({
   ".cm-scroller": {
     fontFamily:
       "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+    overflowX: "hidden",
   },
   ".cm-content": {
     padding: "12px",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
   },
 });
 
