@@ -12,8 +12,7 @@
     "background": "background.md",
     "lesson": "lesson.md",
     "references": "references.md",
-    "exercises": "exercises.md",
-    "answers": "answers.md"
+    "exercises": "exercises.md"
   },
   "sectionsMeta": {
     "assessment": {
@@ -49,11 +48,6 @@
     "exercises": {
       "key": "exercises",
       "updatedAt": "2026-01-01T08:55:43.000105+00:00",
-      "version": 4
-    },
-    "answers": {
-      "key": "answers",
-      "updatedAt": "2026-01-01T09:21:19.954454+00:00",
       "version": 4
     }
   }

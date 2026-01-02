@@ -24,6 +24,19 @@ button {
   font-family: inherit;
 }
 
+.ck.ck-editor__top .ck-toolbar {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+}
+
+.ck.ck-editor__top .ck-toolbar__items,
+.ck.ck-editor__top .ck-toolbar__group {
+  flex-wrap: wrap !important;
+  max-width: 100%;
+  row-gap: 4px;
+  white-space: normal;
+}
+
 .toastui-editor-defaultUI,
 .toastui-editor-main,
 .toastui-editor-md-container,

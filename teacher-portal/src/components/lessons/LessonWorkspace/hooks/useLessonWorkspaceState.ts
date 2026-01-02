@@ -200,8 +200,11 @@ export const useLessonWorkspaceState = ({
       }
     };
 
-  const handleSaveSection = async (key: string) => {
-    const contentHtml = drafts[key] ?? "";
+  const handleSaveSection = async (key: string, contentOverride?: string) => {
+    const contentHtml = contentOverride ?? drafts[key] ?? "";
+    if (contentOverride !== undefined) {
+      setDrafts((prev) => ({ ...prev, [key]: contentOverride }));
+    }
     const saved = await saveSection(key, contentHtml);
     if (saved) {
       onNotify("Section saved", "success");

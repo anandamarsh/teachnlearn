@@ -11,13 +11,13 @@ class LessonStoreSections:
     def _initialize_sections(
         self, sanitized_email: str, lesson_id: str, sections: dict[str, str]
     ) -> None:
-        for filename in sections.values():
-            section_key = self._section_key(sanitized_email, lesson_id, filename)
+        for section_key, filename in sections.items():
+            storage_key = self._section_key(sanitized_email, lesson_id, filename)
             self._s3_client.put_object(
                 Bucket=self._settings.s3_bucket,
-                Key=section_key,
-                Body=b"",
-                ContentType="text/html",
+                Key=storage_key,
+                Body=self._section_default_body(section_key),
+                ContentType=self._section_content_type(section_key),
             )
 
     def get_sections_index(self, email: str, lesson_id: str) -> dict[str, Any] | None:
@@ -88,7 +88,7 @@ class LessonStoreSections:
             Bucket=self._settings.s3_bucket,
             Key=key,
             Body=content_html.encode("utf-8"),
-            ContentType="text/html",
+            ContentType=self._section_content_type(section_key),
         )
         now = datetime.now(timezone.utc).isoformat()
         meta_map = lesson.get("sectionsMeta") or {}
