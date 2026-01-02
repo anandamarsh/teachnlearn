@@ -72,6 +72,7 @@ export const useLessonSections = ({
   const [savingSection, setSavingSection] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const loadedKeysRef = useRef<Set<string>>(new Set());
+  const recentlySavedRef = useRef<Record<string, number>>({});
 
   const baseEndpoint = useMemo(() => {
     if (!apiBaseUrl || !lessonId) {
@@ -208,6 +209,20 @@ export const useLessonSections = ({
     [auth0Audience, baseEndpoint, getAccessTokenSilently, isAuthenticated]
   );
 
+  const handleSectionUpdated = useCallback(
+    (key: string) => {
+      const lastSaved = recentlySavedRef.current[key];
+      if (lastSaved && Date.now() - lastSaved < 2000) {
+        return;
+      }
+      if (savingSection[key]) {
+        return;
+      }
+      refreshSection(key);
+    },
+    [refreshSection, savingSection]
+  );
+
   useLessonSectionsSocket({
     apiBaseUrl,
     auth0Audience,
@@ -216,7 +231,7 @@ export const useLessonSections = ({
     getAccessTokenSilently,
     onPulse,
     onSectionCreated: loadIndex,
-    onSectionUpdated: refreshSection,
+    onSectionUpdated: handleSectionUpdated,
   });
 
   const saveSection = useCallback(
@@ -232,6 +247,7 @@ export const useLessonSections = ({
           contentMd,
         });
         setContents((prev) => ({ ...prev, [key]: data.contentMd || contentMd }));
+        recentlySavedRef.current = { ...recentlySavedRef.current, [key]: Date.now() };
         return true;
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to save section";

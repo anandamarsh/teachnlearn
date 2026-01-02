@@ -137,11 +137,11 @@ export const useLessonWorkspaceState = ({
     setSavingTitle(false);
   };
 
-  const handleSaveContent = async () => {
+  const handleSaveContent = async (nextContent?: string) => {
     if (!lesson) {
       return;
     }
-    const trimmed = contentDraft.trim();
+    const trimmed = (nextContent ?? contentDraft).trim();
     const current = (lesson.content || "").trim();
     if (trimmed === current) {
       setContentDraft(lesson.content || "");

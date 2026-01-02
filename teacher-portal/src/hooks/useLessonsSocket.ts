@@ -8,6 +8,7 @@ type UseLessonsSocketOptions = {
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
   onRefresh: () => void;
+  onLessonUpdated?: (lessonId: string) => void;
 };
 
 const buildLessonsWsUrl = (apiBaseUrl: string, token: string) => {
@@ -25,6 +26,7 @@ export const useLessonsSocket = ({
   getAccessTokenSilently,
   onPulse,
   onRefresh,
+  onLessonUpdated,
 }: UseLessonsSocketOptions) => {
   const [wsConnected, setWsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
@@ -33,11 +35,16 @@ export const useLessonsSocket = ({
   const backoffRef = useRef(15000);
   const lastPongRef = useRef<number>(Date.now());
   const onRefreshRef = useRef(onRefresh);
+  const onLessonUpdatedRef = useRef(onLessonUpdated);
   const onPulseRef = useRef(onPulse);
 
   useEffect(() => {
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
+
+  useEffect(() => {
+    onLessonUpdatedRef.current = onLessonUpdated;
+  }, [onLessonUpdated]);
 
   useEffect(() => {
     onPulseRef.current = onPulse;
@@ -140,12 +147,17 @@ export const useLessonsSocket = ({
         };
         socket.onmessage = (event) => {
           try {
-            const payload = JSON.parse(event.data) as { type?: string };
+            const payload = JSON.parse(event.data) as {
+              type?: string;
+              lessonId?: string;
+            };
             if (payload.type === "pong") {
               lastPongRef.current = Date.now();
               return;
             }
-            if (payload.type?.startsWith("lesson.")) {
+            if (payload.type === "lesson.updated" && payload.lessonId) {
+              onLessonUpdatedRef.current?.(payload.lessonId);
+            } else if (payload.type?.startsWith("lesson.")) {
               onRefreshRef.current();
             }
             onPulseRef.current?.("success");

@@ -142,6 +142,7 @@ const SectionsList = ({
                 gap: 0,
                 p: 0,
                 mt: -4,
+                minHeight: "4rem",
               }}
             >
               {loadingSection[section.key] ? (
