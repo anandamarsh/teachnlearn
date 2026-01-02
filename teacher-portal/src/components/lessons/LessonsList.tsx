@@ -29,6 +29,17 @@ const LessonsList = ({
   onSelectLesson,
   onToggleLeft,
 }: LessonsListProps) => {
+  const getStatusBadgeColor = (status?: string | null) => {
+    const normalized = (status || "").toLowerCase();
+    if (normalized.includes("publish") || normalized.includes("active")) {
+      return "success.main";
+    }
+    if (normalized.includes("ready")) {
+      return "warning.main";
+    }
+    return "error.main";
+  };
+
   return (
     <Box
       sx={{
@@ -86,6 +97,7 @@ const LessonsList = ({
                 >
                   <Box
                     sx={{
+                      position: "relative",
                       width: "4rem",
                       height: "4rem",
                       borderRadius: "8px",
@@ -100,6 +112,17 @@ const LessonsList = ({
                       color: "#7a7a7a",
                     }}
                   >
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        top: 6,
+                        right: 6,
+                        width: 10,
+                        height: 10,
+                        borderRadius: "999px",
+                        bgcolor: getStatusBadgeColor(lesson.status),
+                      }}
+                    />
                     {lesson.iconUrl ? (
                       <img
                         src={lesson.iconUrl}
