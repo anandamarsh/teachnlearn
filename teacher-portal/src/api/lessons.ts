@@ -129,3 +129,24 @@ export const deleteLessonReport = async (
   }
   return data as { status?: string };
 };
+
+export const uploadLessonIcon = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  file: File
+) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const safeHeaders = { ...headers };
+  delete safeHeaders["Content-Type"];
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: safeHeaders,
+    body: formData,
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to upload lesson icon"));
+  }
+  return data as { url?: string };
+};

@@ -79,6 +79,51 @@ class LessonStoreLessons:
             self._save_index(sanitized, entries)
         return lesson_payload
 
+    def put_icon(
+        self,
+        email: str,
+        lesson_id: str,
+        payload: bytes,
+        content_type: str,
+        extension: str,
+    ) -> str:
+        sanitized = sanitize_email(email)
+        self._ensure_bucket()
+        key = self._icon_key(sanitized, lesson_id, extension)
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=key,
+            Body=payload,
+            ContentType=content_type,
+        )
+        return key
+
+    def update_icon_url(self, email: str, lesson_id: str, icon_url: str) -> bool:
+        sanitized = sanitize_email(email)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._ensure_bucket()
+            lesson = self.get(email, lesson_id)
+            if lesson is None:
+                return False
+            lesson["iconUrl"] = icon_url
+            lesson["updated_at"] = now
+            lesson_key = self._lesson_key(sanitized, lesson_id)
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=lesson_key,
+                Body=json.dumps(lesson, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            entries = self._load_index(sanitized)
+            for entry in entries:
+                if entry.get("id") == lesson_id:
+                    entry["iconUrl"] = icon_url
+                    entry["updated_at"] = now
+                    break
+            self._save_index(sanitized, entries)
+        return True
+
     def update(
         self,
         email: str,

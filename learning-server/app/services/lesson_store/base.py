@@ -40,6 +40,17 @@ class LessonStoreBase:
     def _section_default_body(self, section_key: str) -> bytes:
         return b"{}" if section_key == "exercises" else b""
 
+    def _icon_key(self, sanitized_email: str, lesson_id: str, extension: str) -> str:
+        safe_extension = extension.lstrip(".").lower()
+        return (
+            f"{self._settings.s3_prefix}/{sanitized_email}/lessons/_meta/"
+            f"icon_{lesson_id}.{safe_extension}"
+        )
+
+    def icon_key(self, email: str, lesson_id: str, extension: str) -> str:
+        sanitized = sanitize_email(email)
+        return self._icon_key(sanitized, lesson_id, extension)
+
     def _report_key(self, sanitized_email: str, lesson_id: str) -> str:
         return (
             f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/public-lesson.html"

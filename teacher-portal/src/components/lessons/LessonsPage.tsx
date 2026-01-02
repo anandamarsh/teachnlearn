@@ -15,6 +15,7 @@ type LessonsPageProps = {
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
   onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
+  onUploadIcon: (lessonId: string, file: File) => Promise<string | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
@@ -30,6 +31,7 @@ const LessonsPage = ({
   onUpdateTitle,
   onUpdateContent,
   onUpdateStatus,
+  onUploadIcon,
   onNotify,
   getAccessTokenSilently,
   onPulse,
@@ -65,6 +67,8 @@ const LessonsPage = ({
           loading={loading}
           onSelectLesson={onSelectLesson}
           onToggleLeft={() => setLeftOpen((prev) => !prev)}
+          onUploadIcon={onUploadIcon}
+          onNotify={onNotify}
         />
       </Drawer>
       <Box position="relative" display="flex" flex={1}>
