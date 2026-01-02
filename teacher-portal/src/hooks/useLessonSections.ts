@@ -13,6 +13,13 @@ type SectionSummary = {
   filename: string;
 };
 
+type IndexRequestState = {
+  inFlight?: Promise<void>;
+  lastDone?: number;
+};
+
+const indexRequestCache = new Map<string, IndexRequestState>();
+
 type UseLessonSectionsOptions = {
   apiBaseUrl: string;
   auth0Audience: string;
@@ -89,9 +96,19 @@ export const useLessonSections = ({
       setSections([]);
       return;
     }
+    const requestKey = baseEndpoint;
+    const cached = indexRequestCache.get(requestKey);
+    if (cached?.inFlight) {
+      await cached.inFlight;
+      return;
+    }
+    if (cached?.lastDone && Date.now() - cached.lastDone < 750) {
+      return;
+    }
     setLoadingIndex(true);
     setError("");
-    try {
+    const request = (async () => {
+      try {
       const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
       let order = sectionOrderRef.current;
       if (!order.length && sectionsListEndpoint) {
@@ -106,12 +123,23 @@ export const useLessonSections = ({
         filename,
       }));
       setSections(orderSections(entries, order));
-    } catch (err) {
+      } catch (err) {
       const detail = err instanceof Error ? err.message : "Failed to load sections index";
       setError(detail);
       setSections([]);
+      } finally {
+        setLoadingIndex(false);
+        indexRequestCache.set(requestKey, { lastDone: Date.now() });
+      }
+    })();
+    indexRequestCache.set(requestKey, { inFlight: request });
+    try {
+      await request;
     } finally {
-      setLoadingIndex(false);
+      const entry = indexRequestCache.get(requestKey);
+      if (entry?.inFlight === request) {
+        indexRequestCache.set(requestKey, { lastDone: Date.now() });
+      }
     }
   }, [
     auth0Audience,
