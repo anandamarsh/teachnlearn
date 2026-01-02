@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import { Viewer } from "@toast-ui/react-editor";
+import HtmlPreview from "../../HtmlPreview";
 
 type SectionSummary = {
   key: string;
@@ -14,6 +14,7 @@ const SectionPreviewCache = ({ sections, contents }: SectionPreviewCacheProps) =
   <Box sx={{ display: "none" }}>
     {sections.map((section) => {
       const value = contents[section.key] || "";
+      const isLoaded = Object.prototype.hasOwnProperty.call(contents, section.key);
       const hash = value
         .split("")
         .reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0);
@@ -21,8 +22,9 @@ const SectionPreviewCache = ({ sections, contents }: SectionPreviewCacheProps) =
         <Box
           key={`render-${section.key}-${hash}`}
           data-section-preview={section.key}
+          data-content-state={isLoaded ? "loaded" : "missing"}
         >
-          <Viewer initialValue={value} />
+          <HtmlPreview value={value} />
         </Box>
       );
     })}

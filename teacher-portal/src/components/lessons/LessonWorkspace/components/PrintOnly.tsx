@@ -1,6 +1,6 @@
 import { Box, Typography } from "@mui/material";
-import { Viewer } from "@toast-ui/react-editor";
 import { Lesson } from "../../../../state/lessonTypes";
+import HtmlPreview from "../../HtmlPreview";
 
 type SectionSummary = {
   key: string;
@@ -41,7 +41,7 @@ const PrintOnly = ({
               .replace(/_/g, " ")
               .replace(/\b\w/g, (char) => char.toUpperCase())}
           </Typography>
-          <Viewer initialValue={contents[section.key] || ""} />
+          <HtmlPreview value={contents[section.key] || ""} />
         </Box>
       ))}
   </Box>

@@ -1,11 +1,257 @@
-import { useEffect, useRef } from "react";
-import { Box, IconButton } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  IconButton,
+  MenuItem,
+  Select,
+  type SelectChangeEvent,
+} from "@mui/material";
+import Alert from "@mui/material/Alert";
+import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
-import { Editor, Viewer } from "@toast-ui/react-editor";
-import "@toast-ui/editor/dist/toastui-editor.css";
+import { EditorState, type Extension } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { html as htmlLanguage } from "@codemirror/lang-html";
+import { json as jsonLanguage } from "@codemirror/lang-json";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { dracula } from "@uiw/codemirror-theme-dracula";
+import { monokai } from "@uiw/codemirror-theme-monokai";
+import { nord } from "@uiw/codemirror-theme-nord";
+import {
+  solarizedDark,
+  solarizedLight,
+} from "@uiw/codemirror-theme-solarized";
+import { vscodeDark, vscodeLight } from "@uiw/codemirror-theme-vscode";
+import prettier from "prettier/standalone";
+import parserHtml from "prettier/plugins/html";
+import parserBabel from "prettier/plugins/babel";
+import { CKEditor } from "@ckeditor/ckeditor5-react";
+import { ClassicEditor } from "@ckeditor/ckeditor5-editor-classic";
+import { Essentials } from "@ckeditor/ckeditor5-essentials";
+import { Paragraph } from "@ckeditor/ckeditor5-paragraph";
+import {
+  Bold,
+  Italic,
+  Strikethrough,
+  Subscript,
+  Superscript,
+  Underline,
+} from "@ckeditor/ckeditor5-basic-styles";
+import { Heading } from "@ckeditor/ckeditor5-heading";
+import { Link } from "@ckeditor/ckeditor5-link";
+import { List } from "@ckeditor/ckeditor5-list";
+import { BlockQuote } from "@ckeditor/ckeditor5-block-quote";
+import { CodeBlock } from "@ckeditor/ckeditor5-code-block";
+import { Alignment } from "@ckeditor/ckeditor5-alignment";
+import {
+  FontBackgroundColor,
+  FontColor,
+  FontFamily,
+  FontSize,
+} from "@ckeditor/ckeditor5-font";
+import { Highlight } from "@ckeditor/ckeditor5-highlight";
+import { Image, ImageCaption, ImageResize, ImageStyle, ImageToolbar } from "@ckeditor/ckeditor5-image";
+import { MediaEmbed } from "@ckeditor/ckeditor5-media-embed";
+import { Table, TableToolbar } from "@ckeditor/ckeditor5-table";
+import { RemoveFormat } from "@ckeditor/ckeditor5-remove-format";
+import { SpecialCharacters } from "@ckeditor/ckeditor5-special-characters";
+import { SpecialCharactersEssentials } from "@ckeditor/ckeditor5-special-characters";
+import { Base64UploadAdapter } from "@ckeditor/ckeditor5-upload";
+import { GeneralHtmlSupport } from "@ckeditor/ckeditor5-html-support";
+import "@ckeditor/ckeditor5-theme-lark/theme/theme.css";
+import HtmlPreview from "./HtmlPreview";
+
+type SourceThemeKey =
+  | "vscodeLight"
+  | "vscodeDark"
+  | "oneDark"
+  | "dracula"
+  | "nord"
+  | "solarizedLight"
+  | "solarizedDark"
+  | "monokai";
+
+const themeExtensions: Record<SourceThemeKey, Extension> = {
+  vscodeLight,
+  vscodeDark,
+  oneDark,
+  dracula,
+  nord,
+  solarizedLight,
+  solarizedDark,
+  monokai,
+};
+
+const baseSourceTheme = EditorView.theme({
+  "&": {
+    height: "100%",
+    fontSize: "0.85rem",
+  },
+  ".cm-scroller": {
+    fontFamily:
+      "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+  },
+  ".cm-content": {
+    padding: "12px",
+  },
+});
+
+const buildSourceExtensions = (
+  language: "html" | "json",
+  theme: SourceThemeKey,
+  onChange: (value: string) => void
+) => [
+  language === "json" ? jsonLanguage() : htmlLanguage(),
+  syntaxHighlighting(defaultHighlightStyle),
+  EditorView.lineWrapping,
+  EditorView.updateListener.of((update) => {
+    if (update.docChanged) {
+      onChange(update.state.doc.toString());
+    }
+  }),
+  baseSourceTheme,
+  themeExtensions[theme],
+];
+
+const stripEditorArtifacts = (value: string) =>
+  value
+    .replace(/\sdata-list-item-id="[^"]*"/g, "")
+    .replace(/\sdata-list-id="[^"]*"/g, "");
+
+class LessonHtmlEditor extends ClassicEditor {}
+
+LessonHtmlEditor.builtinPlugins = [
+  Essentials,
+  Paragraph,
+  Bold,
+  Italic,
+  Strikethrough,
+  Underline,
+  Subscript,
+  Superscript,
+  Heading,
+  Link,
+  List,
+  BlockQuote,
+  CodeBlock,
+  Alignment,
+  FontColor,
+  FontBackgroundColor,
+  FontFamily,
+  FontSize,
+  Highlight,
+  Image,
+  ImageCaption,
+  ImageResize,
+  ImageStyle,
+  ImageToolbar,
+  MediaEmbed,
+  Table,
+  TableToolbar,
+  RemoveFormat,
+  SpecialCharacters,
+  SpecialCharactersEssentials,
+  Base64UploadAdapter,
+  GeneralHtmlSupport,
+];
+
+LessonHtmlEditor.defaultConfig = {
+  licenseKey: "GPL",
+  toolbar: {
+    items: [
+      "heading",
+      "|",
+      "bold",
+      "italic",
+      "strikethrough",
+      "underline",
+      "subscript",
+      "superscript",
+      "fontSize",
+      "fontFamily",
+      "fontColor",
+      "fontBackgroundColor",
+      "highlight",
+      "|",
+      "link",
+      "bulletedList",
+      "numberedList",
+      "insertTable",
+      "alignment",
+      "blockQuote",
+      "codeBlock",
+      "imageUpload",
+      "mediaEmbed",
+      "specialCharacters",
+      "removeFormat",
+      "|",
+      "undo",
+      "redo",
+    ],
+  },
+  image: {
+    toolbar: [
+      "imageTextAlternative",
+      "imageStyle:alignLeft",
+      "imageStyle:alignCenter",
+      "imageStyle:alignRight",
+      "imageStyle:side",
+      "imageStyle:block",
+    ],
+    styles: ["alignLeft", "alignCenter", "alignRight", "side", "block"],
+    resizeOptions: [
+      {
+        name: "resizeImage:original",
+        value: null,
+        label: "Original",
+      },
+      {
+        name: "resizeImage:50",
+        value: "50",
+        label: "50%",
+      },
+      {
+        name: "resizeImage:75",
+        value: "75",
+        label: "75%",
+      },
+    ],
+    resizeUnit: "%",
+  },
+  table: {
+    contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"],
+  },
+  mediaEmbed: {
+    previewsInData: true,
+  },
+  htmlSupport: {
+    allow: [
+      {
+        name: /.*/,
+        attributes: true,
+        classes: true,
+        styles: true,
+      },
+    ],
+  },
+  codeBlock: {
+    languages: [
+      { language: "plaintext", label: "Plain text" },
+      { language: "html", label: "HTML" },
+      { language: "css", label: "CSS" },
+      { language: "javascript", label: "JavaScript" },
+      { language: "json", label: "JSON" },
+    ],
+  },
+};
 
 type SectionEditorProps = {
   content: string;
@@ -34,40 +280,94 @@ const SectionEditor = ({
   onCancelEdit,
   onDirtyClose,
 }: SectionEditorProps) => {
-  const editorRef = useRef<Editor>(null);
-  const isSyncingRef = useRef(true);
-  const viewerRef = useRef<Viewer>(null);
+  const editorRef = useRef<ClassicEditor | null>(null);
+  const isSyncingRef = useRef(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceValue, setSourceValue] = useState("");
+  const [sourceLanguage, setSourceLanguage] = useState<"html" | "json">("html");
+  const [sourceError, setSourceError] = useState("");
+  const [sourceTheme, setSourceTheme] =
+    useState<SourceThemeKey>("vscodeLight");
+  const sourceContainerRef = useRef<HTMLDivElement | null>(null);
+  const sourceViewRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
     if (!isEditing) {
       return;
     }
-    const handle = window.setTimeout(() => {
-      const instance = editorRef.current?.getInstance();
-      if (!instance) {
-        return;
-      }
-      isSyncingRef.current = true;
-      if (instance.getMarkdown() !== content) {
-        instance.setMarkdown(content || "");
-      }
-      window.setTimeout(() => {
-        isSyncingRef.current = false;
-      }, 0);
-    }, 0);
-    return () => window.clearTimeout(handle);
-  }, [content, isEditing]);
-
-  useEffect(() => {
-    if (isEditing) {
-      return;
-    }
-    const instance = viewerRef.current?.getInstance?.();
+    const instance = editorRef.current;
     if (!instance) {
       return;
     }
-    instance.setMarkdown(content || "");
+    if (instance.getData() !== (content || "")) {
+      isSyncingRef.current = true;
+      instance.setData(content || "");
+      window.setTimeout(() => {
+        isSyncingRef.current = false;
+      }, 0);
+    }
   }, [content, isEditing]);
+
+  const handleSourceLanguageChange = (event: SelectChangeEvent) => {
+    const value = event.target.value === "json" ? "json" : "html";
+    setSourceLanguage(value);
+    setSourceError("");
+  };
+
+  const initSourceEditor = () => {
+    if (!sourceContainerRef.current) {
+      return;
+    }
+    const docValue = typeof sourceValue === "string" ? sourceValue : String(sourceValue ?? "");
+    sourceViewRef.current?.destroy();
+    sourceViewRef.current = new EditorView({
+      parent: sourceContainerRef.current,
+      state: EditorState.create({
+        doc: docValue,
+        extensions: buildSourceExtensions(sourceLanguage, sourceTheme, (value) => {
+          setSourceValue(value);
+          if (sourceError) {
+            setSourceError("");
+          }
+        }),
+      }),
+    });
+  };
+
+  const destroySourceEditor = () => {
+    sourceViewRef.current?.destroy();
+    sourceViewRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!sourceOpen || !sourceViewRef.current) {
+      return;
+    }
+    const state = EditorState.create({
+      doc: sourceViewRef.current.state.doc.toString(),
+      extensions: buildSourceExtensions(sourceLanguage, sourceTheme, (value) => {
+        setSourceValue(value);
+        if (sourceError) {
+          setSourceError("");
+        }
+      }),
+    });
+    sourceViewRef.current.setState(state);
+  }, [sourceLanguage, sourceOpen, sourceTheme]);
+
+  const formatSource = async (value: string, language: "html" | "json") => {
+    try {
+      const formatted = await prettier.format(value, {
+        parser: language,
+        plugins: language === "html" ? [parserHtml] : [parserBabel],
+      });
+      return { formatted, error: "" };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to format source.";
+      return { formatted: value, error: message };
+    }
+  };
 
   return (
     <Box sx={{ position: "relative" }}>
@@ -119,43 +419,165 @@ const SectionEditor = ({
               mt: "3px",
               right: 8,
               zIndex: 2,
-              color: "text.secondary",
+              color: disabled ? "text.disabled" : "text.secondary",
             }}
           >
             <CloseRoundedIcon />
           </IconButton>
+          <IconButton
+            onClick={async () => {
+              const startValue = stripEditorArtifacts(
+                editorRef.current?.getData() ?? content ?? ""
+              );
+              const { formatted, error } = await formatSource(startValue, "html");
+              setSourceValue(formatted);
+              setSourceError(error);
+              setSourceLanguage("html");
+              setSourceOpen(true);
+            }}
+            disabled={Boolean(disabled)}
+            sx={{
+              position: "absolute",
+              top: "2rem",
+              mt: "3px",
+              right: 124,
+              zIndex: 2,
+              color: disabled ? "text.disabled" : "text.secondary",
+            }}
+          >
+            <CodeRoundedIcon />
+          </IconButton>
           <Box sx={{ pt: "2rem" }}>
-            <Editor
+            <CKEditor
               key={editorKey}
-              ref={editorRef}
-              initialValue={content || ""}
-              useDefaultHTMLSanitizer={false}
-              customHTMLSanitizer={(html) => html}
-              previewStyle="tab"
-              height="auto"
-              initialEditType="wysiwyg"
-              useCommandShortcut
-              hideModeSwitch
-              toolbarItems={[
-                ["heading", "bold", "italic", "strike"],
-                ["hr", "quote"],
-                ["ul", "ol", "task"],
-                ["link"],
-                ["code", "codeblock"],
-              ]}
-              onChange={() => {
-                const instance = editorRef.current?.getInstance();
-                if (!instance) {
-                  return;
-                }
-                if (isSyncingRef.current) {
-                  return;
-                }
-                onChange(instance.getMarkdown());
+              editor={LessonHtmlEditor}
+              data={content || ""}
+              disabled={disabled}
+              onReady={(editor) => {
+                editorRef.current = editor;
               }}
-              readOnly={disabled}
+              onChange={() => {
+                const instance = editorRef.current;
+                if (!instance || isSyncingRef.current) {
+                  return;
+                }
+                onChange(stripEditorArtifacts(instance.getData()));
+              }}
             />
           </Box>
+          <Dialog
+            open={sourceOpen}
+            onClose={() => setSourceOpen(false)}
+            fullScreen
+            PaperProps={{
+              sx: {
+                m: "2rem",
+                width: "calc(100% - 4rem)",
+                height: "calc(100% - 4rem)",
+              },
+            }}
+            TransitionProps={{
+              onEntered: initSourceEditor,
+              onExit: destroySourceEditor,
+            }}
+          >
+            <DialogContent sx={{ display: "flex", flexDirection: "column", flex: 1 }}>
+              <Box
+                sx={{
+                  flex: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  overflow: "hidden",
+                  backgroundColor: "#1e1e1e",
+                }}
+              >
+                <Box ref={sourceContainerRef} sx={{ height: "100%", minHeight: 0 }} />
+              </Box>
+              {sourceError ? (
+                <Box mt={1}>
+                  <Alert severity="error">{sourceError}</Alert>
+                </Box>
+              ) : null}
+            </DialogContent>
+            <DialogActions sx={{ justifyContent: "space-between" }}>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Select
+                  size="small"
+                  value={sourceLanguage}
+                  onChange={handleSourceLanguageChange}
+                  sx={{ minWidth: 110 }}
+                >
+                  <MenuItem value="html">HTML</MenuItem>
+                  <MenuItem value="json">JSON</MenuItem>
+                </Select>
+                <Select
+                  size="small"
+                  value={sourceTheme}
+                  onChange={(event) => {
+                    const value = event.target.value as SourceThemeKey;
+                    setSourceTheme(value);
+                  }}
+                  sx={{ minWidth: 110 }}
+                >
+                  <MenuItem value="vscodeLight">VS Code Light</MenuItem>
+                  <MenuItem value="vscodeDark">VS Code Dark</MenuItem>
+                  <MenuItem value="oneDark">One Dark</MenuItem>
+                  <MenuItem value="dracula">Dracula</MenuItem>
+                  <MenuItem value="nord">Nord</MenuItem>
+                  <MenuItem value="solarizedLight">Solarized Light</MenuItem>
+                  <MenuItem value="solarizedDark">Solarized Dark</MenuItem>
+                  <MenuItem value="monokai">Monokai</MenuItem>
+                </Select>
+              </Box>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button onClick={() => setSourceOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={async () => {
+                    const { formatted, error } = await formatSource(
+                      sourceValue,
+                      sourceLanguage
+                    );
+                    setSourceValue(formatted);
+                    setSourceError(error);
+                  }}
+                >
+                  Format
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={async () => {
+                    const { formatted, error } = await formatSource(
+                      sourceValue,
+                      sourceLanguage
+                    );
+                    if (error) {
+                      setSourceError(error);
+                      return;
+                    }
+                    const cleaned = stripEditorArtifacts(formatted);
+                    setSourceValue(cleaned);
+                    const instance = editorRef.current;
+                    if (!instance) {
+                      setSourceOpen(false);
+                      return;
+                    }
+                    if (sourceLanguage === "html") {
+                      isSyncingRef.current = true;
+                      instance.setData(cleaned);
+                      onChange(cleaned);
+                      window.setTimeout(() => {
+                        isSyncingRef.current = false;
+                      }, 0);
+                    }
+                    setSourceOpen(false);
+                  }}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </DialogActions>
+          </Dialog>
         </>
       ) : (
         <>
@@ -200,7 +622,7 @@ const SectionEditor = ({
                 },
               }}
             >
-              <Viewer ref={viewerRef} initialValue={content || ""} />
+              <HtmlPreview value={content || ""} />
             </Box>
           </Box>
         </>

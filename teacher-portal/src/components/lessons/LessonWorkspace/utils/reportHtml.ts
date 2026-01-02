@@ -11,6 +11,7 @@ type BuildReportHtmlOptions = {
   sections: SectionKey[];
   printSelections: Record<string, boolean>;
   includePrintScript: boolean;
+  contentsByKey?: Record<string, string>;
 };
 
 const escapeHtml = (value: string) =>
@@ -28,6 +29,7 @@ export const buildReportHtml = ({
   sections,
   printSelections,
   includePrintScript,
+  contentsByKey,
 }: BuildReportHtmlOptions) => {
   const selectedSections = sections.filter(
     (section) => printSelections[section.key] ?? true
@@ -53,9 +55,10 @@ export const buildReportHtml = ({
       const heading = section.key
         .replace(/_/g, " ")
         .replace(/\b\w/g, (char) => char.toUpperCase());
-      const bodyHtml = document.querySelector(
-        `[data-section-preview="${section.key}"]`
-      )?.innerHTML;
+      const bodyHtml =
+        contentsByKey?.[section.key] ??
+        document.querySelector(`[data-section-preview="${section.key}"]`)
+          ?.innerHTML;
       return `
           <section class="section-block" id="section-${section.key}">
             <h2>${escapeHtml(heading)}</h2>
@@ -71,7 +74,6 @@ export const buildReportHtml = ({
         <head>
           <meta charset="utf-8" />
           <title>${escapeHtml(titleDraft || lesson.title || "Lesson")}</title>
-          <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.css">
           <style>
             * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px; color: #1f2933; }
