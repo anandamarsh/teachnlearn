@@ -217,13 +217,9 @@ LessonHtmlEditor.defaultConfig = {
       "imageStyle:side",
       "imageStyle:block",
     ],
-    styles: [
-      { name: "alignLeft" },
-      { name: "alignCenter" },
-      { name: "alignRight" },
-      { name: "side" },
-      { name: "block" },
-    ],
+    styles: {
+      options: ["alignLeft", "alignCenter", "alignRight", "side", "block"],
+    },
     resizeOptions: [
       {
         name: "resizeImage:original",
