@@ -20,6 +20,15 @@
   }
 }
 
+@keyframes reportSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .print-only {
   display: none;
 }

@@ -27,6 +27,12 @@ type SectionsListProps = {
   canEdit: boolean;
   contents: Record<string, string>;
   drafts: Record<string, string>;
+  sectionsMeta?: Record<
+    string,
+    {
+      contentLength?: number;
+    }
+  >;
   setDrafts: (value: Record<string, string>) => void;
   editingKey: string | null;
   setEditingKey: (value: string | null) => void;
@@ -68,6 +74,7 @@ const SectionsList = ({
   canEdit,
   contents,
   drafts,
+  sectionsMeta,
   setDrafts,
   editingKey,
   setEditingKey,
@@ -86,9 +93,29 @@ const SectionsList = ({
       sections.map((section) => {
         const isExpanded = Boolean(expandedKeys[section.key]);
         const isEditingSection = editingKey === section.key;
+        const hasDraft = Object.prototype.hasOwnProperty.call(drafts, section.key);
+        const hasContent = Object.prototype.hasOwnProperty.call(contents, section.key);
+        const hasLocalValue = hasDraft || hasContent;
         const content = isEditingSection
           ? drafts[section.key] ?? ""
           : contents[section.key] ?? drafts[section.key] ?? "";
+        const metaLength = sectionsMeta?.[section.key]?.contentLength;
+        const localValue = hasDraft
+          ? drafts[section.key] ?? ""
+          : hasContent
+          ? contents[section.key] ?? ""
+          : "";
+        const contentLength = hasLocalValue
+          ? localValue.trim().length
+          : typeof metaLength === "number"
+          ? metaLength
+          : null;
+        const dotColor =
+          contentLength === null
+            ? "grey.400"
+            : contentLength > 0
+            ? "success.main"
+            : "error.main";
         return (
           <Accordion
             key={section.key}
@@ -103,6 +130,18 @@ const SectionsList = ({
           >
             <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                {!isPublished ? (
+                  <Box
+                    sx={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "999px",
+                      bgcolor: dotColor,
+                      boxShadow: "0 0 0 1px rgba(0,0,0,0.08) inset",
+                      mr: "0.25rem",
+                    }}
+                  />
+                ) : null}
                 {isPublished ? (
                   <Checkbox
                     checked={printSelections[section.key] ?? true}

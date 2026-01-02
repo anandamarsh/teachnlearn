@@ -51,3 +51,19 @@ def register_report_routes(mcp, store: LessonStore, settings: Settings) -> None:
             return json_error(str(exc), 500)
         url = public_report_url(settings, report_key)
         return JSONResponse({"url": url})
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/report", methods=["DELETE"])
+    async def delete_lesson_report(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        try:
+            deleted = store.delete_report(email, lesson_id)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if not deleted:
+            return json_error("report not found", 404)
+        return JSONResponse({"status": "deleted"})

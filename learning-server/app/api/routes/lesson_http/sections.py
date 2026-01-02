@@ -102,11 +102,15 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        content_md = payload.get("contentMd")
-        if content_md is None:
-            return json_error("contentMd is required", 400)
+        content_html = payload.get("contentHtml")
+        if content_html is None:
+            content_html = payload.get("contentMd")
+        if content_html is None:
+            return json_error("contentHtml is required", 400)
         try:
-            section = store.put_section(email, lesson_id, section_key, str(content_md), allow_create=False)
+            section = store.put_section(
+                email, lesson_id, section_key, str(content_html), allow_create=False
+            )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         if section is None:
@@ -139,9 +143,13 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        content_md = payload.get("contentMd", "")
+        content_html = payload.get("contentHtml")
+        if content_html is None:
+            content_html = payload.get("contentMd", "")
         try:
-            section = store.put_section(email, lesson_id, section_key, str(content_md), allow_create=True)
+            section = store.put_section(
+                email, lesson_id, section_key, str(content_html), allow_create=True
+            )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         if section is None:

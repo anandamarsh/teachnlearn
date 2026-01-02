@@ -18,7 +18,7 @@ def register_section_tools(
         section_key: str,
         email: str | None = None,
     ) -> dict[str, Any]:
-        """Get a lesson section's Markdown content.
+        """Get a lesson section's HTML content.
 
         Use when the user wants to read a specific section of a lesson.
         You must supply:
@@ -58,17 +58,17 @@ def register_section_tools(
     def lesson_section_put(
         lesson_id: str,
         section_key: str,
-        content_md: str,
+        content_html: str,
         email: str | None = None,
     ) -> dict[str, Any]:
-        """Update an existing lesson section's Markdown content.
+        """Update an existing lesson section's HTML content.
 
         Use when the user wants to save changes to a section that already exists.
         You must supply:
         - email: user email (required; ask the user if missing)
         - lesson_id: target lesson id (required; ask the user if missing)
         - section_key: one of the configured section keys (required; ask if missing)
-        - content_md: full Markdown content to store (required; ask if missing)
+        - content_html: full HTML content to store (required; ask if missing)
 
         Never call this tool without all required inputs.
         """
@@ -84,13 +84,13 @@ def register_section_tools(
                 "email": email,
                 "lesson_id": lesson_id,
                 "section_key": section_key,
-                "content_md": content_md,
+                "content_html": content_html,
             },
         )
         cache_key_value = cache_key(
             "lesson_section_put",
             email,
-            {"lesson_id": lesson_id, "section_key": section_key, "content_md": content_md},
+            {"lesson_id": lesson_id, "section_key": section_key, "content_html": content_html},
         )
         cached = RESULT_CACHE.get(cache_key_value)
         if cached:
@@ -99,7 +99,9 @@ def register_section_tools(
             DEBOUNCE.mark_ignored("lesson_section_put", cache_key_value)
             return {"status": "debounced"}
         try:
-            section = store.put_section(email, lesson_id, section_key, content_md, allow_create=False)
+            section = store.put_section(
+                email, lesson_id, section_key, content_html, allow_create=False
+            )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc), "key": section_key}
         if section is None:
@@ -121,7 +123,7 @@ def register_section_tools(
     def lesson_section_create(
         lesson_id: str,
         section_key: str,
-        content_md: str = "",
+        content_html: str = "",
         email: str | None = None,
     ) -> dict[str, Any]:
         """Create a lesson section if it is missing, otherwise overwrite content.
@@ -132,7 +134,7 @@ def register_section_tools(
         - lesson_id: target lesson id (required; ask the user if missing)
         - section_key: one of the configured section keys (required; ask if missing)
         Optional:
-        - content_md: initial Markdown content (defaults to empty string)
+        - content_html: initial HTML content (defaults to empty string)
 
         Never call this tool without email, lesson_id, and section_key.
         """
@@ -148,13 +150,13 @@ def register_section_tools(
                 "email": email,
                 "lesson_id": lesson_id,
                 "section_key": section_key,
-                "content_md": content_md,
+                "content_html": content_html,
             },
         )
         cache_key_value = cache_key(
             "lesson_section_create",
             email,
-            {"lesson_id": lesson_id, "section_key": section_key, "content_md": content_md},
+            {"lesson_id": lesson_id, "section_key": section_key, "content_html": content_html},
         )
         cached = RESULT_CACHE.get(cache_key_value)
         if cached:
@@ -163,7 +165,9 @@ def register_section_tools(
             DEBOUNCE.mark_ignored("lesson_section_create", cache_key_value)
             return {"status": "debounced"}
         try:
-            section = store.put_section(email, lesson_id, section_key, content_md, allow_create=True)
+            section = store.put_section(
+                email, lesson_id, section_key, content_html, allow_create=True
+            )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc), "key": section_key}
         if section is None:

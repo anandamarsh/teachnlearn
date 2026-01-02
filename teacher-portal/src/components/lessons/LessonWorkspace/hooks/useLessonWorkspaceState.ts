@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Lesson } from "../../../../state/lessonTypes";
+import { buildAuthHeaders } from "../../../../auth/buildAuthHeaders";
+import { deleteLessonReport } from "../../../../api/lessons";
 import { useLessonSections } from "../../../../hooks/useLessonSections";
 import type { GetAccessTokenSilently } from "../../../../auth/buildAuthHeaders";
 import { useLessonReport } from "./useLessonReport";
@@ -33,6 +35,7 @@ export const useLessonWorkspaceState = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [unpublishOpen, setUnpublishOpen] = useState(false);
   const [printSelections, setPrintSelections] = useState<
     Record<string, boolean>
   >({});
@@ -61,13 +64,19 @@ export const useLessonWorkspaceState = ({
     onPulse,
   });
 
-  const { ensureReportUrl, handleOpenReport } = useLessonReport({
+  const statusValue = (lesson?.status || "draft").toLowerCase().trim();
+  const isPublished =
+    statusValue.includes("publish") || statusValue.includes("active");
+
+  const { ensureReportUrl, handleOpenReport, openingReport } = useLessonReport({
     lesson,
     titleDraft,
     contentDraft,
     sections,
     printSelections,
+    contents,
     loadSection,
+    isPublished,
     apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
     auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
     getAccessTokenSilently,
@@ -165,6 +174,24 @@ export const useLessonWorkspaceState = ({
     setPublishOpen(false);
   };
 
+  const handleUnpublish = async () => {
+    if (!lesson) {
+      return;
+    }
+    try {
+      const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
+      const audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
+      if (apiBaseUrl && audience) {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, audience);
+        await deleteLessonReport(`${apiBaseUrl}/lesson/id/${lesson.id}/report`, headers);
+      }
+    } catch {
+      // Ignore report cleanup failures to unblock status change.
+    }
+    await onUpdateStatus(lesson.id, "draft");
+    setUnpublishOpen(false);
+  };
+
   const handleAccordionChange =
     (key: string) => (_: unknown, expanded: boolean) => {
       setExpandedKeys((prev) => ({ ...prev, [key]: expanded }));
@@ -174,8 +201,8 @@ export const useLessonWorkspaceState = ({
     };
 
   const handleSaveSection = async (key: string) => {
-    const contentMd = drafts[key] ?? "";
-    const saved = await saveSection(key, contentMd);
+    const contentHtml = drafts[key] ?? "";
+    const saved = await saveSection(key, contentHtml);
     if (saved) {
       onNotify("Section saved", "success");
       setEditingKey(null);
@@ -194,15 +221,25 @@ export const useLessonWorkspaceState = ({
     setConfirmClose(null);
   };
 
-  const statusValue = lesson?.status?.toLowerCase() || "draft";
-  const isPublished =
-    statusValue.includes("publish") || statusValue.includes("active");
   const canEdit = !isPublished;
+  const metaMap = lesson?.sectionsMeta || {};
   const allSectionsFilled =
     sections.length > 0 &&
-    sections.every(
-      (section) => (contents[section.key] || "").trim().length > 0
-    );
+    sections.every((section) => {
+      const metaLength = metaMap[section.key]?.contentLength;
+      const hasDraft = Object.prototype.hasOwnProperty.call(drafts, section.key);
+      const hasContent = Object.prototype.hasOwnProperty.call(contents, section.key);
+      if (hasDraft || hasContent) {
+        const localValue = hasDraft
+          ? drafts[section.key] ?? ""
+          : contents[section.key] ?? "";
+        return localValue.trim().length > 0;
+      }
+      if (typeof metaLength === "number") {
+        return metaLength > 0;
+      }
+      return false;
+    });
   const statusLabel = isPublished
     ? "Published"
     : allSectionsFilled
@@ -227,6 +264,8 @@ export const useLessonWorkspaceState = ({
     setEditingSummary,
     publishOpen,
     setPublishOpen,
+    unpublishOpen,
+    setUnpublishOpen,
     printSelections,
     setPrintSelections,
     expandedKeys,
@@ -239,7 +278,9 @@ export const useLessonWorkspaceState = ({
     handleSaveTitle,
     handleSaveContent,
     handlePublish,
+    handleUnpublish,
     handleOpenReport,
+    openingReport,
     handleAccordionChange,
     handleSaveSection,
     handleConfirmClose,

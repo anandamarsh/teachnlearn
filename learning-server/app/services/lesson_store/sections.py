@@ -17,7 +17,7 @@ class LessonStoreSections:
                 Bucket=self._settings.s3_bucket,
                 Key=section_key,
                 Body=b"",
-                ContentType="text/markdown",
+                ContentType="text/html",
             )
 
     def get_sections_index(self, email: str, lesson_id: str) -> dict[str, Any] | None:
@@ -46,7 +46,7 @@ class LessonStoreSections:
                 return None
             raise
         content = obj["Body"].read().decode("utf-8")
-        return {"key": section_key, "contentMd": content}
+        return {"key": section_key, "contentHtml": content}
 
     def get_section_meta(self, email: str, lesson_id: str, section_key: str) -> dict[str, Any] | None:
         lesson = self.get(email, lesson_id)
@@ -60,7 +60,7 @@ class LessonStoreSections:
         email: str,
         lesson_id: str,
         section_key: str,
-        content_md: str,
+        content_html: str,
         allow_create: bool,
     ) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)
@@ -87,14 +87,20 @@ class LessonStoreSections:
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
             Key=key,
-            Body=content_md.encode("utf-8"),
-            ContentType="text/markdown",
+            Body=content_html.encode("utf-8"),
+            ContentType="text/html",
         )
         now = datetime.now(timezone.utc).isoformat()
         meta_map = lesson.get("sectionsMeta") or {}
         meta = meta_map.get(section_key) or {}
         version = int(meta.get("version", 0)) + 1
-        meta_payload = {"key": section_key, "updatedAt": now, "version": version}
+        content_length = len(content_html.strip())
+        meta_payload = {
+            "key": section_key,
+            "updatedAt": now,
+            "version": version,
+            "contentLength": content_length,
+        }
         meta_map[section_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
@@ -105,4 +111,4 @@ class LessonStoreSections:
             Body=json.dumps(lesson, indent=2).encode("utf-8"),
             ContentType="application/json",
         )
-        return {"key": section_key, "contentMd": content_md}
+        return {"key": section_key, "contentHtml": content_html}

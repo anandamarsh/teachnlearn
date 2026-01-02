@@ -176,7 +176,7 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        setContents((prev) => ({ ...prev, [key]: data.contentMd || "" }));
+        setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
         loadedKeysRef.current.add(key);
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to load section";
@@ -198,7 +198,7 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        setContents((prev) => ({ ...prev, [key]: data.contentMd || "" }));
+        setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to load section";
         setError(detail);
@@ -235,7 +235,7 @@ export const useLessonSections = ({
   });
 
   const saveSection = useCallback(
-    async (key: string, contentMd: string) => {
+    async (key: string, contentHtml: string) => {
       if (!isAuthenticated || !baseEndpoint) {
         return false;
       }
@@ -244,9 +244,9 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, {
-          contentMd,
+          contentHtml,
         });
-        setContents((prev) => ({ ...prev, [key]: data.contentMd || contentMd }));
+        setContents((prev) => ({ ...prev, [key]: data.contentHtml || contentHtml }));
         recentlySavedRef.current = { ...recentlySavedRef.current, [key]: Date.now() };
         return true;
       } catch (err) {
