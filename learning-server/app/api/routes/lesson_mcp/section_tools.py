@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -188,3 +189,57 @@ def register_section_tools(
                 delay_seconds=1.0,
             )
         return section
+
+    @mcp.tool()
+    def lesson_exercises_append(
+        lesson_id: str,
+        items: list[dict[str, Any]],
+        email: str | None = None,
+    ) -> dict[str, Any]:
+        """Append batch items to the exercises JSON section.
+
+        Use when the user needs to append exercises in batches (JSON array).
+        You must supply:
+        - email: user email (required; ask the user if missing)
+        - lesson_id: target lesson id (required; ask the user if missing)
+        - items: list of exercise objects to append (required; ask if missing)
+
+        This tool only appends to the exercises section. It does not overwrite.
+        """
+        if not email:
+            return {"error": "email is required"}
+        if not items:
+            return {"error": "items is required"}
+        log_params(
+            "lesson_exercises_append",
+            {"email": email, "lesson_id": lesson_id, "items": items},
+        )
+        cache_key_value = cache_key(
+            "lesson_exercises_append",
+            email,
+            {"lesson_id": lesson_id, "items": items},
+        )
+        cached = RESULT_CACHE.get(cache_key_value)
+        if cached:
+            return cached
+        if not DEBOUNCE.should_run(cache_key_value):
+            DEBOUNCE.mark_ignored("lesson_exercises_append", cache_key_value)
+            return {"status": "debounced"}
+        try:
+            result = store.append_exercises(email, lesson_id, items)
+        except (RuntimeError, ClientError, json.JSONDecodeError, ValueError) as exc:
+            return {"error": str(exc)}
+        if result is None:
+            return {"error": "section not found", "key": "exercises"}
+        RESULT_CACHE.set(cache_key_value, result)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.updated",
+                    "lessonId": lesson_id,
+                    "sectionKey": "exercises",
+                },
+                delay_seconds=1.0,
+            )
+        return result

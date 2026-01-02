@@ -162,3 +162,39 @@ def register_section_routes(
                 },
             )
         return JSONResponse(section, status_code=201)
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/sections/exercises/append", methods=["POST"])
+    async def append_exercises(request: Request) -> JSONResponse:
+        """Append batch items to the exercises JSON section.
+
+        Body: {"items": [ ... ]}
+        """
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            return json_error("invalid JSON body", 400)
+        items = payload.get("items")
+        if not isinstance(items, list):
+            return json_error("items must be a JSON array", 400)
+        try:
+            result = store.append_exercises(email, lesson_id, items)
+        except (RuntimeError, ClientError, json.JSONDecodeError, ValueError) as exc:
+            return json_error(str(exc), 500)
+        if result is None:
+            return json_error("section not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.updated",
+                    "lessonId": lesson_id,
+                    "sectionKey": "exercises",
+                },
+            )
+        return JSONResponse(result)
