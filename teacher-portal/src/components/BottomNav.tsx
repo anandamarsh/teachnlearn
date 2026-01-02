@@ -4,6 +4,7 @@ import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 
 type BottomNavProps = {
   isAuthenticated: boolean;
@@ -14,7 +15,9 @@ type BottomNavProps = {
   onAuthClick: () => void;
   onLogout: () => void;
   onCreateLesson: () => void;
+  onDuplicateLesson: () => void;
   onDeleteLesson: () => void;
+  showDuplicate: boolean;
   showDelete: boolean;
 };
 
@@ -27,7 +30,9 @@ const BottomNav = ({
   onAuthClick,
   onLogout,
   onCreateLesson,
+  onDuplicateLesson,
   onDeleteLesson,
+  showDuplicate,
   showDelete,
 }: BottomNavProps) => {
   const isHome = currentPage === "home";
@@ -94,6 +99,20 @@ const BottomNav = ({
             }}
           >
             <AddRoundedIcon />
+          </Button>
+        ) : null}
+        {isLessons && showDuplicate ? (
+          <Button
+            onClick={onDuplicateLesson}
+            sx={{
+              minWidth: 0,
+              px: 2,
+              borderRadius: 999,
+              color: "primary.main",
+              height: "100%",
+            }}
+          >
+            <ContentCopyRoundedIcon />
           </Button>
         ) : null}
         {isLessons && showDelete ? (

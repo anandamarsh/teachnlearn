@@ -3,6 +3,7 @@ import { buildAuthHeaders, type GetAccessTokenSilently } from "../auth/buildAuth
 import {
   createLesson,
   deleteLesson,
+  duplicateLesson,
   fetchLesson,
   listLessons,
   updateLesson,
@@ -259,6 +260,34 @@ export const useLessons = ({
     [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
   );
 
+  const handleDuplicateLesson = useCallback(
+    async (lessonId: string) => {
+      if (!isAuthenticated || !lessonsEndpoint) {
+        return null;
+      }
+      setError("");
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        const data = await duplicateLesson(
+          `${lessonsEndpoint}/id/${lessonId}/duplicate`,
+          headers
+        );
+        const created = normalizeLesson(
+          data as Record<string, unknown>,
+          `lesson-${Date.now()}`
+        );
+        setLessons((prev) => [created, ...prev]);
+        setSelectedLessonId(created.id);
+        return created;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Failed to duplicate lesson";
+        setError(detail);
+        return null;
+      }
+    },
+    [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
+  );
+
   return {
     lessons,
     selectedLesson,
@@ -274,5 +303,6 @@ export const useLessons = ({
     updateLessonContent: handleUpdateLessonContent,
     updateLessonStatus: handleUpdateLessonStatus,
     deleteLesson: handleDeleteLesson,
+    duplicateLesson: handleDuplicateLesson,
   };
 };

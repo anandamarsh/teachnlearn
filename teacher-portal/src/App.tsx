@@ -49,6 +49,7 @@ function App() {
     error,
     setError,
     createLesson,
+    duplicateLesson,
     updateLessonTitle,
     updateLessonContent,
     updateLessonStatus,
@@ -117,6 +118,7 @@ function App() {
   };
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
 
   const handleConfirmDelete = async () => {
     if (!selectedLesson) {
@@ -133,6 +135,26 @@ function App() {
     }
     setDeleteOpen(false);
   };
+
+  const handleConfirmDuplicate = async () => {
+    if (!selectedLesson) {
+      setDuplicateOpen(false);
+      return;
+    }
+    const created = await duplicateLesson(selectedLesson.id);
+    if (created) {
+      setSnackbar({
+        open: true,
+        message: "Lesson duplicated",
+        severity: "success",
+      });
+    }
+    setDuplicateOpen(false);
+  };
+
+  const isSelectedPublished =
+    selectedLesson?.status?.toLowerCase().includes("publish") ||
+    selectedLesson?.status?.toLowerCase().includes("active");
 
   useEffect(() => {
     if (error) {
@@ -203,8 +225,10 @@ function App() {
         onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
         onCreateLesson={handleCreateLesson}
+        onDuplicateLesson={() => setDuplicateOpen(true)}
         onDeleteLesson={() => setDeleteOpen(true)}
-        showDelete={page === "lessons" && Boolean(selectedLesson)}
+        showDuplicate={page === "lessons" && Boolean(selectedLesson)}
+        showDelete={page === "lessons" && Boolean(selectedLesson) && !isSelectedPublished}
         onAuthClick={() => loginWithRedirect()}
         onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
       />
@@ -219,6 +243,20 @@ function App() {
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleConfirmDelete}>
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={duplicateOpen} onClose={() => setDuplicateOpen(false)}>
+        <DialogTitle>Duplicate lesson</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mt: 1 }}>
+            This will create a new lesson with duplicated contents.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDuplicateOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmDuplicate}>
+            Duplicate
           </Button>
         </DialogActions>
       </Dialog>

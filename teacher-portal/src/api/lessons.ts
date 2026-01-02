@@ -65,6 +65,21 @@ export const deleteLesson = async (endpoint: string, headers: Record<string, str
   return data;
 };
 
+export const duplicateLesson = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to duplicate lesson"));
+  }
+  return data;
+};
+
 export const fetchLesson = async (endpoint: string, headers: Record<string, string>) => {
   const response = await fetch(endpoint, { headers });
   const data = await parseJson(response);

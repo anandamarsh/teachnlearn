@@ -126,3 +126,24 @@ def register_lesson_routes(
         if events:
             events.publish(email, {"type": "lesson.deleted", "lessonId": lesson_id})
         return JSONResponse({"status": "deleted", "id": lesson_id})
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/duplicate", methods=["POST"])
+    async def duplicate_lesson(request: Request) -> JSONResponse:
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        try:
+            lesson = store.duplicate(email, lesson_id)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if lesson is None:
+            return json_error("lesson not found", 404)
+        if events:
+            events.publish(
+                email,
+                {"type": "lesson.created", "lessonId": lesson.get("id")},
+            )
+        return JSONResponse(lesson, status_code=201)
