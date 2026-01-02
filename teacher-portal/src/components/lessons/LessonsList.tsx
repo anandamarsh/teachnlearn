@@ -29,6 +29,37 @@ const LessonsList = ({
   onSelectLesson,
   onToggleLeft,
 }: LessonsListProps) => {
+  const getStatusBadgeColor = (status?: string | null) => {
+    const normalized = (status || "").toLowerCase();
+    if (normalized.includes("publish") || normalized.includes("active")) {
+      return "success.main";
+    }
+    if (normalized.includes("ready")) {
+      return "warning.main";
+    }
+    return "error.main";
+  };
+
+  const getStatusHighlight = (status?: string | null) => {
+    const normalized = (status || "").toLowerCase();
+    if (normalized.includes("publish") || normalized.includes("active")) {
+      return {
+        background: "rgba(46,125,50,0.18)",
+        hover: "rgba(46,125,50,0.26)",
+      };
+    }
+    if (normalized.includes("ready")) {
+      return {
+        background: "rgba(245,124,0,0.18)",
+        hover: "rgba(245,124,0,0.26)",
+      };
+    }
+    return {
+      background: "rgba(211,47,47,0.18)",
+      hover: "rgba(211,47,47,0.26)",
+    };
+  };
+
   return (
     <Box
       sx={{
@@ -59,24 +90,26 @@ const LessonsList = ({
           </Box>
         ) : lessons.length ? (
           <List disablePadding sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {lessons.map((lesson) => (
-              <ListItemButton
-                key={lesson.id}
-                selected={selectedLessonId === lesson.id}
-                onClick={() => onSelectLesson(lesson.id)}
-                sx={{
-                  borderRadius: 4,
-                  px: leftOpen ? 1 : 0.5,
-                  py: 0.5,
-                  justifyContent: leftOpen ? "flex-start" : "center",
-                  "&.Mui-selected": {
-                    backgroundColor: "rgba(230,81,0,0.16)",
-                  },
-                  "&.Mui-selected:hover": {
-                    backgroundColor: "rgba(230,81,0,0.22)",
-                  },
-                }}
-              >
+            {lessons.map((lesson) => {
+              const highlight = getStatusHighlight(lesson.status);
+              return (
+                <ListItemButton
+                  key={lesson.id}
+                  selected={selectedLessonId === lesson.id}
+                  onClick={() => onSelectLesson(lesson.id)}
+                  sx={{
+                    borderRadius: 4,
+                    px: leftOpen ? 1 : 0.5,
+                    py: 0.5,
+                    justifyContent: leftOpen ? "flex-start" : "center",
+                    "&.Mui-selected": {
+                      backgroundColor: highlight.background,
+                    },
+                    "&.Mui-selected:hover": {
+                      backgroundColor: highlight.hover,
+                    },
+                  }}
+                >
                 <ListItemIcon
                   sx={{
                     minWidth: 0,
@@ -86,20 +119,34 @@ const LessonsList = ({
                 >
                   <Box
                     sx={{
+                      position: "relative",
                       width: "4rem",
                       height: "4rem",
                       borderRadius: "8px",
+                      backgroundColor: "#fff",
                       backgroundImage:
-                        "linear-gradient(135deg, rgba(230,81,0,0.35) 0%, rgba(2,136,209,0.35) 100%)",
+                        "linear-gradient(135deg, #ff6f00 0%, #00b0ff 100%)",
                       my: "0.25rem",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       fontWeight: 800,
                       fontSize: "1.4rem",
-                      color: "#7a7a7a",
+                      color: "#ffffff",
                     }}
                   >
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        top: 6,
+                        right: 6,
+                        width: 10,
+                        height: 10,
+                        borderRadius: "999px",
+                        bgcolor: getStatusBadgeColor(lesson.status),
+                        border: "1px solid #fff",
+                      }}
+                    />
                     {lesson.iconUrl ? (
                       <img
                         src={lesson.iconUrl}
@@ -126,7 +173,8 @@ const LessonsList = ({
                   />
                 ) : null}
               </ListItemButton>
-            ))}
+              );
+            })}
           </List>
         ) : null}
       </Box>
