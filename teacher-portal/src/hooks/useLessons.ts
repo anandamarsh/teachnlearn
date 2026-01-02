@@ -62,7 +62,14 @@ export const useLessons = ({
       );
       setLessons(normalized);
       if (normalized.length) {
-        setSelectedLessonId(normalized[0].id);
+        setSelectedLessonId((prev) => {
+          if (prev && normalized.some((lesson) => lesson.id === prev)) {
+            return prev;
+          }
+          return normalized[0].id;
+        });
+      } else {
+        setSelectedLessonId(null);
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load lessons";
