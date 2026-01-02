@@ -18,7 +18,7 @@ def register_section_tools(
         section_key: str,
         email: str | None = None,
     ) -> dict[str, Any]:
-        """Get a lesson section's HTML content.
+        """Get a lesson section's HTML content (JSON for exercises).
 
         Use when the user wants to read a specific section of a lesson.
         You must supply:
@@ -26,6 +26,7 @@ def register_section_tools(
         - lesson_id: target lesson id (required; ask the user if missing)
         - section_key: one of the configured section keys (required; ask if missing)
 
+        The returned section content is HTML (JSON for exercises).
         Never call this tool without all three inputs.
         """
         if not email:
@@ -61,14 +62,16 @@ def register_section_tools(
         content_html: str,
         email: str | None = None,
     ) -> dict[str, Any]:
-        """Update an existing lesson section's HTML content.
+        """Update an existing lesson section's HTML content (JSON for exercises).
 
         Use when the user wants to save changes to a section that already exists.
         You must supply:
         - email: user email (required; ask the user if missing)
         - lesson_id: target lesson id (required; ask the user if missing)
         - section_key: one of the configured section keys (required; ask if missing)
-        - content_html: full HTML content to store (required; ask if missing)
+        - content_html: full HTML content to store (JSON for exercises; required; ask if missing)
+
+        The content must be HTML (JSON for exercises).
 
         Never call this tool without all required inputs.
         """
@@ -134,8 +137,9 @@ def register_section_tools(
         - lesson_id: target lesson id (required; ask the user if missing)
         - section_key: one of the configured section keys (required; ask if missing)
         Optional:
-        - content_html: initial HTML content (defaults to empty string)
+        - content_html: initial HTML content (JSON for exercises; defaults to empty string)
 
+        The content must be HTML (JSON for exercises).
         Never call this tool without email, lesson_id, and section_key.
         """
         if not email:

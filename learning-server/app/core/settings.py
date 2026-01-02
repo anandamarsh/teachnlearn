@@ -46,7 +46,6 @@ def _load_lesson_sections(path: str) -> tuple[list[str], dict[str, str]]:
         "lesson",
         "references",
         "exercises",
-        "answers",
     ]
     descriptions: dict[str, str] = {}
     if not path:

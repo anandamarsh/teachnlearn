@@ -37,7 +37,6 @@ const DEFAULT_ORDER = [
   "lesson",
   "references",
   "exercises",
-  "answers",
 ];
 
 const orderSections = (sections: SectionSummary[], order: string[]) => {
@@ -51,8 +50,7 @@ const orderSections = (sections: SectionSummary[], order: string[]) => {
       byKey.delete(key);
     }
   });
-  const rest = Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
-  return [...ordered, ...rest];
+  return ordered;
 };
 
 export const useLessonSections = ({
