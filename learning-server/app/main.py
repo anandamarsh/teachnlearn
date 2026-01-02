@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from urllib.parse import parse_qsl, urlencode
@@ -126,6 +127,14 @@ async def lesson_updates_socket(websocket: WebSocket) -> None:
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
                 break
+            payload = message.get("text")
+            if payload:
+                try:
+                    data = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "ts": data.get("ts")})
     except WebSocketDisconnect:
         pass
     finally:

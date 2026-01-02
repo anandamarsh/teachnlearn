@@ -1,0 +1,175 @@
+import { Box } from "@mui/material";
+import { Lesson } from "../../../state/lessonTypes";
+import type { GetAccessTokenSilently } from "../../../auth/buildAuthHeaders";
+import { useLessonWorkspaceState } from "./hooks/useLessonWorkspaceState";
+import EmptyState from "./components/EmptyState";
+import TitleHeader from "./components/TitleHeader";
+import SummaryEditor from "./components/SummaryEditor";
+import SectionsList from "./components/SectionsList";
+import WorkspaceDialogs from "./components/WorkspaceDialogs";
+import SectionPreviewCache from "./components/SectionPreviewCache";
+import PrintOnly from "./components/PrintOnly";
+
+type LessonWorkspaceProps = {
+  lesson: Lesson | null;
+  hasLessons: boolean;
+  isAuthenticated: boolean;
+  onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
+  onUpdateContent: (
+    lessonId: string,
+    content: string
+  ) => Promise<Lesson | null>;
+  onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
+  onNotify: (message: string, severity: "success" | "error") => void;
+  getAccessTokenSilently: GetAccessTokenSilently;
+  onPulse?: (color: "success" | "error") => void;
+};
+
+const LessonWorkspace = ({
+  lesson,
+  hasLessons,
+  isAuthenticated,
+  onUpdateTitle,
+  onUpdateContent,
+  onUpdateStatus,
+  onNotify,
+  getAccessTokenSilently,
+  onPulse,
+}: LessonWorkspaceProps) => {
+  const {
+    sections,
+    contents,
+    loadingIndex,
+    loadingSection,
+    savingSection,
+    titleDraft,
+    setTitleDraft,
+    contentDraft,
+    setContentDraft,
+    savingTitle,
+    savingContent,
+    editingTitle,
+    setEditingTitle,
+    editingSummary,
+    setEditingSummary,
+    publishOpen,
+    setPublishOpen,
+    printSelections,
+    setPrintSelections,
+    expandedKeys,
+    drafts,
+    setDrafts,
+    editingKey,
+    setEditingKey,
+    confirmClose,
+    setConfirmClose,
+    handleSaveTitle,
+    handleSaveContent,
+    handlePublish,
+    handleOpenReport,
+    handleAccordionChange,
+    handleSaveSection,
+    handleConfirmClose,
+    isPublished,
+    canEdit,
+    statusLabel,
+  } = useLessonWorkspaceState({
+    lesson,
+    hasLessons,
+    isAuthenticated,
+    onUpdateTitle,
+    onUpdateContent,
+    onUpdateStatus,
+    onNotify,
+    getAccessTokenSilently,
+    onPulse,
+  });
+
+  if (!lesson) {
+    return <EmptyState hasLessons={hasLessons} />;
+  }
+
+  return (
+    <>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 0,
+          width: "100%",
+        }}
+      >
+        <TitleHeader
+          titleDraft={titleDraft}
+          editingTitle={editingTitle}
+          savingTitle={savingTitle}
+          isAuthenticated={isAuthenticated}
+          canEdit={canEdit}
+          statusLabel={statusLabel}
+          isPublished={isPublished}
+          lessonId={lesson.id}
+          onEditTitle={() => setEditingTitle(true)}
+          onTitleChange={setTitleDraft}
+          onFinishTitle={() => {
+            handleSaveTitle();
+            setEditingTitle(false);
+          }}
+          onPublishClick={() => setPublishOpen(true)}
+          onOpenReport={handleOpenReport}
+        />
+        <SummaryEditor
+          contentDraft={contentDraft}
+          editingSummary={editingSummary}
+          savingContent={savingContent}
+          isAuthenticated={isAuthenticated}
+          canEdit={canEdit}
+          onEditSummary={() => setEditingSummary(true)}
+          onSummaryChange={setContentDraft}
+          onFinishSummary={() => {
+            handleSaveContent();
+            setEditingSummary(false);
+          }}
+        />
+      </Box>
+      <SectionsList
+        sections={sections}
+        expandedKeys={expandedKeys}
+        loadingIndex={loadingIndex}
+        loadingSection={loadingSection}
+        savingSection={savingSection}
+        printSelections={printSelections}
+        setPrintSelections={setPrintSelections}
+        isPublished={isPublished}
+        canEdit={canEdit}
+        contents={contents}
+        drafts={drafts}
+        setDrafts={setDrafts}
+        editingKey={editingKey}
+        setEditingKey={setEditingKey}
+        handleAccordionChange={handleAccordionChange}
+        handleSaveSection={handleSaveSection}
+        onDirtyClose={(key) => setConfirmClose(key)}
+      />
+      <WorkspaceDialogs
+        confirmClose={confirmClose}
+        onCancelClose={() => setConfirmClose(null)}
+        onConfirmClose={handleConfirmClose}
+        publishOpen={publishOpen}
+        onCancelPublish={() => setPublishOpen(false)}
+        onConfirmPublish={handlePublish}
+      />
+      <SectionPreviewCache sections={sections} contents={contents} />
+      <PrintOnly
+        lesson={lesson}
+        titleDraft={titleDraft}
+        contentDraft={contentDraft}
+        sections={sections}
+        printSelections={printSelections}
+        contents={contents}
+      />
+    </>
+  );
+};
+
+export default LessonWorkspace;
