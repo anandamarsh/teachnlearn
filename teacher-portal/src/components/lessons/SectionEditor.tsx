@@ -129,6 +129,8 @@ const SectionEditor = ({
               key={editorKey}
               ref={editorRef}
               initialValue={content || ""}
+              useDefaultHTMLSanitizer={false}
+              customHTMLSanitizer={(html) => html}
               previewStyle="tab"
               height="auto"
               initialEditType="wysiwyg"

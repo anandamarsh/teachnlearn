@@ -148,3 +148,70 @@ class LessonStoreLessons:
                 self._save_index(sanitized, remaining)
             delete_lesson_prefix(sanitized, lesson_id, self._settings)
         return True
+
+    def duplicate(self, email: str, lesson_id: str) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        with self._lock:
+            self._ensure_bucket()
+            lesson = self.get(email, lesson_id)
+            if lesson is None:
+                return None
+            entries = self._load_index(sanitized)
+            new_id = self._generate_id(entries)
+            now = datetime.now(timezone.utc).isoformat()
+            title = lesson.get("title") or "Untitled lesson"
+            if not str(title).lower().endswith("(copy)"):
+                title = f"{title} (Copy)"
+            sections = lesson.get("sections") or {key: f"{key}.md" for key in self._sections}
+            sections_meta = {
+                key: {"key": key, "updatedAt": now, "version": 1}
+                for key in sections
+            }
+            ensure_lesson_prefix(sanitized, new_id, self._settings)
+            lesson_payload = {
+                "id": new_id,
+                "title": title,
+                "status": "draft",
+                "content": lesson.get("content"),
+                "created_at": now,
+                "updated_at": now,
+                "sections": sections,
+                "sectionsMeta": sections_meta,
+            }
+            lesson_key = self._lesson_key(sanitized, new_id)
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=lesson_key,
+                Body=json.dumps(lesson_payload, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            for key, filename in sections.items():
+                source_key = self._section_key(sanitized, lesson_id, filename)
+                dest_key = self._section_key(sanitized, new_id, filename)
+                try:
+                    self._s3_client.copy_object(
+                        Bucket=self._settings.s3_bucket,
+                        CopySource={"Bucket": self._settings.s3_bucket, "Key": source_key},
+                        Key=dest_key,
+                        ContentType="text/markdown",
+                    )
+                except ClientError as exc:
+                    if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                        self._s3_client.put_object(
+                            Bucket=self._settings.s3_bucket,
+                            Key=dest_key,
+                            Body=b"",
+                            ContentType="text/markdown",
+                        )
+                    else:
+                        raise
+            entries.append(
+                {
+                    "id": new_id,
+                    "title": title,
+                    "status": "draft",
+                    "updated_at": now,
+                }
+            )
+            self._save_index(sanitized, entries)
+        return lesson_payload
