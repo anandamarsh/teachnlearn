@@ -62,7 +62,14 @@ export const useLessons = ({
       );
       setLessons(normalized);
       if (normalized.length) {
-        setSelectedLessonId(normalized[0].id);
+        setSelectedLessonId((prev) => {
+          if (prev && normalized.some((lesson) => lesson.id === prev)) {
+            return prev;
+          }
+          return normalized[0].id;
+        });
+      } else {
+        setSelectedLessonId(null);
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Failed to load lessons";
@@ -71,6 +78,25 @@ export const useLessons = ({
       setLoading(false);
     }
   }, [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]);
+
+  const refreshLesson = useCallback(
+    async (lessonId: string) => {
+      if (!isAuthenticated || !lessonsEndpoint || !lessonId) {
+        return;
+      }
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        const data = await fetchLesson(`${lessonsEndpoint}/id/${lessonId}`, headers);
+        const updated = normalizeLesson(data as Record<string, unknown>, lessonId);
+        setLessons((prev) =>
+          prev.map((lesson) => (lesson.id === lessonId ? updated : lesson))
+        );
+      } catch {
+        // Ignore detail fetch failures to avoid breaking list view.
+      }
+    },
+    [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]
+  );
 
   useEffect(() => {
     fetchLessons();
@@ -109,6 +135,7 @@ export const useLessons = ({
     getAccessTokenSilently,
     onPulse,
     onRefresh: fetchLessons,
+    onLessonUpdated: refreshLesson,
   });
 
   const handleCreateLesson = useCallback(async () => {
