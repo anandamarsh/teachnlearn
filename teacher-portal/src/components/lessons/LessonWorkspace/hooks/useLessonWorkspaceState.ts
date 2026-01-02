@@ -86,15 +86,6 @@ export const useLessonWorkspaceState = ({
   }, [lesson?.id]);
 
   useEffect(() => {
-    if (!lesson) {
-      return;
-    }
-    sections.forEach((section) => {
-      loadSection(section.key);
-    });
-  }, [lesson, loadSection, sections]);
-
-  useEffect(() => {
     if (!sections.length) {
       setPrintSelections({});
       return;
