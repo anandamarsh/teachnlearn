@@ -1,0 +1,150 @@
+import json
+from datetime import datetime, timezone
+from typing import Any
+
+from botocore.exceptions import ClientError
+
+from app.models.lesson import Lesson
+
+from .s3 import delete_lesson_prefix, ensure_lesson_prefix, sanitize_email
+
+
+class LessonStoreLessons:
+    def list_all(self, email: str) -> list[dict[str, Any]]:
+        sanitized = sanitize_email(email)
+        with self._lock:
+            return self._load_index(sanitized)
+
+    def list_by_status(self, email: str, status: str) -> list[dict[str, Any]]:
+        sanitized = sanitize_email(email)
+        with self._lock:
+            return [entry for entry in self._load_index(sanitized) if entry.get("status") == status]
+
+    def get(self, email: str, lesson_id: str) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        key = self._lesson_key(sanitized, lesson_id)
+        self._ensure_bucket()
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+                return None
+            raise
+        body = obj["Body"].read().decode("utf-8")
+        return json.loads(body) if body else None
+
+    def create(self, email: str, title: str, status: str, content: str | None) -> dict[str, Any]:
+        sanitized = sanitize_email(email)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._ensure_bucket()
+            entries = self._load_index(sanitized)
+            lesson_id = self._generate_id(entries)
+            sections = {key: f"{key}.md" for key in self._sections}
+            sections_meta = {
+                key: {"key": key, "updatedAt": now, "version": 1}
+                for key in sections
+            }
+            lesson = Lesson(
+                id=lesson_id,
+                title=title,
+                status=status,
+                content=content,
+                created_at=now,
+                updated_at=now,
+            )
+            ensure_lesson_prefix(sanitized, lesson_id, self._settings)
+            lesson_key = self._lesson_key(sanitized, lesson_id)
+            lesson_payload = lesson.__dict__ | {"sections": sections, "sectionsMeta": sections_meta}
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=lesson_key,
+                Body=json.dumps(lesson_payload, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            self._initialize_sections(sanitized, lesson_id, sections)
+            entries.append(
+                {
+                    "id": lesson_id,
+                    "title": title,
+                    "status": status,
+                    "updated_at": now,
+                }
+            )
+            self._save_index(sanitized, entries)
+        return lesson_payload
+
+    def update(
+        self,
+        email: str,
+        lesson_id: str,
+        title: str | None,
+        status: str | None,
+        content: str | None,
+    ) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        with self._lock:
+            self._ensure_bucket()
+            lesson = self.get(email, lesson_id)
+            if lesson is None:
+                return None
+            if title is not None:
+                lesson["title"] = title
+            if status is not None:
+                lesson["status"] = status
+            if content is not None:
+                lesson["content"] = content
+            lesson["updated_at"] = datetime.now(timezone.utc).isoformat()
+            lesson_key = self._lesson_key(sanitized, lesson_id)
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=lesson_key,
+                Body=json.dumps(lesson, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            entries = self._load_index(sanitized)
+            updated = False
+            for entry in entries:
+                if entry.get("id") == lesson_id:
+                    if title is not None:
+                        entry["title"] = title
+                    if status is not None:
+                        entry["status"] = status
+                    entry["updated_at"] = lesson["updated_at"]
+                    updated = True
+                    break
+            if not updated:
+                entries.append(
+                    {
+                        "id": lesson_id,
+                        "title": lesson.get("title"),
+                        "status": lesson.get("status"),
+                        "updated_at": lesson["updated_at"],
+                    }
+                )
+            self._save_index(sanitized, entries)
+        return lesson
+
+    def delete(self, email: str, lesson_id: str) -> bool:
+        sanitized = sanitize_email(email)
+        with self._lock:
+            self._ensure_bucket()
+            entries = self._load_index(sanitized)
+            remaining = [entry for entry in entries if entry.get("id") != lesson_id]
+            prefix = f"{self._settings.s3_prefix}/{sanitized}/lessons/{lesson_id}/"
+            exists = False
+            try:
+                response = self._s3_client.list_objects_v2(
+                    Bucket=self._settings.s3_bucket,
+                    Prefix=prefix,
+                    MaxKeys=1,
+                )
+                exists = bool(response.get("Contents"))
+            except ClientError as exc:
+                raise exc
+            if len(remaining) == len(entries) and not exists:
+                return False
+            if len(remaining) != len(entries):
+                self._save_index(sanitized, remaining)
+            delete_lesson_prefix(sanitized, lesson_id, self._settings)
+        return True

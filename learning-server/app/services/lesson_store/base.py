@@ -1,0 +1,72 @@
+import json
+import secrets
+import threading
+from typing import Any
+
+from botocore.exceptions import ClientError
+
+from app.core.settings import Settings
+
+from .s3 import get_s3_client, sanitize_email
+
+
+class LessonStoreBase:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._lock = threading.Lock()
+        self._s3_client = get_s3_client(settings)
+        self._sections = settings.lesson_sections
+
+    def _ensure_bucket(self) -> None:
+        if not self._settings.s3_bucket:
+            raise RuntimeError("S3 bucket not configured")
+
+    def _index_key(self, sanitized_email: str) -> str:
+        return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/_meta/index.json"
+
+    def _lesson_key(self, sanitized_email: str, lesson_id: str) -> str:
+        return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/index.json"
+
+    def _section_key(self, sanitized_email: str, lesson_id: str, filename: str) -> str:
+        return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/{filename}"
+
+    def _report_key(self, sanitized_email: str, lesson_id: str) -> str:
+        return (
+            f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/public-lesson.html"
+        )
+
+    def report_key(self, email: str, lesson_id: str) -> str:
+        sanitized = sanitize_email(email)
+        return self._report_key(sanitized, lesson_id)
+
+    def _load_index(self, sanitized_email: str) -> list[dict[str, Any]]:
+        self._ensure_bucket()
+        key = self._index_key(sanitized_email)
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+                return []
+            raise
+        body = obj["Body"].read().decode("utf-8")
+        payload = json.loads(body) if body else {}
+        return payload.get("lessons", [])
+
+    def _save_index(self, sanitized_email: str, entries: list[dict[str, Any]]) -> None:
+        self._ensure_bucket()
+        key = self._index_key(sanitized_email)
+        payload = json.dumps({"lessons": entries}, indent=2)
+        self._s3_client.put_object(
+            Bucket=self._settings.s3_bucket,
+            Key=key,
+            Body=payload.encode("utf-8"),
+            ContentType="application/json",
+        )
+
+    def _generate_id(self, entries: list[dict[str, Any]]) -> str:
+        existing = {entry.get("id") for entry in entries}
+        for _ in range(100):
+            candidate = f"{secrets.randbelow(1_000_000):06d}"
+            if candidate not in existing:
+                return candidate
+        raise RuntimeError("Unable to generate unique lesson id")
