@@ -30,6 +30,16 @@ class LessonStoreBase:
     def _section_key(self, sanitized_email: str, lesson_id: str, filename: str) -> str:
         return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/{filename}"
 
+    def _section_filename(self, section_key: str) -> str:
+        extension = "json" if section_key == "exercises" else "html"
+        return f"{section_key}.{extension}"
+
+    def _section_content_type(self, section_key: str) -> str:
+        return "application/json" if section_key == "exercises" else "text/html"
+
+    def _section_default_body(self, section_key: str) -> bytes:
+        return b"{}" if section_key == "exercises" else b""
+
     def _report_key(self, sanitized_email: str, lesson_id: str) -> str:
         return (
             f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/public-lesson.html"

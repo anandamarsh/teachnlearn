@@ -40,11 +40,16 @@ class LessonStoreLessons:
             self._ensure_bucket()
             entries = self._load_index(sanitized)
             lesson_id = self._generate_id(entries)
-            sections = {key: f"{key}.html" for key in self._sections}
-            sections_meta = {
-                key: {"key": key, "updatedAt": now, "version": 1, "contentLength": 0}
-                for key in sections
-            }
+            sections = {key: self._section_filename(key) for key in self._sections}
+            sections_meta = {}
+            for key in sections:
+                default_body = self._section_default_body(key)
+                sections_meta[key] = {
+                    "key": key,
+                    "updatedAt": now,
+                    "version": 1,
+                    "contentLength": len(default_body.strip()),
+                }
             lesson = Lesson(
                 id=lesson_id,
                 title=title,
@@ -162,7 +167,9 @@ class LessonStoreLessons:
             title = lesson.get("title") or "Untitled lesson"
             if not str(title).lower().endswith("(copy)"):
                 title = f"{title} (Copy)"
-            sections = lesson.get("sections") or {key: f"{key}.html" for key in self._sections}
+            sections = lesson.get("sections") or {
+                key: self._section_filename(key) for key in self._sections
+            }
             sections_meta = {
                 key: {"key": key, "updatedAt": now, "version": 1}
                 for key in sections
@@ -193,15 +200,15 @@ class LessonStoreLessons:
                         Bucket=self._settings.s3_bucket,
                         CopySource={"Bucket": self._settings.s3_bucket, "Key": source_key},
                         Key=dest_key,
-                        ContentType="text/html",
+                        ContentType=self._section_content_type(key),
                     )
                 except ClientError as exc:
                     if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
                         self._s3_client.put_object(
                             Bucket=self._settings.s3_bucket,
                             Key=dest_key,
-                            Body=b"",
-                            ContentType="text/html",
+                            Body=self._section_default_body(key),
+                            ContentType=self._section_content_type(key),
                         )
                     else:
                         raise
