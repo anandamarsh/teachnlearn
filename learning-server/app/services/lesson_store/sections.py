@@ -27,6 +27,15 @@ class LessonStoreSections:
         sections = lesson.get("sections") or {}
         return {"sections": sections}
 
+    def get_sections_index_sanitized(
+        self, sanitized_email: str, lesson_id: str
+    ) -> dict[str, Any] | None:
+        lesson = self.get_sanitized(sanitized_email, lesson_id)
+        if not lesson:
+            return None
+        sections = lesson.get("sections") or {}
+        return {"sections": sections}
+
     def is_valid_section_key(self, section_key: str) -> bool:
         return section_key in self._sections
 
@@ -39,6 +48,25 @@ class LessonStoreSections:
         if not filename:
             return None
         key = self._section_key(sanitized, lesson_id, filename)
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+                return None
+            raise
+        content = obj["Body"].read().decode("utf-8")
+        return {"key": section_key, "contentHtml": content}
+
+    def get_section_sanitized(
+        self, sanitized_email: str, lesson_id: str, section_key: str
+    ) -> dict[str, Any] | None:
+        index = self.get_sections_index_sanitized(sanitized_email, lesson_id)
+        if not index:
+            return None
+        filename = index.get("sections", {}).get(section_key)
+        if not filename:
+            return None
+        key = self._section_key(sanitized_email, lesson_id, filename)
         try:
             obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
         except ClientError as exc:
