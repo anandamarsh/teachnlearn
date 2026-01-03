@@ -174,7 +174,14 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
+        if (key === "exercises" && Array.isArray(data.content)) {
+          setContents((prev) => ({
+            ...prev,
+            [key]: JSON.stringify(data.content, null, 2),
+          }));
+        } else {
+          setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
+        }
         loadedKeysRef.current.add(key);
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to load section";
@@ -196,7 +203,14 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
+        if (key === "exercises" && Array.isArray(data.content)) {
+          setContents((prev) => ({
+            ...prev,
+            [key]: JSON.stringify(data.content, null, 2),
+          }));
+        } else {
+          setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to load section";
         setError(detail);
@@ -241,10 +255,27 @@ export const useLessonSections = ({
       setError("");
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-        const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, {
-          contentHtml,
-        });
-        setContents((prev) => ({ ...prev, [key]: data.contentHtml || contentHtml }));
+        let payload: { contentHtml?: string; content?: unknown };
+        if (key === "exercises") {
+          try {
+            payload = { content: JSON.parse(contentHtml || "[]") };
+          } catch (err) {
+            const detail =
+              err instanceof Error ? err.message : "Invalid JSON in exercises";
+            throw new Error(detail);
+          }
+        } else {
+          payload = { contentHtml };
+        }
+        const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, payload);
+        if (key === "exercises" && Array.isArray(data.content)) {
+          setContents((prev) => ({
+            ...prev,
+            [key]: JSON.stringify(data.content, null, 2),
+          }));
+        } else {
+          setContents((prev) => ({ ...prev, [key]: data.contentHtml || contentHtml }));
+        }
         recentlySavedRef.current = { ...recentlySavedRef.current, [key]: Date.now() };
         return true;
       } catch (err) {

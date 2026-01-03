@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LessonProgress, LessonSectionKey, ExerciseStatus } from "../state/types";
+import {
+  LessonProgress,
+  LessonSectionKey,
+  ExerciseGuideState,
+  ExerciseStatus,
+  ExerciseStepProgress,
+} from "../state/types";
 import { readStorage, removeStorage, writeStorage } from "../util/storage";
 
 type ProgressState = {
   openSection: LessonSectionKey;
   completedSections: Record<LessonSectionKey, boolean>;
   exerciseIndex: number;
+  maxExerciseIndex: number;
   exerciseStatuses: ExerciseStatus[];
+  exerciseGuides: ExerciseGuideState[];
   fibAnswers: string[];
-  fibFeedbacks: ({ correct: boolean; correctAnswer: string } | null)[];
   mcqSelections: string[];
 };
 
@@ -27,11 +34,10 @@ export const useLessonProgress = (
   const [completedSections, setCompletedSections] =
     useState<Record<LessonSectionKey, boolean>>(defaultCompleted);
   const [exerciseIndex, setExerciseIndex] = useState(0);
+  const [maxExerciseIndex, setMaxExerciseIndex] = useState(0);
   const [exerciseStatuses, setExerciseStatuses] = useState<ExerciseStatus[]>([]);
+  const [exerciseGuides, setExerciseGuides] = useState<ExerciseGuideState[]>([]);
   const [fibAnswers, setFibAnswers] = useState<string[]>([]);
-  const [fibFeedbacks, setFibFeedbacks] = useState<
-    ({ correct: boolean; correctAnswer: string } | null)[]
-  >([]);
   const [mcqSelections, setMcqSelections] = useState<string[]>([]);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
 
@@ -59,14 +65,26 @@ export const useLessonProgress = (
     } else {
       setCompletedSections(defaultCompleted);
     }
-    if (typeof parsed?.exerciseIndex === "number") {
-      setExerciseIndex(parsed.exerciseIndex);
-    } else {
-      setExerciseIndex(0);
-    }
-    setExerciseStatuses(parsed?.exerciseStatuses || []);
+    const parsedExerciseIndex =
+      typeof parsed?.exerciseIndex === "number" ? parsed.exerciseIndex : 0;
+    setExerciseIndex(parsedExerciseIndex);
+    const parsedStatuses = parsed?.exerciseStatuses || [];
+    setExerciseStatuses(parsedStatuses);
+    const inferredMaxIndex = (() => {
+      if (typeof parsed?.maxExerciseIndex === "number") {
+        return parsed.maxExerciseIndex;
+      }
+      const lastAttempted = parsedStatuses.reduce((acc, status, idx) => {
+        if (status && status !== "unattempted") {
+          return idx;
+        }
+        return acc;
+      }, 0);
+      return Math.max(lastAttempted, parsedExerciseIndex);
+    })();
+    setMaxExerciseIndex(inferredMaxIndex);
+    setExerciseGuides(parsed?.exerciseGuides || []);
     setFibAnswers(parsed?.fibAnswers || []);
-    setFibFeedbacks(parsed?.fibFeedbacks || []);
     setMcqSelections(parsed?.mcqSelections || []);
     setHydratedKey(progressKey);
   }, [progressKey]);
@@ -82,18 +100,20 @@ export const useLessonProgress = (
       open: openSection,
       completed: completedSections,
       exerciseIndex,
+      maxExerciseIndex,
       exerciseStatuses,
+      exerciseGuides,
       fibAnswers,
-      fibFeedbacks,
       mcqSelections,
     };
     writeStorage(progressKey, payload);
   }, [
     completedSections,
     exerciseIndex,
+    maxExerciseIndex,
     exerciseStatuses,
+    exerciseGuides,
     fibAnswers,
-    fibFeedbacks,
     mcqSelections,
     openSection,
     progressKey,
@@ -108,16 +128,38 @@ export const useLessonProgress = (
     if (exerciseStatuses.length !== exerciseCount) {
       setExerciseStatuses(Array(exerciseCount).fill("unattempted"));
     }
+    if (exerciseGuides.length !== exerciseCount) {
+      setExerciseGuides((prev) => {
+        const next: ExerciseGuideState[] = Array.from({
+          length: exerciseCount,
+        }).map((_, idx) => {
+          const existing = prev[idx];
+          const completed =
+            existing?.completed ||
+            exerciseStatuses[idx] === "correct" ||
+            exerciseStatuses[idx] === "incorrect";
+          return (
+            existing || {
+              helpActive: false,
+              stepIndex: 0,
+              steps: [],
+              mainAttempts: 0,
+              mainLastIncorrect: false,
+              mainPending: "none",
+              completed,
+            }
+          );
+        });
+        return next;
+      });
+    }
     if (fibAnswers.length !== exerciseCount) {
       setFibAnswers(Array(exerciseCount).fill(""));
-    }
-    if (fibFeedbacks.length !== exerciseCount) {
-      setFibFeedbacks(Array(exerciseCount).fill(null));
     }
     if (mcqSelections.length !== exerciseCount) {
       setMcqSelections(Array(exerciseCount).fill(""));
     }
-  }, [exerciseCount, exerciseStatuses.length, fibAnswers.length, fibFeedbacks.length, mcqSelections.length]);
+  }, [exerciseCount, exerciseStatuses, exerciseGuides.length, fibAnswers.length, mcqSelections.length]);
 
   const reset = useCallback(() => {
     if (progressKey) {
@@ -127,9 +169,22 @@ export const useLessonProgress = (
     setOpenSection("lesson");
     setCompletedSections(defaultCompleted);
     setExerciseIndex(0);
+    setMaxExerciseIndex(0);
     setExerciseStatuses(Array(count).fill("unattempted"));
+    setExerciseGuides(
+      Array(count)
+        .fill(null)
+        .map(() => ({
+          helpActive: false,
+          stepIndex: 0,
+          steps: [] as ExerciseStepProgress[],
+          mainAttempts: 0,
+          mainLastIncorrect: false,
+          mainPending: "none",
+          completed: false,
+        }))
+    );
     setFibAnswers(Array(count).fill(""));
-    setFibFeedbacks(Array(count).fill(null));
     setMcqSelections(Array(count).fill(""));
   }, [progressKey]);
 
@@ -138,17 +193,19 @@ export const useLessonProgress = (
       openSection,
       completedSections,
       exerciseIndex,
+      maxExerciseIndex,
       exerciseStatuses,
+      exerciseGuides,
       fibAnswers,
-      fibFeedbacks,
       mcqSelections,
     }),
     [
       completedSections,
       exerciseIndex,
+      maxExerciseIndex,
       exerciseStatuses,
+      exerciseGuides,
       fibAnswers,
-      fibFeedbacks,
       mcqSelections,
       openSection,
     ]
@@ -159,9 +216,10 @@ export const useLessonProgress = (
     setOpenSection,
     setCompletedSections,
     setExerciseIndex,
+    setMaxExerciseIndex,
     setExerciseStatuses,
+    setExerciseGuides,
     setFibAnswers,
-    setFibFeedbacks,
     setMcqSelections,
     reset,
   };

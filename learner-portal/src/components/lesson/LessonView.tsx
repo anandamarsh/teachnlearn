@@ -18,7 +18,10 @@ import ExercisesSection from "../exercises/ExercisesSection";
 
 type LessonViewProps = {
   lesson: CatalogLesson;
-  fetchWithAuth: (path: string) => Promise<{ contentHtml?: string }>;
+  fetchWithAuth: (path: string) => Promise<{
+    contentHtml?: string;
+    content?: unknown;
+  }>;
 };
 
 const sectionOrder: LessonSectionKey[] = [
@@ -48,12 +51,14 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     setCompletedSections,
     exerciseIndex,
     setExerciseIndex,
+    maxExerciseIndex,
+    setMaxExerciseIndex,
     exerciseStatuses,
     setExerciseStatuses,
+    exerciseGuides,
+    setExerciseGuides,
     fibAnswers,
     setFibAnswers,
-    fibFeedbacks,
-    setFibFeedbacks,
     mcqSelections,
     setMcqSelections,
     reset: resetProgress,
@@ -93,10 +98,16 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   };
 
   const showCompleteButton = useMemo(
-    () =>
-      exerciseStatuses.length > 0 &&
-      exerciseStatuses.every((status) => status !== "unattempted"),
-    [exerciseStatuses]
+    () => {
+      if (exerciseGuides.length) {
+        return exerciseGuides.every((guide) => guide.completed);
+      }
+      return (
+        exerciseStatuses.length > 0 &&
+        exerciseStatuses.every((status) => status !== "unattempted")
+      );
+    },
+    [exerciseGuides, exerciseStatuses]
   );
 
   return (
@@ -170,12 +181,14 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                   exercises={exercises}
                   exerciseIndex={exerciseIndex}
                   setExerciseIndex={setExerciseIndex}
+                  maxExerciseIndex={maxExerciseIndex}
+                  setMaxExerciseIndex={setMaxExerciseIndex}
                   exerciseStatuses={exerciseStatuses}
                   setExerciseStatuses={setExerciseStatuses}
+                  exerciseGuides={exerciseGuides}
+                  setExerciseGuides={setExerciseGuides}
                   fibAnswers={fibAnswers}
                   setFibAnswers={setFibAnswers}
-                  fibFeedbacks={fibFeedbacks}
-                  setFibFeedbacks={setFibFeedbacks}
                   mcqSelections={mcqSelections}
                   setMcqSelections={setMcqSelections}
                   onComplete={() => handleAdvanceSection("exercises")}

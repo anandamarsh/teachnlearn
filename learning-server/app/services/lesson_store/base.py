@@ -38,7 +38,7 @@ class LessonStoreBase:
         return "application/json" if section_key == "exercises" else "text/html"
 
     def _section_default_body(self, section_key: str) -> bytes:
-        return b"{}" if section_key == "exercises" else b""
+        return b"[]" if section_key == "exercises" else b""
 
     def _icon_key(self, sanitized_email: str, lesson_id: str, extension: str) -> str:
         safe_extension = extension.lstrip(".").lower()

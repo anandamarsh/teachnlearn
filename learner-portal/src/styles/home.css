@@ -68,3 +68,16 @@
   font-weight: 700;
   color: #e65100;
 }
+
+.lesson-popover-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lesson-popover-id {
+  color: rgba(0, 0, 0, 0.45);
+  font-weight: 600;
+  white-space: nowrap;
+}

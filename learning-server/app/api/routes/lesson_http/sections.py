@@ -102,9 +102,22 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        content_html = payload.get("contentHtml")
-        if content_html is None:
-            return json_error("contentHtml is required", 400)
+        if section_key == "exercises":
+            content_json = payload.get("content")
+            if content_json is None:
+                content_json = payload.get("contentJson")
+            if content_json is None:
+                content_html = payload.get("contentHtml")
+                if content_html is None:
+                    return json_error("content is required for exercises", 400)
+            else:
+                if not isinstance(content_json, list):
+                    return json_error("content must be a JSON array", 400)
+                content_html = json.dumps(content_json, indent=2)
+        else:
+            content_html = payload.get("contentHtml")
+            if content_html is None:
+                return json_error("contentHtml is required", 400)
         try:
             section = store.put_section(
                 email, lesson_id, section_key, str(content_html), allow_create=False
@@ -141,9 +154,20 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        content_html = payload.get("contentHtml")
-        if content_html is None:
-            content_html = ""
+        if section_key == "exercises":
+            content_json = payload.get("content")
+            if content_json is None:
+                content_json = payload.get("contentJson")
+            if content_json is not None:
+                if not isinstance(content_json, list):
+                    return json_error("content must be a JSON array", 400)
+                content_html = json.dumps(content_json, indent=2)
+            else:
+                content_html = payload.get("contentHtml") or "[]"
+        else:
+            content_html = payload.get("contentHtml")
+            if content_html is None:
+                content_html = ""
         try:
             section = store.put_section(
                 email, lesson_id, section_key, str(content_html), allow_create=True
