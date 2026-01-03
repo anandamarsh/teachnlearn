@@ -276,7 +276,7 @@ const ExerciseSlide = ({
       <Box
         key={stepIndex}
         className={`exercise-step step-reveal${finalDoneClass}`}
-        ref={(node) => {
+        ref={(node: HTMLDivElement | null) => {
           stepRefs.current[stepIndex] = node;
         }}
       >
