@@ -10,7 +10,10 @@ type SectionState = {
 
 type UseLessonSectionsOptions = {
   lesson: CatalogLesson | null;
-  fetchWithAuth: (path: string) => Promise<{ contentHtml?: string }>;
+  fetchWithAuth: (path: string) => Promise<{
+    contentHtml?: string;
+    content?: unknown;
+  }>;
 };
 
 export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOptions) => {
@@ -56,6 +59,10 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         } else if (sectionKey === "references") {
           setReferencesHtml(payload.contentHtml || "");
         } else {
+          if (Array.isArray(payload.content)) {
+            setExercises(payload.content);
+            return;
+          }
           const rawExercises = payload.contentHtml || "[]";
           const parsed = JSON.parse(rawExercises);
           setExercises(Array.isArray(parsed) ? parsed : []);

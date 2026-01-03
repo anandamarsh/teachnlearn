@@ -1,8 +1,13 @@
-import { Dispatch, SetStateAction, useEffect, useRef } from "react";
+import { Dispatch, SetStateAction, useEffect, useMemo, useRef } from "react";
 import { Box, Button, IconButton, Typography } from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import { ExerciseItem, ExerciseStatus } from "../../state/types";
+import {
+  ExerciseGuideState,
+  ExerciseItem,
+  ExerciseStatus,
+  ExerciseStepProgress,
+} from "../../state/types";
 import ExerciseDots from "./ExerciseDots";
 import ExerciseSlide from "./ExerciseSlide";
 
@@ -14,10 +19,12 @@ type ExercisesSectionProps = {
   setExerciseIndex: SetState<number>;
   exerciseStatuses: ExerciseStatus[];
   setExerciseStatuses: SetState<ExerciseStatus[]>;
+  exerciseGuides: ExerciseGuideState[];
+  setExerciseGuides: SetState<ExerciseGuideState[]>;
+  maxExerciseIndex: number;
+  setMaxExerciseIndex: SetState<number>;
   fibAnswers: string[];
   setFibAnswers: SetState<string[]>;
-  fibFeedbacks: ({ correct: boolean; correctAnswer: string } | null)[];
-  setFibFeedbacks: SetState<({ correct: boolean; correctAnswer: string } | null)[]>;
   mcqSelections: string[];
   setMcqSelections: SetState<string[]>;
   onComplete: () => void;
@@ -30,10 +37,12 @@ const ExercisesSection = ({
   setExerciseIndex,
   exerciseStatuses,
   setExerciseStatuses,
+  exerciseGuides,
+  setExerciseGuides,
+  maxExerciseIndex,
+  setMaxExerciseIndex,
   fibAnswers,
   setFibAnswers,
-  fibFeedbacks,
-  setFibFeedbacks,
   mcqSelections,
   setMcqSelections,
   onComplete,
@@ -43,13 +52,25 @@ const ExercisesSection = ({
   const scrollTimeoutRef = useRef<number | null>(null);
   const advanceTimeoutRef = useRef<number | null>(null);
   const pendingIndexRef = useRef<number>(0);
+  const touchStartXRef = useRef<number | null>(null);
+  const programmaticScrollRef = useRef<{ active: boolean; target: number }>({
+    active: false,
+    target: 0,
+  });
 
-  const scrollToIndex = (index: number, behavior: ScrollBehavior = "smooth") => {
+  const scrollToIndex = (
+    index: number,
+    behavior: ScrollBehavior = "smooth",
+    allowBeyond = false
+  ) => {
     if (!carouselRef.current) {
       return;
     }
+    const clampedIndex = allowBeyond
+      ? index
+      : Math.min(index, Math.max(maxExerciseIndex, 0));
     const width = carouselRef.current.clientWidth;
-    carouselRef.current.scrollTo({ left: width * index, behavior });
+    carouselRef.current.scrollTo({ left: width * clampedIndex, behavior });
   };
 
   const handleCarouselScroll = () => {
@@ -60,8 +81,36 @@ const ExercisesSection = ({
     if (!width) {
       return;
     }
-    const nextIndex = Math.round(carouselRef.current.scrollLeft / width);
-    pendingIndexRef.current = nextIndex;
+    const scrollLeft = carouselRef.current.scrollLeft;
+    const nextIndex = Math.round(scrollLeft / width);
+    if (nextIndex > maxExerciseIndex) {
+      scrollToIndex(maxExerciseIndex, "auto", true);
+      pendingIndexRef.current = maxExerciseIndex;
+      if (scrollTimeoutRef.current !== null) {
+        window.clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = window.setTimeout(() => {
+        if (pendingIndexRef.current !== exerciseIndex) {
+          setExerciseIndex(pendingIndexRef.current);
+        }
+      }, 80);
+      return;
+    }
+    if (programmaticScrollRef.current.active) {
+      const targetLeft = programmaticScrollRef.current.target * width;
+      if (Math.abs(scrollLeft - targetLeft) < 2) {
+        programmaticScrollRef.current.active = false;
+        if (programmaticScrollRef.current.target !== exerciseIndex) {
+          setExerciseIndex(programmaticScrollRef.current.target);
+        }
+      }
+      return;
+    }
+    const clampedIndex = Math.min(nextIndex, Math.max(maxExerciseIndex, 0));
+    if (nextIndex !== clampedIndex) {
+      scrollToIndex(clampedIndex, "auto", true);
+    }
+    pendingIndexRef.current = clampedIndex;
     if (scrollTimeoutRef.current !== null) {
       window.clearTimeout(scrollTimeoutRef.current);
     }
@@ -79,6 +128,13 @@ const ExercisesSection = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exercises.length]);
 
+  useEffect(() => {
+    if (exerciseIndex > maxExerciseIndex) {
+      setExerciseIndex(maxExerciseIndex);
+      scrollToIndex(maxExerciseIndex, "auto");
+    }
+  }, [exerciseIndex, maxExerciseIndex, setExerciseIndex]);
+
   useEffect(
     () => () => {
       if (advanceTimeoutRef.current !== null) {
@@ -91,6 +147,18 @@ const ExercisesSection = ({
     []
   );
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowRight" && exerciseIndex >= maxExerciseIndex) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [exerciseIndex, maxExerciseIndex]);
+
   const advanceToNext = (index: number, delayMs = 0) => {
     const nextIndex = index + 1;
     if (nextIndex >= exercises.length) {
@@ -101,41 +169,481 @@ const ExercisesSection = ({
     }
     if (delayMs > 0) {
       advanceTimeoutRef.current = window.setTimeout(() => {
+        programmaticScrollRef.current = { active: true, target: nextIndex };
         setExerciseIndex(nextIndex);
-        scrollToIndex(nextIndex);
+        scrollToIndex(nextIndex, "smooth", true);
       }, delayMs);
     } else {
+      programmaticScrollRef.current = { active: true, target: nextIndex };
       setExerciseIndex(nextIndex);
-      scrollToIndex(nextIndex);
+      scrollToIndex(nextIndex, "smooth", true);
     }
   };
 
+  const normalize = (value: string | number | null | undefined) =>
+    String(value ?? "").trim();
+
+  const defaultStepProgress = useMemo<ExerciseStepProgress>(
+    () => ({
+      status: "unanswered",
+      attempts: 0,
+      fibAnswer: "",
+      mcqSelection: "",
+      lastIncorrect: false,
+    }),
+    []
+  );
+
+  const buildDefaultGuide = (completed = false): ExerciseGuideState => ({
+    helpActive: false,
+    stepIndex: 0,
+    steps: [],
+    mainAttempts: 0,
+    mainLastIncorrect: false,
+    mainPending: "none",
+    completed,
+  });
+
+  useEffect(() => {
+    if (!exercises.length) {
+      return;
+    }
+    setExerciseGuides((prev) => {
+      let changed = false;
+      const base = prev.length === exercises.length
+        ? prev
+        : Array.from({ length: exercises.length }).map((_, idx) => prev[idx]);
+      if (base.length !== prev.length) {
+        changed = true;
+      }
+      const next = base.map((guide, idx) => {
+        const exercise = exercises[idx];
+        const stepCount = exercise?.steps?.length ?? 0;
+        if (!exercise || stepCount === 0) {
+          if (!guide) {
+            changed = true;
+            return buildDefaultGuide(false);
+          }
+          return guide;
+        }
+        const existing = guide || buildDefaultGuide(false);
+        const steps = existing.steps || [];
+        const nextSteps = Array.from({ length: stepCount }).map((_, stepIdx) => {
+          const prevStep = steps[stepIdx];
+          if (!prevStep) {
+            changed = true;
+            return { ...defaultStepProgress };
+          }
+          return prevStep;
+        });
+        const nextStepIndex = Math.min(existing.stepIndex, stepCount);
+        if (
+          nextSteps.length !== steps.length ||
+          nextStepIndex !== existing.stepIndex
+        ) {
+          changed = true;
+        }
+        return { ...existing, steps: nextSteps, stepIndex: nextStepIndex };
+      });
+      return changed ? next : prev;
+    });
+  }, [defaultStepProgress, exercises, setExerciseGuides]);
+
+  useEffect(() => {
+    if (!exercises.length) {
+      return;
+    }
+    setMaxExerciseIndex((prev) =>
+      Math.min(prev, Math.max(exercises.length - 1, 0))
+    );
+  }, [exercises.length, setMaxExerciseIndex]);
+
+  const ensureGuide = (
+    guides: ExerciseGuideState[],
+    index: number
+  ): ExerciseGuideState => {
+    return guides[index] || buildDefaultGuide(false);
+  };
+
+  const updateGuide = (
+    index: number,
+    updater: (guide: ExerciseGuideState) => ExerciseGuideState
+  ) => {
+    setExerciseGuides((prev) => {
+      const next = [...prev];
+      const guide = ensureGuide(prev, index);
+      next[index] = updater(guide);
+      return next;
+    });
+  };
+
+  const stepsComplete = (guide: ExerciseGuideState, stepCount: number) =>
+    Boolean(stepCount) && guide.helpActive && guide.stepIndex >= stepCount;
+
+  const handleMainCorrect = (index: number) => {
+    updateGuide(index, (guide) => ({
+      ...guide,
+      completed: true,
+      mainLastIncorrect: false,
+      mainPending: "none",
+    }));
+    setMaxExerciseIndex((prev) =>
+      Math.min(exercises.length - 1, Math.max(prev, index + 1))
+    );
+    advanceToNext(index, 1000);
+  };
+
+  const resetStepsAfterMainMiss = (index: number, stepCount: number) => {
+    window.setTimeout(() => {
+      setExerciseGuides((prev) => {
+        const next = [...prev];
+        const guide = ensureGuide(prev, index);
+        const steps = Array.from({ length: stepCount }).map(() => ({
+          ...defaultStepProgress,
+        }));
+        next[index] = {
+          ...guide,
+          helpActive: true,
+          stepIndex: 0,
+          steps,
+          mainPending: "none",
+          mainLastIncorrect: false,
+        };
+        return next;
+      });
+      setMcqSelections((prev) => {
+        const next = [...prev];
+        next[index] = "";
+        return next;
+      });
+      setFibAnswers((prev) => {
+        const next = [...prev];
+        next[index] = "";
+        return next;
+      });
+    }, 1000);
+  };
+
+  const handleMainIncorrect = (
+    index: number,
+    hasSteps: boolean,
+    stepCount: number
+  ) => {
+    const clearMainAnswer = () => {
+      setMcqSelections((prev) => {
+        const next = [...prev];
+        next[index] = "";
+        return next;
+      });
+      setFibAnswers((prev) => {
+        const next = [...prev];
+        next[index] = "";
+        return next;
+      });
+    };
+    updateGuide(index, (guide) => {
+      if (!hasSteps) {
+        return {
+          ...guide,
+          mainAttempts: guide.mainAttempts + 1,
+          mainLastIncorrect: true,
+          mainPending: "none",
+        };
+      }
+      if (stepsComplete(guide, stepCount)) {
+        resetStepsAfterMainMiss(index, stepCount);
+        clearMainAnswer();
+        return {
+          ...guide,
+          mainAttempts: guide.mainAttempts + 1,
+          mainLastIncorrect: false,
+          mainPending: "incorrectPending",
+        };
+      }
+      clearMainAnswer();
+      return {
+        ...guide,
+        helpActive: true,
+        stepIndex: guide.stepIndex || 0,
+        mainAttempts: guide.mainAttempts + 1,
+        mainLastIncorrect: false,
+        mainPending: "none",
+      };
+    });
+  };
+
   const handleAnswer = (index: number, answer: string, option: string) => {
-    const isCorrect = option === answer;
-    const nextStatuses = [...exerciseStatuses];
-    nextStatuses[index] = isCorrect ? "correct" : "incorrect";
-    setExerciseStatuses(nextStatuses);
+    const isCorrect = normalize(option) === normalize(answer);
     const nextSelections = [...mcqSelections];
     nextSelections[index] = option;
     setMcqSelections(nextSelections);
-    advanceToNext(index, isCorrect ? 1000 : 0);
+    const nextStatuses = [...exerciseStatuses];
+    if (isCorrect) {
+      if (nextStatuses[index] !== "incorrect") {
+        nextStatuses[index] = "correct";
+      }
+      setExerciseStatuses(nextStatuses);
+      handleMainCorrect(index);
+      return;
+    }
+    if (nextStatuses[index] === "unattempted") {
+      nextStatuses[index] = "incorrect";
+      setExerciseStatuses(nextStatuses);
+    }
+    const stepCount = exercises[index]?.steps?.length ?? 0;
+    handleMainIncorrect(index, stepCount > 0, stepCount);
   };
 
   const handleFibSubmit = (index: number, answer: string) => {
-    const submitted = (fibAnswers[index] ?? "").trim();
-    const correct = String(answer ?? "").trim();
+    const submitted = normalize(fibAnswers[index]);
+    const correct = normalize(answer);
     const isCorrect = submitted === correct;
+    if (isCorrect) {
+      const nextStatuses = [...exerciseStatuses];
+      if (nextStatuses[index] !== "incorrect") {
+        nextStatuses[index] = "correct";
+      }
+      setExerciseStatuses(nextStatuses);
+      handleMainCorrect(index);
+      return;
+    }
     const nextStatuses = [...exerciseStatuses];
-    nextStatuses[index] = isCorrect ? "correct" : "incorrect";
-    setExerciseStatuses(nextStatuses);
-    const nextFeedbacks = [...fibFeedbacks];
-    nextFeedbacks[index] = { correct: isCorrect, correctAnswer: correct };
-    setFibFeedbacks(nextFeedbacks);
-    advanceToNext(index, isCorrect ? 1000 : 0);
+    if (nextStatuses[index] === "unattempted") {
+      nextStatuses[index] = "incorrect";
+      setExerciseStatuses(nextStatuses);
+    }
+    const stepCount = exercises[index]?.steps?.length ?? 0;
+    handleMainIncorrect(index, stepCount > 0, stepCount);
+  };
+
+  const handleStepFibChange = (exerciseIdx: number, stepIdx: number, value: string) => {
+    updateGuide(exerciseIdx, (guide) => {
+      const steps = [...guide.steps];
+      const current = steps[stepIdx] || { ...defaultStepProgress };
+      steps[stepIdx] = { ...current, fibAnswer: value, lastIncorrect: false };
+      return { ...guide, steps };
+    });
+  };
+
+  const handleStepOptionSelect = (
+    exerciseIdx: number,
+    stepIdx: number,
+    option: string
+  ) => {
+    const scheduleFinalize = (delayMs: number) => {
+      window.setTimeout(() => {
+        setExerciseGuides((prev) => {
+          const next = [...prev];
+          const guide = ensureGuide(prev, exerciseIdx);
+          const exercise = exercises[exerciseIdx];
+          if (!exercise) {
+            return prev;
+          }
+          const steps = [...guide.steps];
+          const current = steps[stepIdx] || { ...defaultStepProgress };
+          if (current.status !== "correctPending") {
+            return prev;
+          }
+          steps[stepIdx] = {
+            ...current,
+            status: "correct",
+            lastIncorrect: false,
+          };
+          const nextStepIndex = Math.min(
+            stepIdx + 1,
+            exercise.steps?.length ?? 0
+          );
+          next[exerciseIdx] = {
+            ...guide,
+            helpActive: true,
+            steps,
+            stepIndex: Math.max(guide.stepIndex, nextStepIndex),
+          };
+          return next;
+        });
+      }, delayMs);
+    };
+
+    updateGuide(exerciseIdx, (guide) => {
+      const exercise = exercises[exerciseIdx];
+      const step = exercise?.steps?.[stepIdx];
+      if (!step) {
+        return guide;
+      }
+      const steps = [...guide.steps];
+      const current = steps[stepIdx] || { ...defaultStepProgress };
+      const nextAttempts = current.attempts + 1;
+      const isCorrect = normalize(option) === normalize(step.answer);
+      if (isCorrect) {
+        steps[stepIdx] = {
+          ...current,
+          mcqSelection: option,
+          attempts: nextAttempts,
+          status: "correctPending",
+          lastIncorrect: false,
+        };
+        scheduleFinalize(1000);
+      } else if (nextAttempts >= 3) {
+        steps[stepIdx] = {
+          ...current,
+          mcqSelection: step.answer,
+          attempts: nextAttempts,
+          status: "revealed",
+          lastIncorrect: false,
+        };
+      } else {
+        steps[stepIdx] = {
+          ...current,
+          mcqSelection: option,
+          attempts: nextAttempts,
+          status: "unanswered",
+          lastIncorrect: true,
+        };
+      }
+      const nextStepIndex =
+        steps[stepIdx].status === "unanswered" ||
+        steps[stepIdx].status === "correctPending" ||
+        steps[stepIdx].status === "revealed"
+          ? guide.stepIndex
+          : Math.min(stepIdx + 1, exercise.steps?.length ?? 0);
+      return {
+        ...guide,
+        helpActive: true,
+        steps,
+        stepIndex: Math.max(guide.stepIndex, nextStepIndex),
+      };
+    });
+  };
+
+  const handleStepFibSubmit = (exerciseIdx: number, stepIdx: number) => {
+    updateGuide(exerciseIdx, (guide) => {
+      const exercise = exercises[exerciseIdx];
+      const step = exercise?.steps?.[stepIdx];
+      if (!step) {
+        return guide;
+      }
+      const steps = [...guide.steps];
+      const current = steps[stepIdx] || { ...defaultStepProgress };
+      const nextAttempts = current.attempts + 1;
+      const submitted = normalize(current.fibAnswer);
+      const correct = normalize(step.answer);
+      if (submitted === correct) {
+        steps[stepIdx] = {
+          ...current,
+          fibAnswer: submitted,
+          attempts: nextAttempts,
+          status: "correctPending",
+          lastIncorrect: false,
+        };
+        window.setTimeout(() => {
+          setExerciseGuides((prev) => {
+            const next = [...prev];
+            const guidePrev = ensureGuide(prev, exerciseIdx);
+            const exercisePrev = exercises[exerciseIdx];
+            if (!exercisePrev) {
+              return prev;
+            }
+            const stepsPrev = [...guidePrev.steps];
+            const currentPrev = stepsPrev[stepIdx] || { ...defaultStepProgress };
+            if (currentPrev.status !== "correctPending") {
+              return prev;
+            }
+            stepsPrev[stepIdx] = {
+              ...currentPrev,
+              status: "correct",
+              lastIncorrect: false,
+            };
+            const nextStepIndex = Math.min(
+              stepIdx + 1,
+              exercisePrev.steps?.length ?? 0
+            );
+            next[exerciseIdx] = {
+              ...guidePrev,
+              helpActive: true,
+              steps: stepsPrev,
+              stepIndex: Math.max(guidePrev.stepIndex, nextStepIndex),
+            };
+            return next;
+          });
+        }, 1000);
+      } else if (nextAttempts >= 3) {
+        steps[stepIdx] = {
+          ...current,
+          fibAnswer: correct,
+          attempts: nextAttempts,
+          status: "revealed",
+          lastIncorrect: false,
+        };
+      } else {
+        steps[stepIdx] = {
+          ...current,
+          attempts: nextAttempts,
+          status: "unanswered",
+          lastIncorrect: true,
+        };
+      }
+      const nextStepIndex =
+        steps[stepIdx].status === "unanswered" ||
+        steps[stepIdx].status === "revealed" ||
+        steps[stepIdx].status === "correctPending"
+          ? guide.stepIndex
+          : Math.min(stepIdx + 1, exercise.steps?.length ?? 0);
+      return {
+        ...guide,
+        helpActive: true,
+        steps,
+        stepIndex: Math.max(guide.stepIndex, nextStepIndex),
+      };
+    });
+  };
+
+  const handleStepWrongReset = (exerciseIdx: number, stepIdx: number) => {
+    updateGuide(exerciseIdx, (guide) => {
+      const steps = [...guide.steps];
+      const current = steps[stepIdx];
+      if (!current) {
+        return guide;
+      }
+      steps[stepIdx] = {
+        ...current,
+        status: "unanswered",
+        lastIncorrect: false,
+        fibAnswer: "",
+        mcqSelection: "",
+      };
+      return {
+        ...guide,
+        helpActive: true,
+        steps,
+      };
+    });
+  };
+
+  const handleStepRevealComplete = (exerciseIdx: number, stepIdx: number) => {
+    updateGuide(exerciseIdx, (guide) => {
+      const exercise = exercises[exerciseIdx];
+      if (!exercise) {
+        return guide;
+      }
+      if (guide.stepIndex > stepIdx) {
+        return guide;
+      }
+      const nextStepIndex = Math.min(stepIdx + 1, exercise.steps?.length ?? 0);
+      return {
+        ...guide,
+        helpActive: true,
+        stepIndex: Math.max(guide.stepIndex, nextStepIndex),
+      };
+    });
   };
 
   const goToIndex = (nextIndex: number) => {
-    if (nextIndex >= 0 && nextIndex < exercises.length) {
+    if (
+      nextIndex >= 0 &&
+      nextIndex < exercises.length &&
+      nextIndex <= maxExerciseIndex
+    ) {
+      programmaticScrollRef.current = { active: true, target: nextIndex };
       setExerciseIndex(nextIndex);
       scrollToIndex(nextIndex);
     }
@@ -157,29 +665,78 @@ const ExercisesSection = ({
               className="exercise-carousel"
               ref={carouselRef}
               onScroll={handleCarouselScroll}
+              onWheel={(event) => {
+                if (exerciseIndex < maxExerciseIndex) {
+                  return;
+                }
+                if (event.deltaX > 0 || event.deltaY > 0) {
+                  event.preventDefault();
+                  scrollToIndex(maxExerciseIndex, "auto", true);
+                }
+              }}
+              onTouchStart={(event) => {
+                touchStartXRef.current = event.touches[0]?.clientX ?? null;
+              }}
+              onTouchMove={(event) => {
+                if (exerciseIndex < maxExerciseIndex) {
+                  return;
+                }
+                const startX = touchStartXRef.current;
+                const currentX = event.touches[0]?.clientX ?? null;
+                if (startX === null || currentX === null) {
+                  return;
+                }
+                const delta = startX - currentX;
+                if (delta > 0) {
+                  event.preventDefault();
+                  scrollToIndex(maxExerciseIndex, "auto", true);
+                }
+              }}
+              onTouchEnd={() => {
+                touchStartXRef.current = null;
+              }}
             >
               {exercises.map((exercise, idx) => {
                 const fibValue = fibAnswers[idx] ?? "";
-                const feedback = fibFeedbacks[idx] ?? null;
-                const status = exerciseStatuses[idx];
+                const guide =
+                  exerciseGuides[idx] || buildDefaultGuide(false);
                 return (
                   <ExerciseSlide
                     key={idx}
                     exercise={exercise}
-                    status={status}
+                    guide={guide}
                     fibValue={fibValue}
-                    fibFeedback={feedback}
                     mcqSelection={mcqSelections[idx]}
-                    onFibChange={(value) =>
+                    onMainFibChange={(value) => {
                       setFibAnswers((prev) => {
                         const next = [...prev];
                         next[idx] = value;
                         return next;
-                      })
-                    }
-                    onFibSubmit={() => handleFibSubmit(idx, exercise.answer)}
-                    onOptionSelect={(option) =>
+                      });
+                      updateGuide(idx, (guide) => ({
+                        ...guide,
+                        mainLastIncorrect: false,
+                        mainPending: "none",
+                      }));
+                    }}
+                    onMainFibSubmit={() => handleFibSubmit(idx, exercise.answer)}
+                    onMainOptionSelect={(option) =>
                       handleAnswer(idx, exercise.answer, option)
+                    }
+                    onStepFibChange={(stepIdx, value) =>
+                      handleStepFibChange(idx, stepIdx, value)
+                    }
+                    onStepFibSubmit={(stepIdx) =>
+                      handleStepFibSubmit(idx, stepIdx)
+                    }
+                    onStepOptionSelect={(stepIdx, option) =>
+                      handleStepOptionSelect(idx, stepIdx, option)
+                    }
+                    onStepRevealComplete={(stepIdx) =>
+                      handleStepRevealComplete(idx, stepIdx)
+                    }
+                    onStepWrongReset={(stepIdx) =>
+                      handleStepWrongReset(idx, stepIdx)
                     }
                   />
                 );
@@ -188,9 +745,11 @@ const ExercisesSection = ({
             <IconButton
               className="exercise-carousel-nav"
               onClick={() =>
-                goToIndex(Math.min(exerciseIndex + 1, exercises.length - 1))
+                goToIndex(
+                  Math.min(exerciseIndex + 1, maxExerciseIndex, exercises.length - 1)
+                )
               }
-              disabled={exerciseIndex >= exercises.length - 1}
+              disabled={exerciseIndex >= maxExerciseIndex}
             >
               <ChevronRightRoundedIcon />
             </IconButton>
@@ -199,7 +758,11 @@ const ExercisesSection = ({
             count={exercises.length}
             currentIndex={exerciseIndex}
             statuses={exerciseStatuses}
+            maxUnlockedIndex={maxExerciseIndex}
             onSelect={(idx) => {
+              if (idx > maxExerciseIndex) {
+                return;
+              }
               setExerciseIndex(idx);
               scrollToIndex(idx, "auto");
             }}

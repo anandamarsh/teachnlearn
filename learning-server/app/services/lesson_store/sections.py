@@ -55,6 +55,9 @@ class LessonStoreSections:
                 return None
             raise
         content = obj["Body"].read().decode("utf-8")
+        if section_key == "exercises":
+            payload = json.loads(content) if content.strip() else []
+            return {"key": section_key, "content": payload}
         return {"key": section_key, "contentHtml": content}
 
     def get_section_sanitized(
@@ -74,6 +77,9 @@ class LessonStoreSections:
                 return None
             raise
         content = obj["Body"].read().decode("utf-8")
+        if section_key == "exercises":
+            payload = json.loads(content) if content.strip() else []
+            return {"key": section_key, "content": payload}
         return {"key": section_key, "contentHtml": content}
 
     def get_section_meta(self, email: str, lesson_id: str, section_key: str) -> dict[str, Any] | None:
@@ -139,6 +145,9 @@ class LessonStoreSections:
             Body=json.dumps(lesson, indent=2).encode("utf-8"),
             ContentType="application/json",
         )
+        if section_key == "exercises":
+            payload = json.loads(content_html) if content_html.strip() else []
+            return {"key": section_key, "content": payload}
         return {"key": section_key, "contentHtml": content_html}
 
     def append_exercises(

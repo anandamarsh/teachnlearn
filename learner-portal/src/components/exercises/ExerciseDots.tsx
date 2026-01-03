@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box } from "@mui/material";
 import { ExerciseStatus } from "../../state/types";
 
@@ -6,6 +6,7 @@ type ExerciseDotsProps = {
   count: number;
   currentIndex: number;
   statuses: ExerciseStatus[];
+  maxUnlockedIndex: number;
   onSelect: (index: number) => void;
 };
 
@@ -13,9 +14,11 @@ const ExerciseDots = ({
   count,
   currentIndex,
   statuses,
+  maxUnlockedIndex,
   onSelect,
 }: ExerciseDotsProps) => {
   const dotsRef = useRef<HTMLDivElement | null>(null);
+  const [centered, setCentered] = useState(true);
 
   useEffect(() => {
     if (!dotsRef.current) {
@@ -45,26 +48,53 @@ const ExerciseDots = ({
     }
   }, [currentIndex]);
 
+  useEffect(() => {
+    const container = dotsRef.current;
+    if (!container) {
+      return;
+    }
+    const updateCentered = () => {
+      const isScrollable = container.scrollWidth > container.clientWidth + 1;
+      setCentered(!isScrollable);
+    };
+    const frame = window.requestAnimationFrame(updateCentered);
+    window.addEventListener("resize", updateCentered);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updateCentered);
+    };
+  }, [count]);
+
   if (!count) {
     return null;
   }
 
   return (
     <Box className="exercise-dot-dock">
-      <Box className="exercise-dot-strip centered" ref={dotsRef}>
+      <Box
+        className={`exercise-dot-strip${centered ? " centered" : ""}`}
+        ref={dotsRef}
+      >
         {Array.from({ length: count }).map((_, idx) => {
           const status = statuses[idx] ?? "unattempted";
-          const isCurrent = idx === currentIndex;
-          const dotState = isCurrent ? "current" : status;
+          const isLatest = idx === maxUnlockedIndex;
+          const isDisplayed = idx === currentIndex;
+          const dotState = isLatest ? "latest" : status;
+          const isLocked = idx > maxUnlockedIndex;
           return (
             <button
               key={`${idx}-${dotState}`}
               type="button"
               data-dot-index={idx}
-              className={`exercise-dot ${dotState}`}
+              className={`exercise-dot ${dotState} ${
+                isDisplayed ? "displayed" : ""
+              } ${
+                isLocked ? "locked" : ""
+              }`}
               aria-label={`Question ${idx + 1}`}
-              title={`Question ${idx + 1}`}
+              title={isLocked ? undefined : `Question ${idx + 1}`}
               onClick={() => onSelect(idx)}
+              disabled={isLocked}
             />
           );
         })}

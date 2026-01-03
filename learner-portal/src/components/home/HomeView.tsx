@@ -84,9 +84,16 @@ const HomeView = ({ lessons, onSelectLesson }: HomeViewProps) => {
           }}
         >
           <Stack spacing={1}>
-            <Typography variant="subtitle1" fontWeight={700}>
-              {hoverLesson?.title || ""}
-            </Typography>
+            <Box className="lesson-popover-title">
+              <Typography variant="subtitle1" fontWeight={700}>
+                {hoverLesson?.title || ""}
+              </Typography>
+              {hoverLesson?.id ? (
+                <Typography variant="caption" className="lesson-popover-id">
+                  {hoverLesson.id}
+                </Typography>
+              ) : null}
+            </Box>
             <Typography variant="body2" color="text.secondary">
               by{" "}
               <span className="popup-teacher">
