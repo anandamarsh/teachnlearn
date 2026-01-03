@@ -1,0 +1,92 @@
+.lesson-stepper {
+  width: 100%;
+  margin: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #fafafa;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  left: 0;
+  right: 0;
+}
+
+.lesson-stepper-inner {
+  width: min(60%, 720px);
+  margin: 0 auto;
+}
+
+.lesson-stepper-reset {
+  position: fixed !important;
+  right: 0.5rem;
+  top: 0.05rem;
+  transform: none;
+  height: 40px;
+  width: 40px;
+  z-index: 1300;
+}
+
+.lesson-stepper .MuiStepLabel-label.Mui-active {
+  color: #e65100;
+  font-weight: 700;
+}
+
+.lesson-stepper .MuiStepConnector-line {
+  border-color: rgba(0, 0, 0, 0.26);
+  border-top-width: 2px;
+}
+
+.lesson-stepper
+  .MuiStepConnector-root.Mui-active
+  .MuiStepConnector-line {
+  border-color: #e65100;
+}
+
+.lesson-stepper
+  .MuiStepConnector-root.Mui-completed
+  .MuiStepConnector-line {
+  border-color: #2e7d32;
+}
+
+.lesson-content {
+  width: 80%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0;
+  background: transparent;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .lesson-content {
+    width: 90%;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  .lesson-content {
+    width: 80%;
+  }
+}
+
+@media (max-width: 600px) {
+  .lesson-stepper-inner {
+    width: 100%;
+    padding: 0 0.5rem;
+  }
+
+  .lesson-stepper-reset {
+    right: 0.5rem;
+    top: 2.5rem;
+    height: 32px;
+    width: 32px;
+  }
+
+  .lesson-content {
+    width: 95%;
+  }
+}
