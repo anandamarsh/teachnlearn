@@ -1,0 +1,70 @@
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.home-grid {
+  display: grid;
+  gap: calc(18px + 1rem);
+  grid-template-columns: repeat(auto-fill, 8rem);
+  justify-content: start;
+  margin: 0;
+}
+
+.home-screen {
+  padding: 0 2rem;
+}
+
+.home-item {
+  width: 8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-tile {
+  width: 8rem;
+  height: 8rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 18px;
+  border: 2px solid transparent;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: box-shadow 160ms ease;
+}
+
+.home-tile:hover {
+  border: 2px solid #e65100;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
+}
+
+.home-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-title {
+  width: 100%;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: #555555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup-teacher {
+  font-weight: 700;
+  color: #e65100;
+}
