@@ -91,3 +91,22 @@ class LessonStoreBase:
             if candidate not in existing:
                 return candidate
         raise RuntimeError("Unable to generate unique lesson id")
+
+    def list_account_prefixes(self) -> list[str]:
+        self._ensure_bucket()
+        prefix = f"{self._settings.s3_prefix}/"
+        paginator = self._s3_client.get_paginator("list_objects_v2")
+        accounts: list[str] = []
+        for page in paginator.paginate(
+            Bucket=self._settings.s3_bucket,
+            Prefix=prefix,
+            Delimiter="/",
+        ):
+            for entry in page.get("CommonPrefixes", []):
+                key_prefix = str(entry.get("Prefix", ""))
+                if not key_prefix.startswith(prefix):
+                    continue
+                account = key_prefix[len(prefix) :].strip("/")
+                if account:
+                    accounts.append(account)
+        return accounts

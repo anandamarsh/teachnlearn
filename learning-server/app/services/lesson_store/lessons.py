@@ -15,6 +15,10 @@ class LessonStoreLessons:
         with self._lock:
             return self._load_index(sanitized)
 
+    def list_all_sanitized(self, sanitized_email: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return self._load_index(sanitized_email)
+
     def list_by_status(self, email: str, status: str) -> list[dict[str, Any]]:
         sanitized = sanitize_email(email)
         with self._lock:
@@ -32,6 +36,36 @@ class LessonStoreLessons:
             raise
         body = obj["Body"].read().decode("utf-8")
         return json.loads(body) if body else None
+
+    def get_sanitized(self, sanitized_email: str, lesson_id: str) -> dict[str, Any] | None:
+        key = self._lesson_key(sanitized_email, lesson_id)
+        self._ensure_bucket()
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+                return None
+            raise
+        body = obj["Body"].read().decode("utf-8")
+        return json.loads(body) if body else None
+
+    def list_published_catalog(self) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        for account in self.list_account_prefixes():
+            for lesson in self.list_all_sanitized(account):
+                status = str(lesson.get("status", "")).strip().lower()
+                if status != "published":
+                    continue
+                payload = dict(lesson)
+                lesson_id = str(lesson.get("id") or "").strip()
+                if lesson_id:
+                    full = self.get_sanitized(account, lesson_id)
+                    if full:
+                        payload["content"] = full.get("content")
+                payload["teacher"] = account
+                entries.append(payload)
+        entries.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+        return entries
 
     def create(self, email: str, title: str, status: str, content: str | None) -> dict[str, Any]:
         sanitized = sanitize_email(email)
