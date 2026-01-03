@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import { Lesson } from "../../state/lessonTypes";
 
@@ -46,17 +47,18 @@ const LessonsList = ({
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconError, setIconError] = useState("");
   const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   useEffect(() => {
     return () => {
-      if (iconPreview) {
+      if (iconPreview?.startsWith("blob:")) {
         URL.revokeObjectURL(iconPreview);
       }
     };
   }, [iconPreview]);
 
   const resetIconDialog = () => {
-    if (iconPreview) {
+    if (iconPreview?.startsWith("blob:")) {
       URL.revokeObjectURL(iconPreview);
     }
     setIconDialogOpen(false);
@@ -65,17 +67,21 @@ const LessonsList = ({
     setIconPreview(null);
     setIconError("");
     setUploadingIcon(false);
+    setDragActive(false);
   };
 
   const handleOpenIconDialog = (lesson: Lesson) => {
     setIconLesson(lesson);
+    if (lesson.iconUrl) {
+      setIconPreview(lesson.iconUrl);
+    } else {
+      setIconPreview(null);
+    }
     setIconDialogOpen(true);
     setIconError("");
   };
 
-  const handleIconFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    event.target.value = "";
+  const handleIconFile = (file: File | null) => {
     if (!file) {
       return;
     }
@@ -107,6 +113,12 @@ const LessonsList = ({
       URL.revokeObjectURL(objectUrl);
     };
     img.src = objectUrl;
+  };
+
+  const handleIconFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    handleIconFile(file);
   };
 
   const handleUploadIcon = async () => {
@@ -154,6 +166,14 @@ const LessonsList = ({
     };
   };
 
+  const withCacheBuster = (url: string, token?: string | null) => {
+    if (!token) {
+      return url;
+    }
+    const joiner = url.includes("?") ? "&" : "?";
+    return `${url}${joiner}v=${encodeURIComponent(token)}`;
+  };
+
   return (
     <Box
       sx={{
@@ -183,9 +203,12 @@ const LessonsList = ({
             </Box>
           </Box>
         ) : lessons.length ? (
-          <List disablePadding sx={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <List disablePadding sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {lessons.map((lesson) => {
               const highlight = getStatusHighlight(lesson.status);
+              const iconSrc = lesson.iconUrl
+                ? withCacheBuster(lesson.iconUrl, lesson.updated_at)
+                : null;
               return (
                 <ListItemButton
                   key={lesson.id}
@@ -205,6 +228,9 @@ const LessonsList = ({
                     "&:hover .lesson-icon-action": {
                       opacity: 1,
                     },
+                    "&:hover .lesson-link-action": {
+                      opacity: 1,
+                    },
                   }}
                 >
                 <ListItemIcon
@@ -214,17 +240,18 @@ const LessonsList = ({
                     justifyContent: "center",
                   }}
                 >
-                  <Box
-                    sx={{
-                      position: "relative",
-                      width: "4rem",
-                      height: "4rem",
-                      borderRadius: "8px",
-                      backgroundColor: "#fff",
-                      backgroundImage:
-                        "linear-gradient(135deg, #ff6f00 0%, #00b0ff 100%)",
-                      my: "0.25rem",
-                      display: "flex",
+                    <Box
+                      sx={{
+                        position: "relative",
+                        width: "4rem",
+                        height: "4rem",
+                        borderRadius: "8px",
+                      backgroundColor: iconSrc ? "transparent" : "#fff",
+                      backgroundImage: iconSrc
+                        ? "none"
+                        : "linear-gradient(135deg, #ff6f00 0%, #00b0ff 100%)",
+                        my: "0.25rem",
+                        display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       fontWeight: 800,
@@ -242,6 +269,7 @@ const LessonsList = ({
                         borderRadius: "999px",
                         bgcolor: getStatusBadgeColor(lesson.status),
                         border: "1px solid #fff",
+                        zIndex: 2,
                       }}
                     />
                     <IconButton
@@ -259,6 +287,7 @@ const LessonsList = ({
                         transition: "opacity 0.2s ease",
                         backgroundColor: "rgba(255,255,255,0.92)",
                         boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                        zIndex: 2,
                         "&:hover": {
                           backgroundColor: "rgba(255,255,255,1)",
                         },
@@ -266,11 +295,47 @@ const LessonsList = ({
                     >
                       <EditRoundedIcon fontSize="inherit" />
                     </IconButton>
-                    {lesson.iconUrl ? (
+                    <IconButton
+                      className="lesson-link-action"
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!lesson.iconUrl) {
+                          onNotify("No icon URL to copy yet", "error");
+                          return;
+                        }
+                        navigator.clipboard
+                          .writeText(lesson.iconUrl)
+                          .then(() => onNotify("Icon URL copied", "success"))
+                          .catch(() => onNotify("Failed to copy icon URL", "error"));
+                      }}
+                      sx={{
+                        position: "absolute",
+                        bottom: 4,
+                        left: 4,
+                        opacity: 0,
+                        transition: "opacity 0.2s ease",
+                        backgroundColor: "rgba(255,255,255,0.92)",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                        zIndex: 2,
+                        "&:hover": {
+                          backgroundColor: "rgba(255,255,255,1)",
+                        },
+                      }}
+                    >
+                      <LinkRoundedIcon fontSize="inherit" />
+                    </IconButton>
+                    {iconSrc ? (
                       <img
-                        src={lesson.iconUrl}
+                        src={iconSrc}
                         alt="Lesson"
-                        style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          opacity: 0.8,
+                          zIndex: 1,
+                        }}
                       />
                     ) : (
                       (lesson.title?.trim()?.charAt(0).toUpperCase() || "L")
@@ -308,19 +373,37 @@ const LessonsList = ({
               width: "100%",
               aspectRatio: "1 / 1",
               borderRadius: 2,
-              border: "1px dashed rgba(0,0,0,0.2)",
+              border: dragActive ? "2px solid #e65100" : "1px dashed rgba(0,0,0,0.2)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "#fafafa",
+              backgroundColor: dragActive ? "rgba(230,81,0,0.08)" : "#fafafa",
               overflow: "hidden",
+              transition: "border 160ms ease, background-color 160ms ease",
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+            }}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              setDragActive(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files?.[0] || null;
+              handleIconFile(file);
+              setDragActive(false);
             }}
           >
             {iconPreview ? (
               <img
                 src={iconPreview}
                 alt="Icon preview"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                style={{ width: "100%", height: "100%", objectFit: "contain" }}
               />
             ) : (
               <Typography variant="body2" color="text.secondary">
@@ -333,6 +416,8 @@ const LessonsList = ({
               {iconError}
             </Typography>
           ) : null}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "space-between" }}>
           <Button variant="outlined" component="label">
             Choose image
             <input
@@ -342,18 +427,18 @@ const LessonsList = ({
               onChange={handleIconFileChange}
             />
           </Button>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={resetIconDialog} disabled={uploadingIcon}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleUploadIcon}
-            disabled={uploadingIcon || !iconFile}
-          >
-            {uploadingIcon ? "Uploading..." : "Upload"}
-          </Button>
+          <Box display="flex" gap={1}>
+            <Button onClick={resetIconDialog} disabled={uploadingIcon}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleUploadIcon}
+              disabled={uploadingIcon || !iconFile}
+            >
+              {uploadingIcon ? "Uploading..." : "Upload"}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>
