@@ -2,7 +2,7 @@ export const formatTeacherEmail = (value: string | undefined) => {
   if (!value) {
     return "";
   }
-  return value.replaceAll("_at_", "@").replaceAll("_dot_", ".");
+  return value.replace(/_at_/g, "@").replace(/_dot_/g, ".");
 };
 
 export const withCacheBuster = (url: string, token?: string | null) => {

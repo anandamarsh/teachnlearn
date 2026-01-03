@@ -1,6 +1,6 @@
-import { GetAccessTokenSilentlyOptions } from "@auth0/auth0-react";
+import { GetTokenSilentlyOptions } from "@auth0/auth0-react";
 
-type TokenFetcher = (options?: GetAccessTokenSilentlyOptions) => Promise<string>;
+type TokenFetcher = (options?: GetTokenSilentlyOptions) => Promise<string>;
 
 export const createAuthedFetch = (
   getAccessTokenSilently: TokenFetcher,
