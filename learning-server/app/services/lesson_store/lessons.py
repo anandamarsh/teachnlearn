@@ -274,6 +274,9 @@ class LessonStoreLessons:
             title = lesson.get("title") or "Untitled lesson"
             if not str(title).lower().endswith("(copy)"):
                 title = f"{title} (Copy)"
+            subject = lesson.get("subject")
+            level = lesson.get("level")
+            icon_url = lesson.get("iconUrl")
             sections = lesson.get("sections") or {
                 key: self._section_filename(key) for key in self._sections
             }
@@ -287,6 +290,9 @@ class LessonStoreLessons:
                 "title": title,
                 "status": "draft",
                 "content": lesson.get("content"),
+                "subject": subject,
+                "level": level,
+                "iconUrl": icon_url,
                 "created_at": now,
                 "updated_at": now,
                 "sections": sections,
@@ -324,6 +330,9 @@ class LessonStoreLessons:
                     "id": new_id,
                     "title": title,
                     "status": "draft",
+                    "subject": subject,
+                    "level": level,
+                    "iconUrl": icon_url,
                     "updated_at": now,
                 }
             )

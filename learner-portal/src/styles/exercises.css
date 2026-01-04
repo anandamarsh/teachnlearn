@@ -4,6 +4,38 @@
   background: transparent;
 }
 
+.exercise-score-box {
+  position: fixed;
+  top: 5rem;
+  right: 1rem;
+  width: 120px;
+  height: 80px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid #e65100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: "Orbitron", "Digital-7", "Courier New", monospace;
+  color: #e65100;
+  z-index: 1300;
+}
+
+.exercise-score-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.3rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.exercise-score-value {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 4px;
+}
+
 .exercise-dot-strip {
   display: flex;
   align-items: center;

@@ -56,4 +56,11 @@ export type LessonProgress = {
   exerciseGuides?: ExerciseGuideState[];
   fibAnswers?: string[];
   mcqSelections?: string[];
+  score?: ExerciseScoreSnapshot;
+};
+
+export type ExerciseScoreSnapshot = {
+  questionsAnswered: { thisSession: number; previousSessions: number };
+  skillScore: number;
+  correctSoFar: number;
 };
