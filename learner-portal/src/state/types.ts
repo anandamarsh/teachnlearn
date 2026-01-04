@@ -2,6 +2,8 @@ export type CatalogLesson = {
   id: string;
   title: string;
   status: string;
+  subject?: string | null;
+  level?: string | null;
   updated_at?: string;
   iconUrl?: string;
   teacher: string;

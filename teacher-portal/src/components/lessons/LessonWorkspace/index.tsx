@@ -20,6 +20,10 @@ type LessonWorkspaceProps = {
     content: string
   ) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
+  onUpdateMeta: (
+    lessonId: string,
+    updates: { subject?: string | null; level?: string | null }
+  ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
@@ -32,6 +36,7 @@ const LessonWorkspace = ({
   onUpdateTitle,
   onUpdateContent,
   onUpdateStatus,
+  onUpdateMeta,
   onNotify,
   getAccessTokenSilently,
   onPulse,
@@ -48,6 +53,7 @@ const LessonWorkspace = ({
     setContentDraft,
     savingTitle,
     savingContent,
+    savingMeta,
     editingTitle,
     setEditingTitle,
     editingSummary,
@@ -74,9 +80,13 @@ const LessonWorkspace = ({
     handleAccordionChange,
     handleSaveSection,
     handleConfirmClose,
+    handleUpdateSubject,
+    handleUpdateLevel,
     isPublished,
     canEdit,
     statusLabel,
+    subjectDraft,
+    levelDraft,
   } = useLessonWorkspaceState({
     lesson,
     hasLessons,
@@ -84,6 +94,7 @@ const LessonWorkspace = ({
     onUpdateTitle,
     onUpdateContent,
     onUpdateStatus,
+    onUpdateMeta,
     onNotify,
     getAccessTokenSilently,
     onPulse,
@@ -113,6 +124,11 @@ const LessonWorkspace = ({
           statusLabel={statusLabel}
           isPublished={isPublished}
           lessonId={lesson.id}
+          subjectValue={subjectDraft}
+          levelValue={levelDraft}
+          savingMeta={savingMeta}
+          onSubjectChange={handleUpdateSubject}
+          onLevelChange={handleUpdateLevel}
           onEditTitle={() => setEditingTitle(true)}
           onTitleChange={setTitleDraft}
           onFinishTitle={() => {

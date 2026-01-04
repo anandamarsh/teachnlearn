@@ -179,6 +179,10 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
               ) : (
                 <ExercisesSection
                   exercises={exercises}
+                  lessonId={lesson.id}
+                  lessonTitle={lesson.title}
+                  lessonSubject={lesson.subject}
+                  lessonLevel={lesson.level}
                   exerciseIndex={exerciseIndex}
                   setExerciseIndex={setExerciseIndex}
                   maxExerciseIndex={maxExerciseIndex}

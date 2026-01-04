@@ -65,11 +65,13 @@ def register_lesson_tools(
         title: str | None = None,
         status: str | None = None,
         content: str | None = None,
+        subject: str | None = None,
+        level: str | None = None,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Update a lesson's fields.
 
-        Use when the user wants to update a lesson's title, status, or content.
+        Use when the user wants to update a lesson's title, status, content, subject, or level.
         You must supply:
         - email: user email (required; ask the user if missing)
         - lesson_id: target lesson id (required; ask the user if missing)
@@ -77,6 +79,8 @@ def register_lesson_tools(
         - title
         - status
         - content
+        - subject
+        - level
 
         Never call this tool if you do not know email, lesson_id, or any field to update.
         """
@@ -90,12 +94,21 @@ def register_lesson_tools(
                 "title": title,
                 "status": status,
                 "content": content,
+                "subject": subject,
+                "level": level,
             },
         )
         cache_key_value = cache_key(
             "lesson_update",
             email,
-            {"lesson_id": lesson_id, "title": title, "status": status, "content": content},
+            {
+                "lesson_id": lesson_id,
+                "title": title,
+                "status": status,
+                "content": content,
+                "subject": subject,
+                "level": level,
+            },
         )
         cached = RESULT_CACHE.get(cache_key_value)
         if cached:
@@ -104,7 +117,15 @@ def register_lesson_tools(
             DEBOUNCE.mark_ignored("lesson_update", cache_key_value)
             return {"status": "debounced"}
         try:
-            lesson = store.update(email, lesson_id, title=title, status=status, content=content)
+            lesson = store.update(
+                email,
+                lesson_id,
+                title=title,
+                status=status,
+                content=content,
+                subject=subject,
+                level=level,
+            )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc), "id": lesson_id}
         if lesson is None:

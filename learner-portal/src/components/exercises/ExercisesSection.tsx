@@ -8,6 +8,12 @@ import {
   ExerciseStatus,
   ExerciseStepProgress,
 } from "../../state/types";
+import {
+  buildSnsExerciseData,
+  createSnsSession,
+  emitSnsEvent,
+  SnsSession,
+} from "../../utils/snsTracking";
 import ExerciseDots from "./ExerciseDots";
 import ExerciseSlide from "./ExerciseSlide";
 
@@ -15,6 +21,10 @@ type SetState<T> = Dispatch<SetStateAction<T>>;
 
 type ExercisesSectionProps = {
   exercises: ExerciseItem[];
+  lessonId: string;
+  lessonTitle: string;
+  lessonSubject?: string | null;
+  lessonLevel?: string | null;
   exerciseIndex: number;
   setExerciseIndex: SetState<number>;
   exerciseStatuses: ExerciseStatus[];
@@ -33,6 +43,10 @@ type ExercisesSectionProps = {
 
 const ExercisesSection = ({
   exercises,
+  lessonId,
+  lessonTitle,
+  lessonSubject,
+  lessonLevel,
   exerciseIndex,
   setExerciseIndex,
   exerciseStatuses,
@@ -57,6 +71,10 @@ const ExercisesSection = ({
     active: false,
     target: 0,
   });
+  const snsSessionRef = useRef<SnsSession | null>(null);
+  const snsStatsRef = useRef({ answered: 0, correct: 0 });
+  const snsStartedRef = useRef(false);
+  const snsEndedRef = useRef(false);
 
   const scrollToIndex = (
     index: number,
@@ -148,6 +166,55 @@ const ExercisesSection = ({
   );
 
   useEffect(() => {
+    const container = carouselRef.current;
+    if (!container) {
+      return;
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (exerciseIndex < maxExerciseIndex) {
+        return;
+      }
+      if (event.deltaX > 0 || event.deltaY > 0) {
+        event.preventDefault();
+        scrollToIndex(maxExerciseIndex, "auto", true);
+      }
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      touchStartXRef.current = event.touches[0]?.clientX ?? null;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (exerciseIndex < maxExerciseIndex) {
+        return;
+      }
+      const startX = touchStartXRef.current;
+      const currentX = event.touches[0]?.clientX ?? null;
+      if (startX === null || currentX === null) {
+        return;
+      }
+      const delta = startX - currentX;
+      if (delta > 0) {
+        event.preventDefault();
+        scrollToIndex(maxExerciseIndex, "auto", true);
+      }
+    };
+    const handleTouchEnd = () => {
+      touchStartXRef.current = null;
+    };
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    container.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    container.addEventListener("touchmove", handleTouchMove, { passive: false });
+    container.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+      container.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [exerciseIndex, maxExerciseIndex]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowRight" && exerciseIndex >= maxExerciseIndex) {
         event.preventDefault();
@@ -203,6 +270,67 @@ const ExercisesSection = ({
     mainPending: "none",
     completed,
   });
+
+  const buildScoreSnapshot = () => {
+    const total = exercises.length;
+    const { answered, correct } = snsStatsRef.current;
+    const skillScore = total
+      ? Math.round((correct / total) * 100)
+      : 0;
+    return {
+      questionsAnswered: { thisSession: answered, previousSessions: 0 },
+      skillScore,
+      correctSoFar: correct,
+    };
+  };
+
+  const ensureSnsSession = () => {
+    if (!snsSessionRef.current) {
+      snsSessionRef.current = createSnsSession({
+        skillTitle: lessonTitle || "Lesson practice",
+        skillRef: lessonId || "unknown",
+        subject: lessonSubject,
+        level: lessonLevel,
+      });
+    }
+    if (!snsStartedRef.current) {
+      emitSnsEvent(
+        "EXERCISE_STARTED",
+        buildSnsExerciseData({
+          session: snsSessionRef.current,
+          now: new Date(),
+          score: buildScoreSnapshot(),
+        })
+      );
+      snsStartedRef.current = true;
+    }
+    return snsSessionRef.current;
+  };
+
+  useEffect(() => {
+    if (!exercises.length || snsStartedRef.current) {
+      return;
+    }
+    ensureSnsSession();
+  }, [exercises.length, lessonId, lessonLevel, lessonSubject, lessonTitle]);
+
+  useEffect(() => {
+    if (!showCompleteButton || snsEndedRef.current) {
+      return;
+    }
+    const session = ensureSnsSession();
+    const now = new Date();
+    emitSnsEvent(
+      "EXERCISE_ENDED",
+      buildSnsExerciseData({
+        session,
+        now,
+        score: buildScoreSnapshot(),
+        ended: true,
+      })
+    );
+    snsEndedRef.current = true;
+  }, [showCompleteButton]);
 
   useEffect(() => {
     if (!exercises.length) {
@@ -270,9 +398,13 @@ const ExercisesSection = ({
     updater: (guide: ExerciseGuideState) => ExerciseGuideState
   ) => {
     setExerciseGuides((prev) => {
-      const next = [...prev];
       const guide = ensureGuide(prev, index);
-      next[index] = updater(guide);
+      const nextGuide = updater(guide);
+      if (nextGuide === guide) {
+        return prev;
+      }
+      const next = [...prev];
+      next[index] = nextGuide;
       return next;
     });
   };
@@ -384,14 +516,30 @@ const ExercisesSection = ({
       }
       setExerciseStatuses(nextStatuses);
       handleMainCorrect(index);
-      return;
+    } else {
+      if (nextStatuses[index] === "unattempted") {
+        nextStatuses[index] = "incorrect";
+        setExerciseStatuses(nextStatuses);
+      }
+      const stepCount = exercises[index]?.steps?.length ?? 0;
+      handleMainIncorrect(index, stepCount > 0, stepCount);
     }
-    if (nextStatuses[index] === "unattempted") {
-      nextStatuses[index] = "incorrect";
-      setExerciseStatuses(nextStatuses);
+    const session = ensureSnsSession();
+    if (session) {
+      snsStatsRef.current.answered += 1;
+      if (isCorrect) {
+        snsStatsRef.current.correct += 1;
+      }
+      emitSnsEvent(
+        "QUESTION_ANSWERED",
+        buildSnsExerciseData({
+          session,
+          now: new Date(),
+          score: buildScoreSnapshot(),
+          correct: isCorrect,
+        })
+      );
     }
-    const stepCount = exercises[index]?.steps?.length ?? 0;
-    handleMainIncorrect(index, stepCount > 0, stepCount);
   };
 
   const handleFibSubmit = (index: number, answer: string) => {
@@ -405,15 +553,31 @@ const ExercisesSection = ({
       }
       setExerciseStatuses(nextStatuses);
       handleMainCorrect(index);
-      return;
+    } else {
+      const nextStatuses = [...exerciseStatuses];
+      if (nextStatuses[index] === "unattempted") {
+        nextStatuses[index] = "incorrect";
+        setExerciseStatuses(nextStatuses);
+      }
+      const stepCount = exercises[index]?.steps?.length ?? 0;
+      handleMainIncorrect(index, stepCount > 0, stepCount);
     }
-    const nextStatuses = [...exerciseStatuses];
-    if (nextStatuses[index] === "unattempted") {
-      nextStatuses[index] = "incorrect";
-      setExerciseStatuses(nextStatuses);
+    const session = ensureSnsSession();
+    if (session) {
+      snsStatsRef.current.answered += 1;
+      if (isCorrect) {
+        snsStatsRef.current.correct += 1;
+      }
+      emitSnsEvent(
+        "QUESTION_ANSWERED",
+        buildSnsExerciseData({
+          session,
+          now: new Date(),
+          score: buildScoreSnapshot(),
+          correct: isCorrect,
+        })
+      );
     }
-    const stepCount = exercises[index]?.steps?.length ?? 0;
-    handleMainIncorrect(index, stepCount > 0, stepCount);
   };
 
   const handleStepFibChange = (exerciseIdx: number, stepIdx: number, value: string) => {
@@ -661,41 +825,7 @@ const ExercisesSection = ({
             >
               <ChevronLeftRoundedIcon />
             </IconButton>
-            <Box
-              className="exercise-carousel"
-              ref={carouselRef}
-              onScroll={handleCarouselScroll}
-              onWheel={(event) => {
-                if (exerciseIndex < maxExerciseIndex) {
-                  return;
-                }
-                if (event.deltaX > 0 || event.deltaY > 0) {
-                  event.preventDefault();
-                  scrollToIndex(maxExerciseIndex, "auto", true);
-                }
-              }}
-              onTouchStart={(event) => {
-                touchStartXRef.current = event.touches[0]?.clientX ?? null;
-              }}
-              onTouchMove={(event) => {
-                if (exerciseIndex < maxExerciseIndex) {
-                  return;
-                }
-                const startX = touchStartXRef.current;
-                const currentX = event.touches[0]?.clientX ?? null;
-                if (startX === null || currentX === null) {
-                  return;
-                }
-                const delta = startX - currentX;
-                if (delta > 0) {
-                  event.preventDefault();
-                  scrollToIndex(maxExerciseIndex, "auto", true);
-                }
-              }}
-              onTouchEnd={() => {
-                touchStartXRef.current = null;
-              }}
-            >
+            <Box className="exercise-carousel" ref={carouselRef} onScroll={handleCarouselScroll}>
               {exercises.map((exercise, idx) => {
                 const fibValue = fibAnswers[idx] ?? "";
                 const guide =
