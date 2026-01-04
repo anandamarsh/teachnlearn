@@ -62,12 +62,24 @@ class LessonStoreLessons:
                     full = self.get_sanitized(account, lesson_id)
                     if full:
                         payload["content"] = full.get("content")
+                        if "subject" in full:
+                            payload["subject"] = full.get("subject")
+                        if "level" in full:
+                            payload["level"] = full.get("level")
                 payload["teacher"] = account
                 entries.append(payload)
         entries.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
         return entries
 
-    def create(self, email: str, title: str, status: str, content: str | None) -> dict[str, Any]:
+    def create(
+        self,
+        email: str,
+        title: str,
+        status: str,
+        content: str | None,
+        subject: str | None = None,
+        level: str | None = None,
+    ) -> dict[str, Any]:
         sanitized = sanitize_email(email)
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
@@ -88,6 +100,8 @@ class LessonStoreLessons:
                 id=lesson_id,
                 title=title,
                 status=status,
+                subject=subject,
+                level=level,
                 content=content,
                 created_at=now,
                 updated_at=now,
@@ -107,6 +121,8 @@ class LessonStoreLessons:
                     "id": lesson_id,
                     "title": title,
                     "status": status,
+                    "subject": subject,
+                    "level": level,
                     "updated_at": now,
                 }
             )
@@ -165,6 +181,8 @@ class LessonStoreLessons:
         title: str | None,
         status: str | None,
         content: str | None,
+        subject: str | None,
+        level: str | None,
     ) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)
         with self._lock:
@@ -178,6 +196,10 @@ class LessonStoreLessons:
                 lesson["status"] = status
             if content is not None:
                 lesson["content"] = content
+            if subject is not None:
+                lesson["subject"] = subject
+            if level is not None:
+                lesson["level"] = level
             lesson["updated_at"] = datetime.now(timezone.utc).isoformat()
             lesson_key = self._lesson_key(sanitized, lesson_id)
             self._s3_client.put_object(
@@ -194,6 +216,10 @@ class LessonStoreLessons:
                         entry["title"] = title
                     if status is not None:
                         entry["status"] = status
+                    if subject is not None:
+                        entry["subject"] = subject
+                    if level is not None:
+                        entry["level"] = level
                     entry["updated_at"] = lesson["updated_at"]
                     updated = True
                     break
@@ -203,6 +229,8 @@ class LessonStoreLessons:
                         "id": lesson_id,
                         "title": lesson.get("title"),
                         "status": lesson.get("status"),
+                        "subject": lesson.get("subject"),
+                        "level": lesson.get("level"),
                         "updated_at": lesson["updated_at"],
                     }
                 )

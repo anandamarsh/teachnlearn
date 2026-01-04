@@ -54,6 +54,7 @@ function App() {
     updateLessonTitle,
     updateLessonContent,
     updateLessonStatus,
+    updateLessonMeta,
     deleteLesson,
     uploadLessonIcon,
   } = useLessons({
@@ -115,6 +116,17 @@ function App() {
     const updated = await updateLessonStatus(lessonId, status);
     if (updated) {
       notify("Lesson status updated", "success");
+    }
+    return updated;
+  };
+
+  const handleUpdateMeta = async (
+    lessonId: string,
+    updates: { subject?: string | null; level?: string | null }
+  ) => {
+    const updated = await updateLessonMeta(lessonId, updates);
+    if (updated) {
+      notify("Lesson updated", "success");
     }
     return updated;
   };
@@ -223,6 +235,7 @@ function App() {
           onUpdateTitle={handleUpdateTitle}
           onUpdateContent={handleUpdateContent}
           onUpdateStatus={handleUpdateStatus}
+          onUpdateMeta={handleUpdateMeta}
           onUploadIcon={handleUploadIcon}
           onNotify={notify}
           getAccessTokenSilently={getAccessTokenSilently}

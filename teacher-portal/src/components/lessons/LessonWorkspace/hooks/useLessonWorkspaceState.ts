@@ -13,6 +13,10 @@ type UseLessonWorkspaceStateOptions = {
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
   onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
+  onUpdateMeta: (
+    lessonId: string,
+    updates: { subject?: string | null; level?: string | null }
+  ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
@@ -24,14 +28,18 @@ export const useLessonWorkspaceState = ({
   onUpdateTitle,
   onUpdateContent,
   onUpdateStatus,
+  onUpdateMeta,
   onNotify,
   getAccessTokenSilently,
   onPulse,
 }: UseLessonWorkspaceStateOptions) => {
   const [titleDraft, setTitleDraft] = useState("");
   const [contentDraft, setContentDraft] = useState("");
+  const [subjectDraft, setSubjectDraft] = useState("");
+  const [levelDraft, setLevelDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
   const [savingContent, setSavingContent] = useState(false);
+  const [savingMeta, setSavingMeta] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -85,6 +93,8 @@ export const useLessonWorkspaceState = ({
   useEffect(() => {
     setTitleDraft(lesson?.title || "");
     setContentDraft(lesson?.content || "");
+    setSubjectDraft(lesson?.subject || "");
+    setLevelDraft(lesson?.level || "");
   }, [lesson]);
 
   useEffect(() => {
@@ -192,6 +202,40 @@ export const useLessonWorkspaceState = ({
     setUnpublishOpen(false);
   };
 
+  const handleUpdateSubject = async (value: string) => {
+    if (!lesson) {
+      return;
+    }
+    const nextValue = value.trim();
+    if ((lesson.subject || "") === nextValue) {
+      setSubjectDraft(lesson.subject || "");
+      return;
+    }
+    setSubjectDraft(nextValue);
+    setSavingMeta(true);
+    await onUpdateMeta(lesson.id, {
+      subject: nextValue ? nextValue : null,
+    });
+    setSavingMeta(false);
+  };
+
+  const handleUpdateLevel = async (value: string) => {
+    if (!lesson) {
+      return;
+    }
+    const nextValue = value.trim();
+    if ((lesson.level || "") === nextValue) {
+      setLevelDraft(lesson.level || "");
+      return;
+    }
+    setLevelDraft(nextValue);
+    setSavingMeta(true);
+    await onUpdateMeta(lesson.id, {
+      level: nextValue ? nextValue : null,
+    });
+    setSavingMeta(false);
+  };
+
   const handleAccordionChange =
     (key: string) => (_: unknown, expanded: boolean) => {
       setExpandedKeys((prev) => ({ ...prev, [key]: expanded }));
@@ -261,6 +305,7 @@ export const useLessonWorkspaceState = ({
     setContentDraft,
     savingTitle,
     savingContent,
+    savingMeta,
     editingTitle,
     setEditingTitle,
     editingSummary,
@@ -287,10 +332,14 @@ export const useLessonWorkspaceState = ({
     handleAccordionChange,
     handleSaveSection,
     handleConfirmClose,
+    handleUpdateSubject,
+    handleUpdateLevel,
     isPublished,
     canEdit,
     statusLabel,
     isAuthenticated,
     lesson,
+    subjectDraft,
+    levelDraft,
   };
 };
