@@ -1065,6 +1065,7 @@ const ExercisesSection = ({
                     guide={guide}
                     fibValue={fibValue}
                     mcqSelection={mcqSelections[idx]}
+                    isActive={idx === exerciseIndex}
                     onMainFibChange={(value) => {
                       setFibAnswers((prev) => {
                         const next = [...prev];
