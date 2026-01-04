@@ -6,6 +6,8 @@ class Lesson:
     id: str
     title: str
     status: str
+    subject: str | None
+    level: str | None
     content: str | None
     created_at: str
     updated_at: str

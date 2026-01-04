@@ -2,6 +2,8 @@ export type Lesson = {
   id: string;
   title: string;
   status: string;
+  subject?: string | null;
+  level?: string | null;
   updated_at?: string;
   iconUrl?: string | null;
   content?: string | null;
@@ -32,6 +34,8 @@ export const normalizeLesson = (
     (item.lessonName as string) ||
     "Untitled lesson";
   const status = (item.status as string) || (item.state as string) || "Draft";
+  const subject = (item.subject as string) || null;
+  const level = (item.level as string) || null;
   const updated_at =
     (item.updated_at as string) || (item.updatedAt as string) || undefined;
   const iconUrl = (item.iconUrl as string) || (item.icon as string) || null;
@@ -56,6 +60,8 @@ export const normalizeLesson = (
     id: String(id),
     title,
     status,
+    subject,
+    level,
     updated_at,
     iconUrl,
     content,

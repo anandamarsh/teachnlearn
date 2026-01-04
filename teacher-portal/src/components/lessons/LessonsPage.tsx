@@ -15,6 +15,10 @@ type LessonsPageProps = {
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
   onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
+  onUpdateMeta: (
+    lessonId: string,
+    updates: { subject?: string | null; level?: string | null }
+  ) => Promise<Lesson | null>;
   onUploadIcon: (lessonId: string, file: File) => Promise<string | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
@@ -31,6 +35,7 @@ const LessonsPage = ({
   onUpdateTitle,
   onUpdateContent,
   onUpdateStatus,
+  onUpdateMeta,
   onUploadIcon,
   onNotify,
   getAccessTokenSilently,
@@ -90,6 +95,7 @@ const LessonsPage = ({
               onUpdateTitle={onUpdateTitle}
               onUpdateContent={onUpdateContent}
               onUpdateStatus={onUpdateStatus}
+              onUpdateMeta={onUpdateMeta}
               onNotify={onNotify}
               getAccessTokenSilently={getAccessTokenSilently}
               onPulse={onPulse}

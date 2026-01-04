@@ -79,7 +79,9 @@ const ExerciseDots = ({
           const status = statuses[idx] ?? "unattempted";
           const isLatest = idx === maxUnlockedIndex;
           const isDisplayed = idx === currentIndex;
-          const dotState = isLatest ? "latest" : status;
+          const dotState = status;
+          const latestClass =
+            status === "unattempted" && isDisplayed ? "latest" : "";
           const isLocked = idx > maxUnlockedIndex;
           return (
             <button
@@ -90,7 +92,7 @@ const ExerciseDots = ({
                 isDisplayed ? "displayed" : ""
               } ${
                 isLocked ? "locked" : ""
-              }`}
+              } ${latestClass}`}
               aria-label={`Question ${idx + 1}`}
               title={isLocked ? undefined : `Question ${idx + 1}`}
               onClick={() => onSelect(idx)}

@@ -2,6 +2,8 @@ export type CatalogLesson = {
   id: string;
   title: string;
   status: string;
+  subject?: string | null;
+  level?: string | null;
   updated_at?: string;
   iconUrl?: string;
   teacher: string;
@@ -54,4 +56,11 @@ export type LessonProgress = {
   exerciseGuides?: ExerciseGuideState[];
   fibAnswers?: string[];
   mcqSelections?: string[];
+  score?: ExerciseScoreSnapshot;
+};
+
+export type ExerciseScoreSnapshot = {
+  questionsAnswered: { thisSession: number; previousSessions: number };
+  skillScore: number;
+  correctSoFar: number;
 };
