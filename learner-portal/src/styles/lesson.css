@@ -35,6 +35,11 @@
   font-weight: 700;
 }
 
+.lesson-stepper .MuiStepLabel-label.Mui-completed {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
 .lesson-stepper .MuiStepConnector-line {
   border-color: rgba(0, 0, 0, 0.26);
   border-top-width: 2px;

@@ -120,11 +120,59 @@ export const buildSnsExerciseData = (params: {
   };
 };
 
+type SnsInjectedApi = {
+  questionAnswered?: (data: unknown) => void;
+  exerciseStarted?: (data: unknown) => void;
+  exerciseEnded?: (data: unknown) => void;
+  showError?: (data: unknown) => void;
+  showWarning?: (data: unknown) => void;
+};
+
+const getSnsApi = (): SnsInjectedApi => {
+  const win = window as unknown as {
+    sns?: SnsInjectedApi;
+    SNS?: SnsInjectedApi;
+    questionAnswered?: (data: unknown) => void;
+    exerciseStarted?: (data: unknown) => void;
+    exerciseEnded?: (data: unknown) => void;
+    showError?: (data: unknown) => void;
+    showWarning?: (data: unknown) => void;
+  };
+  return (
+    win.sns ||
+    win.SNS || {
+      questionAnswered: win.questionAnswered,
+      exerciseStarted: win.exerciseStarted,
+      exerciseEnded: win.exerciseEnded,
+      showError: win.showError,
+      showWarning: win.showWarning,
+    }
+  );
+};
+
 export const emitSnsEvent = (type: SnsEventType, data: unknown) => {
+  const api = getSnsApi();
   try {
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ type, data }));
+    if (type === "QUESTION_ANSWERED") {
+      api.questionAnswered?.(data);
+      return;
+    }
+    if (type === "EXERCISE_STARTED") {
+      api.exerciseStarted?.(data);
+      return;
+    }
+    if (type === "EXERCISE_ENDED") {
+      api.exerciseEnded?.(data);
+      return;
+    }
+    if (type === "ERROR_SERIOUS") {
+      api.showError?.(data);
+      return;
+    }
+    if (type === "ERROR_WARNING") {
+      api.showWarning?.(data);
+    }
   } catch (_e) {
-    // ignore console serialization failures
+    // ignore injected handler failures
   }
 };
