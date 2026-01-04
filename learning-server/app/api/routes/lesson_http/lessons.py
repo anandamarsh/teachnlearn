@@ -71,8 +71,17 @@ def register_lesson_routes(
             return json_error("title is required", 400)
         status = str(payload.get("status", "draft")).strip() or "draft"
         content = payload.get("content")
+        subject = payload.get("subject")
+        level = payload.get("level")
         try:
-            lesson = store.create(email, title=title, status=status, content=content)
+            lesson = store.create(
+                email,
+                title=title,
+                status=status,
+                content=content,
+                subject=subject,
+                level=level,
+            )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         if events:
@@ -99,8 +108,18 @@ def register_lesson_routes(
         title = payload.get("title")
         status = payload.get("status")
         content = payload.get("content")
+        subject = payload.get("subject")
+        level = payload.get("level")
         try:
-            lesson = store.update(email, lesson_id, title=title, status=status, content=content)
+            lesson = store.update(
+                email,
+                lesson_id,
+                title=title,
+                status=status,
+                content=content,
+                subject=subject,
+                level=level,
+            )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         if lesson is None:

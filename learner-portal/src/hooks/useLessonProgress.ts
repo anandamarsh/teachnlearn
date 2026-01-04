@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LessonProgress,
   LessonSectionKey,
+  ExerciseScoreSnapshot,
   ExerciseGuideState,
   ExerciseStatus,
   ExerciseStepProgress,
@@ -17,6 +18,7 @@ type ProgressState = {
   exerciseGuides: ExerciseGuideState[];
   fibAnswers: string[];
   mcqSelections: string[];
+  scoreSnapshot: ExerciseScoreSnapshot;
 };
 
 const defaultCompleted = {
@@ -39,6 +41,11 @@ export const useLessonProgress = (
   const [exerciseGuides, setExerciseGuides] = useState<ExerciseGuideState[]>([]);
   const [fibAnswers, setFibAnswers] = useState<string[]>([]);
   const [mcqSelections, setMcqSelections] = useState<string[]>([]);
+  const [scoreSnapshot, setScoreSnapshot] = useState<ExerciseScoreSnapshot>({
+    questionsAnswered: { thisSession: 0, previousSessions: 0 },
+    skillScore: 0,
+    correctSoFar: 0,
+  });
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,6 +93,15 @@ export const useLessonProgress = (
     setExerciseGuides(parsed?.exerciseGuides || []);
     setFibAnswers(parsed?.fibAnswers || []);
     setMcqSelections(parsed?.mcqSelections || []);
+    if (parsed?.score) {
+      setScoreSnapshot(parsed.score);
+    } else {
+      setScoreSnapshot({
+        questionsAnswered: { thisSession: 0, previousSessions: 0 },
+        skillScore: 0,
+        correctSoFar: 0,
+      });
+    }
     setHydratedKey(progressKey);
   }, [progressKey]);
 
@@ -105,6 +121,7 @@ export const useLessonProgress = (
       exerciseGuides,
       fibAnswers,
       mcqSelections,
+      score: scoreSnapshot,
     };
     writeStorage(progressKey, payload);
   }, [
@@ -116,6 +133,7 @@ export const useLessonProgress = (
     fibAnswers,
     mcqSelections,
     openSection,
+    scoreSnapshot,
     progressKey,
     hydratedKey,
   ]);
@@ -186,6 +204,11 @@ export const useLessonProgress = (
     );
     setFibAnswers(Array(count).fill(""));
     setMcqSelections(Array(count).fill(""));
+    setScoreSnapshot({
+      questionsAnswered: { thisSession: 0, previousSessions: 0 },
+      skillScore: 0,
+      correctSoFar: 0,
+    });
   }, [progressKey]);
 
   const state: ProgressState = useMemo(
@@ -198,6 +221,7 @@ export const useLessonProgress = (
       exerciseGuides,
       fibAnswers,
       mcqSelections,
+      scoreSnapshot,
     }),
     [
       completedSections,
@@ -207,6 +231,7 @@ export const useLessonProgress = (
       exerciseGuides,
       fibAnswers,
       mcqSelections,
+      scoreSnapshot,
       openSection,
     ]
   );
@@ -221,6 +246,7 @@ export const useLessonProgress = (
     setExerciseGuides,
     setFibAnswers,
     setMcqSelections,
+    setScoreSnapshot,
     reset,
   };
 };

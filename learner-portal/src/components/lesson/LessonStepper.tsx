@@ -48,14 +48,24 @@ const LessonStepper = ({
               <StepButton
                 onClick={() => onOpenSection(sectionKey)}
                 disabled={!canNavigateTo(sectionKey)}
+                sx={{
+                  "& .MuiStepLabel-label": {
+                    color: completedSections[sectionKey]
+                      ? "success.main"
+                      : sectionKey === openSection
+                      ? "primary.main"
+                      : "text.disabled",
+                    fontWeight: completedSections[sectionKey] ? 600 : 500,
+                  },
+                }}
                 icon={
                   <CheckCircleRoundedIcon
                     sx={{
                       color:
-                        sectionKey === openSection
-                          ? "primary.main"
-                          : completedSections[sectionKey]
+                        completedSections[sectionKey]
                           ? "success.main"
+                          : sectionKey === openSection
+                          ? "primary.main"
                           : "text.disabled",
                     }}
                   />

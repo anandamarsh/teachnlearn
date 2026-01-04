@@ -61,6 +61,8 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     setFibAnswers,
     mcqSelections,
     setMcqSelections,
+    scoreSnapshot,
+    setScoreSnapshot,
     reset: resetProgress,
   } = useLessonProgress(progressKey, exercises.length);
 
@@ -109,6 +111,18 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     },
     [exerciseGuides, exerciseStatuses]
   );
+
+  useEffect(() => {
+    if (scoreSnapshot.skillScore !== 100) {
+      return;
+    }
+    setCompletedSections((prev) => {
+      if (prev.exercises) {
+        return prev;
+      }
+      return { ...prev, exercises: true };
+    });
+  }, [scoreSnapshot.skillScore, setCompletedSections]);
 
   return (
     <Stack spacing={0}>
@@ -179,6 +193,10 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
               ) : (
                 <ExercisesSection
                   exercises={exercises}
+                  lessonId={lesson.id}
+                  lessonTitle={lesson.title}
+                  lessonSubject={lesson.subject}
+                  lessonLevel={lesson.level}
                   exerciseIndex={exerciseIndex}
                   setExerciseIndex={setExerciseIndex}
                   maxExerciseIndex={maxExerciseIndex}
@@ -191,6 +209,8 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                   setFibAnswers={setFibAnswers}
                   mcqSelections={mcqSelections}
                   setMcqSelections={setMcqSelections}
+                  scoreSnapshot={scoreSnapshot}
+                  setScoreSnapshot={setScoreSnapshot}
                   onComplete={() => handleAdvanceSection("exercises")}
                   showCompleteButton={showCompleteButton}
                 />
