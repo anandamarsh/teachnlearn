@@ -20,9 +20,11 @@ type ExerciseSlideProps = {
   guide: ExerciseGuideState;
   fibValue: string;
   mcqSelection: string;
+  slideIndex: number;
   onMainFibChange: (value: string) => void;
   onMainFibSubmit: () => void;
   onMainOptionSelect: (option: string) => void;
+  onMainRecheck: () => void;
   onStepFibChange: (stepIndex: number, value: string) => void;
   onStepFibSubmit: (stepIndex: number) => void;
   onStepOptionSelect: (stepIndex: number, option: string) => void;
@@ -35,9 +37,11 @@ const ExerciseSlide = ({
   guide,
   fibValue,
   mcqSelection,
+  slideIndex,
   onMainFibChange,
   onMainFibSubmit,
   onMainOptionSelect,
+  onMainRecheck,
   onStepFibChange,
   onStepFibSubmit,
   onStepOptionSelect,
@@ -55,6 +59,10 @@ const ExerciseSlide = ({
     !fibValue.trim() ||
     isMainLocked ||
     guide.mainPending === "incorrectPending";
+  const fibCheckDisabled = fibDisabled && !guide.completed;
+  const scheduleRecheck = () => {
+    window.setTimeout(() => onMainRecheck(), 0);
+  };
   const stepRefs = useRef<(HTMLDivElement | null)[]>([]);
   const revealTimersRef = useRef<Record<number, number[]>>({});
   const [revealStates, setRevealStates] = useState<
@@ -450,7 +458,7 @@ const ExerciseSlide = ({
   };
 
   return (
-    <Box className="exercise-slide">
+    <Box className="exercise-slide" data-slide-index={slideIndex}>
       <Box className="exercise-slide-content">
         <Box
           className="exercise-question"
@@ -544,14 +552,20 @@ const ExerciseSlide = ({
                       ) : null,
                     }}
                   />
-                  <IconButton
-                    className="fib-check"
-                    color="primary"
-                    onClick={onMainFibSubmit}
-                    disabled={fibDisabled}
-                    aria-label="Check answer"
-                    sx={{
-                      width: 30,
+                <IconButton
+                  className="fib-check"
+                  color="primary"
+                  onClick={() => {
+                    if (guide.completed) {
+                      scheduleRecheck();
+                      return;
+                    }
+                    onMainFibSubmit();
+                  }}
+                  disabled={fibCheckDisabled}
+                  aria-label="Check answer"
+                  sx={{
+                    width: 30,
                       height: 30,
                       borderRadius: "50%",
                       padding: 0,
@@ -586,6 +600,7 @@ const ExerciseSlide = ({
                       guide.mainPending === "incorrectPending" && isSelected;
                     const isCorrectFinal =
                       guide.completed && option === exercise.answer;
+                    const canRecheck = guide.completed && option === exercise.answer;
                     const highlightColor = isIncorrectPending
                       ? "error.dark"
                       : isCorrectFinal
@@ -610,11 +625,13 @@ const ExerciseSlide = ({
                         variant="outlined"
                         size="large"
                         onClick={() =>
-                          isMainLocked || isIncorrectPending
+                          guide.completed
+                            ? (canRecheck ? scheduleRecheck() : undefined)
+                            : isMainLocked || isIncorrectPending
                             ? undefined
                             : onMainOptionSelect(option)
                         }
-                        disabled={guide.completed}
+                        disabled={guide.completed && !canRecheck}
                         sx={{
                           borderColor: highlightColor,
                           color: highlightColor,
