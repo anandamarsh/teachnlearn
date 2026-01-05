@@ -98,27 +98,13 @@ const ExercisesSection = ({
     behavior: ScrollBehavior = "smooth",
     allowBeyond = false
   ) => {
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] scrollToIndex:start", {
-      index,
-      behavior,
-      allowBeyond,
-    });
     if (!carouselRef.current) {
-      // eslint-disable-next-line no-console
-      console.debug("[exercise-nav] scrollToIndex:missing-carousel");
       return;
     }
     const clampedIndex = allowBeyond
       ? index
       : Math.min(index, Math.max(maxExerciseIndex, 0));
     const width = carouselRef.current.clientWidth;
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] scrollToIndex:run", {
-      index,
-      clampedIndex,
-      width,
-    });
     const targetSlide = carouselRef.current.querySelector<HTMLElement>(
       `[data-slide-index="${clampedIndex}"]`
     );
@@ -160,15 +146,6 @@ const ExercisesSection = ({
           { index: 0, distance: Number.POSITIVE_INFINITY }
         ).index
       : Math.round(scrollLeft / width);
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] handleCarouselScroll", {
-      scrollLeft,
-      width,
-      nextIndex,
-      maxExerciseIndex,
-      exerciseIndex,
-      programmaticScroll: programmaticScrollRef.current,
-    });
     if (nextIndex > maxExerciseIndex) {
       scrollToIndex(maxExerciseIndex, "auto", true);
       pendingIndexRef.current = maxExerciseIndex;
@@ -345,17 +322,7 @@ const ExercisesSection = ({
 
   const advanceToNext = (index: number, delayMs = 0) => {
     const nextIndex = index + 1;
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] advanceToNext:start", {
-      index,
-      nextIndex,
-      delayMs,
-      exercisesLength: exercises.length,
-      maxExerciseIndex,
-    });
     if (nextIndex >= exercises.length) {
-      // eslint-disable-next-line no-console
-      console.debug("[exercise-nav] advanceToNext:blocked-last");
       return;
     }
     if (advanceTimeoutRef.current !== null) {
@@ -363,22 +330,11 @@ const ExercisesSection = ({
     }
     if (delayMs > 0) {
       advanceTimeoutRef.current = window.setTimeout(() => {
-        // eslint-disable-next-line no-console
-        console.debug("[exercise-nav] advanceToNext:delayed-fire", {
-          index,
-          nextIndex,
-          delayMs,
-        });
         programmaticScrollRef.current = { active: true, target: nextIndex };
         setExerciseIndex(nextIndex);
         scrollToIndex(nextIndex, "smooth", true);
       }, delayMs);
     } else {
-      // eslint-disable-next-line no-console
-      console.debug("[exercise-nav] advanceToNext:immediate-fire", {
-        index,
-        nextIndex,
-      });
       programmaticScrollRef.current = { active: true, target: nextIndex };
       setExerciseIndex(nextIndex);
       scrollToIndex(nextIndex, "smooth", true);
@@ -756,7 +712,9 @@ const ExercisesSection = ({
       const next = [...prev];
       const prevStatus = next[index];
       if (isCorrect) {
-        next[index] = "correct";
+        if (next[index] !== "incorrect") {
+          next[index] = "correct";
+        }
       } else if (next[index] === "unattempted") {
         next[index] = "incorrect";
       }
@@ -809,7 +767,9 @@ const ExercisesSection = ({
       const next = [...prev];
       const prevStatus = next[index];
       if (isCorrect) {
-        next[index] = "correct";
+        if (next[index] !== "incorrect") {
+          next[index] = "correct";
+        }
       } else if (next[index] === "unattempted") {
         next[index] = "incorrect";
       }
@@ -1070,12 +1030,6 @@ const ExercisesSection = ({
   };
 
   const goToIndex = (nextIndex: number) => {
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] goToIndex", {
-      nextIndex,
-      maxExerciseIndex,
-      exercisesLength: exercises.length,
-    });
     const unlockLimit = Math.max(maxExerciseIndex, exerciseIndex);
     if (
       nextIndex >= 0 &&
@@ -1093,11 +1047,6 @@ const ExercisesSection = ({
     if (!exercise) {
       return;
     }
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] handleMainRecheck", {
-      index,
-      type: exercise.type,
-    });
     if (exercise.type === "fib") {
       handleFibSubmit(index, exercise.answer, String(exercise.answer ?? ""));
       return;
@@ -1143,8 +1092,6 @@ const ExercisesSection = ({
       setAutoPilotActive(false);
       return;
     }
-    // eslint-disable-next-line no-console
-    console.debug("[exercise-nav] autopilot:step", { index });
     handleMagicSolve(index);
     if (index >= list.length - 1) {
       setAutoPilotActive(false);
@@ -1352,6 +1299,7 @@ const ExercisesSection = ({
                     fibValue={fibValue}
                     mcqSelection={mcqSelections[idx]}
                     slideIndex={idx}
+                    isActive={idx === exerciseIndex}
                     onMainFibChange={(value) => {
                       setFibAnswers((prev) => {
                         const next = [...prev];
