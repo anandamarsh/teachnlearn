@@ -21,6 +21,7 @@ type ExerciseSlideProps = {
   fibValue: string;
   mcqSelection: string;
   slideIndex: number;
+  isActive: boolean;
   onMainFibChange: (value: string) => void;
   onMainFibSubmit: () => void;
   onMainOptionSelect: (option: string) => void;
@@ -38,6 +39,7 @@ const ExerciseSlide = ({
   fibValue,
   mcqSelection,
   slideIndex,
+  isActive,
   onMainFibChange,
   onMainFibSubmit,
   onMainOptionSelect,
@@ -461,7 +463,7 @@ const ExerciseSlide = ({
     <Box className="exercise-slide" data-slide-index={slideIndex}>
       <Box className="exercise-slide-content">
         <Box
-          className="exercise-question"
+          className={`exercise-question${isActive ? " on-screen" : ""}`}
           dangerouslySetInnerHTML={{ __html: exercise.question_html || "" }}
         />
         {showSteps ? (
