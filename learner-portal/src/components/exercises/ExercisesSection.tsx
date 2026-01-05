@@ -1,7 +1,8 @@
 import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Fab, IconButton, Typography } from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import {
   ExerciseScoreSnapshot,
   ExerciseGuideState,
@@ -71,6 +72,13 @@ const ExercisesSection = ({
   const scrollTimeoutRef = useRef<number | null>(null);
   const advanceTimeoutRef = useRef<number | null>(null);
   const pendingIndexRef = useRef<number>(0);
+  const magicKeyBufferRef = useRef<string>("");
+  const autoPilotTimeoutRef = useRef<number | null>(null);
+  const autoPilotHoldRef = useRef<number | null>(null);
+  const autoPilotHoldTriggeredRef = useRef(false);
+  const autoPilotActiveRef = useRef(false);
+  const exerciseIndexRef = useRef(exerciseIndex);
+  const exercisesRef = useRef(exercises);
   const touchStartXRef = useRef<number | null>(null);
   const programmaticScrollRef = useRef<{ active: boolean; target: number }>({
     active: false,
@@ -81,19 +89,47 @@ const ExercisesSection = ({
   const snsEndedRef = useRef(false);
   const [retryPromptOpen, setRetryPromptOpen] = useState(false);
   const retryPromptShownRef = useRef(false);
+  const [showMagicFab, setShowMagicFab] = useState(false);
+  const [autoPilotActive, setAutoPilotActive] = useState(false);
+  const magicPin = useMemo(() => String(lessonId || "").trim().toLowerCase(), [lessonId]);
 
   const scrollToIndex = (
     index: number,
     behavior: ScrollBehavior = "smooth",
     allowBeyond = false
   ) => {
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] scrollToIndex:start", {
+      index,
+      behavior,
+      allowBeyond,
+    });
     if (!carouselRef.current) {
+      // eslint-disable-next-line no-console
+      console.debug("[exercise-nav] scrollToIndex:missing-carousel");
       return;
     }
     const clampedIndex = allowBeyond
       ? index
       : Math.min(index, Math.max(maxExerciseIndex, 0));
     const width = carouselRef.current.clientWidth;
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] scrollToIndex:run", {
+      index,
+      clampedIndex,
+      width,
+    });
+    const targetSlide = carouselRef.current.querySelector<HTMLElement>(
+      `[data-slide-index="${clampedIndex}"]`
+    );
+    if (targetSlide) {
+      targetSlide.scrollIntoView({
+        behavior,
+        block: "nearest",
+        inline: "center",
+      });
+      return;
+    }
     carouselRef.current.scrollTo({ left: width * clampedIndex, behavior });
   };
 
@@ -106,7 +142,33 @@ const ExercisesSection = ({
       return;
     }
     const scrollLeft = carouselRef.current.scrollLeft;
-    const nextIndex = Math.round(scrollLeft / width);
+    const scrollCenter = scrollLeft + width / 2;
+    const slides = Array.from(
+      carouselRef.current.querySelectorAll<HTMLElement>("[data-slide-index]")
+    );
+    const nextIndex = slides.length
+      ? slides.reduce(
+          (closest, slide) => {
+            const slideIndex = Number(slide.dataset.slideIndex ?? 0);
+            const slideCenter = slide.offsetLeft + slide.clientWidth / 2;
+            const distance = Math.abs(scrollCenter - slideCenter);
+            if (distance < closest.distance) {
+              return { index: slideIndex, distance };
+            }
+            return closest;
+          },
+          { index: 0, distance: Number.POSITIVE_INFINITY }
+        ).index
+      : Math.round(scrollLeft / width);
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] handleCarouselScroll", {
+      scrollLeft,
+      width,
+      nextIndex,
+      maxExerciseIndex,
+      exerciseIndex,
+      programmaticScroll: programmaticScrollRef.current,
+    });
     if (nextIndex > maxExerciseIndex) {
       scrollToIndex(maxExerciseIndex, "auto", true);
       pendingIndexRef.current = maxExerciseIndex;
@@ -121,8 +183,13 @@ const ExercisesSection = ({
       return;
     }
     if (programmaticScrollRef.current.active) {
-      const targetLeft = programmaticScrollRef.current.target * width;
-      if (Math.abs(scrollLeft - targetLeft) < 2) {
+      const targetSlide = carouselRef.current.querySelector<HTMLElement>(
+        `[data-slide-index="${programmaticScrollRef.current.target}"]`
+      );
+      const targetCenter = targetSlide
+        ? targetSlide.offsetLeft + targetSlide.clientWidth / 2
+        : programmaticScrollRef.current.target * width + width / 2;
+      if (Math.abs(scrollCenter - targetCenter) < 2) {
         programmaticScrollRef.current.active = false;
         if (programmaticScrollRef.current.target !== exerciseIndex) {
           setExerciseIndex(programmaticScrollRef.current.target);
@@ -158,6 +225,14 @@ const ExercisesSection = ({
       scrollToIndex(maxExerciseIndex, "auto");
     }
   }, [exerciseIndex, maxExerciseIndex, setExerciseIndex]);
+
+  useEffect(() => {
+    exerciseIndexRef.current = exerciseIndex;
+  }, [exerciseIndex]);
+
+  useEffect(() => {
+    exercisesRef.current = exercises;
+  }, [exercises]);
 
   useEffect(
     () => () => {
@@ -221,20 +296,66 @@ const ExercisesSection = ({
   }, [exerciseIndex, maxExerciseIndex]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowRight" && exerciseIndex >= maxExerciseIndex) {
-        event.preventDefault();
+    magicKeyBufferRef.current = "";
+    setShowMagicFab(false);
+  }, [magicPin]);
+
+  useEffect(() => {
+    if (!showMagicFab && autoPilotActiveRef.current) {
+      setAutoPilotActive(false);
+    }
+  }, [showMagicFab]);
+
+  useEffect(() => {
+    autoPilotActiveRef.current = autoPilotActive;
+    if (!autoPilotActive && autoPilotTimeoutRef.current !== null) {
+      window.clearTimeout(autoPilotTimeoutRef.current);
+      autoPilotTimeoutRef.current = null;
+    }
+  }, [autoPilotActive]);
+
+  useEffect(() => {
+    const handleMagicPinEntry = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (
+        target?.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select"
+      ) {
+        return;
+      }
+      if (event.key.length !== 1) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (!/[a-z0-9]/.test(key)) {
+        return;
+      }
+      const nextBuffer = `${magicKeyBufferRef.current}${key}`.slice(-magicPin.length);
+      magicKeyBufferRef.current = nextBuffer;
+      if (nextBuffer === magicPin) {
+        setShowMagicFab((prev) => !prev);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [exerciseIndex, maxExerciseIndex]);
+    window.addEventListener("keyup", handleMagicPinEntry);
+    return () => window.removeEventListener("keyup", handleMagicPinEntry);
+  }, [magicPin]);
 
   const advanceToNext = (index: number, delayMs = 0) => {
     const nextIndex = index + 1;
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] advanceToNext:start", {
+      index,
+      nextIndex,
+      delayMs,
+      exercisesLength: exercises.length,
+      maxExerciseIndex,
+    });
     if (nextIndex >= exercises.length) {
+      // eslint-disable-next-line no-console
+      console.debug("[exercise-nav] advanceToNext:blocked-last");
       return;
     }
     if (advanceTimeoutRef.current !== null) {
@@ -242,11 +363,22 @@ const ExercisesSection = ({
     }
     if (delayMs > 0) {
       advanceTimeoutRef.current = window.setTimeout(() => {
+        // eslint-disable-next-line no-console
+        console.debug("[exercise-nav] advanceToNext:delayed-fire", {
+          index,
+          nextIndex,
+          delayMs,
+        });
         programmaticScrollRef.current = { active: true, target: nextIndex };
         setExerciseIndex(nextIndex);
         scrollToIndex(nextIndex, "smooth", true);
       }, delayMs);
     } else {
+      // eslint-disable-next-line no-console
+      console.debug("[exercise-nav] advanceToNext:immediate-fire", {
+        index,
+        nextIndex,
+      });
       programmaticScrollRef.current = { active: true, target: nextIndex };
       setExerciseIndex(nextIndex);
       scrollToIndex(nextIndex, "smooth", true);
@@ -618,19 +750,23 @@ const ExercisesSection = ({
     const nextSelections = [...mcqSelections];
     nextSelections[index] = option;
     setMcqSelections(nextSelections);
-    const nextStatuses = [...exerciseStatuses];
-    const prevStatus = nextStatuses[index];
-    if (isCorrect) {
-      if (nextStatuses[index] !== "incorrect") {
-        nextStatuses[index] = "correct";
+    let nextStatuses: ExerciseStatus[] = [];
+    let statusChanged = false;
+    setExerciseStatuses((prev) => {
+      const next = [...prev];
+      const prevStatus = next[index];
+      if (isCorrect) {
+        next[index] = "correct";
+      } else if (next[index] === "unattempted") {
+        next[index] = "incorrect";
       }
-      setExerciseStatuses(nextStatuses);
+      statusChanged = next[index] !== prevStatus;
+      nextStatuses = next;
+      return next;
+    });
+    if (isCorrect) {
       handleMainCorrect(index);
     } else {
-      if (nextStatuses[index] === "unattempted") {
-        nextStatuses[index] = "incorrect";
-        setExerciseStatuses(nextStatuses);
-      }
       const stepCount = exercises[index]?.steps?.length ?? 0;
       handleMainIncorrect(index, stepCount > 0, stepCount);
     }
@@ -642,7 +778,6 @@ const ExercisesSection = ({
       setRetryPromptOpen(true);
       retryPromptShownRef.current = true;
     }
-    const statusChanged = nextStatuses[index] !== prevStatus;
     const session = ensureSnsSession();
     startExerciseIfNeeded();
     if (session && statusChanged) {
@@ -660,23 +795,31 @@ const ExercisesSection = ({
     }
   };
 
-  const handleFibSubmit = (index: number, answer: string) => {
-    const submitted = normalizeValue(fibAnswers[index]);
+  const handleFibSubmit = (
+    index: number,
+    answer: string,
+    submittedOverride?: string
+  ) => {
+    const submitted = normalizeValue(submittedOverride ?? fibAnswers[index]);
     const correct = normalizeValue(answer);
     const isCorrect = isCorrectAnswer(submitted, correct);
-    const nextStatuses = [...exerciseStatuses];
-    const prevStatus = nextStatuses[index];
-    if (isCorrect) {
-      if (nextStatuses[index] !== "incorrect") {
-        nextStatuses[index] = "correct";
+    let nextStatuses: ExerciseStatus[] = [];
+    let statusChanged = false;
+    setExerciseStatuses((prev) => {
+      const next = [...prev];
+      const prevStatus = next[index];
+      if (isCorrect) {
+        next[index] = "correct";
+      } else if (next[index] === "unattempted") {
+        next[index] = "incorrect";
       }
-      setExerciseStatuses(nextStatuses);
+      statusChanged = next[index] !== prevStatus;
+      nextStatuses = next;
+      return next;
+    });
+    if (isCorrect) {
       handleMainCorrect(index);
     } else {
-      if (nextStatuses[index] === "unattempted") {
-        nextStatuses[index] = "incorrect";
-        setExerciseStatuses(nextStatuses);
-      }
       const stepCount = exercises[index]?.steps?.length ?? 0;
       handleMainIncorrect(index, stepCount > 0, stepCount);
     }
@@ -688,7 +831,6 @@ const ExercisesSection = ({
       setRetryPromptOpen(true);
       retryPromptShownRef.current = true;
     }
-    const statusChanged = nextStatuses[index] !== prevStatus;
     const session = ensureSnsSession();
     startExerciseIfNeeded();
     if (session && statusChanged) {
@@ -928,10 +1070,17 @@ const ExercisesSection = ({
   };
 
   const goToIndex = (nextIndex: number) => {
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] goToIndex", {
+      nextIndex,
+      maxExerciseIndex,
+      exercisesLength: exercises.length,
+    });
+    const unlockLimit = Math.max(maxExerciseIndex, exerciseIndex);
     if (
       nextIndex >= 0 &&
       nextIndex < exercises.length &&
-      nextIndex <= maxExerciseIndex
+      nextIndex <= unlockLimit
     ) {
       programmaticScrollRef.current = { active: true, target: nextIndex };
       setExerciseIndex(nextIndex);
@@ -939,12 +1088,149 @@ const ExercisesSection = ({
     }
   };
 
+  const handleMainRecheck = (index: number) => {
+    const exercise = exercises[index];
+    if (!exercise) {
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] handleMainRecheck", {
+      index,
+      type: exercise.type,
+    });
+    if (exercise.type === "fib") {
+      handleFibSubmit(index, exercise.answer, String(exercise.answer ?? ""));
+      return;
+    }
+    const answer = String(exercise.answer ?? "");
+    if (answer) {
+      handleAnswer(index, answer, answer);
+    }
+  };
+
+  const handleMagicSolve = (indexOverride?: number) => {
+    const index = indexOverride ?? exerciseIndex;
+    const exercise = exercises[index];
+    if (!exercise) {
+      return;
+    }
+    const answer = String(exercise.answer ?? "");
+    if (exercise.type === "fib") {
+      setFibAnswers((prev) => {
+        const next = [...prev];
+        next[index] = answer;
+        return next;
+      });
+      handleFibSubmit(index, answer, answer);
+      return;
+    }
+    if (answer) {
+      handleAnswer(index, answer, answer);
+    }
+  };
+
+  const autoPilotStep = () => {
+    if (!autoPilotActiveRef.current) {
+      return;
+    }
+    const index = exerciseIndexRef.current;
+    const list = exercisesRef.current;
+    if (!list.length) {
+      setAutoPilotActive(false);
+      return;
+    }
+    if (index >= list.length) {
+      setAutoPilotActive(false);
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.debug("[exercise-nav] autopilot:step", { index });
+    handleMagicSolve(index);
+    if (index >= list.length - 1) {
+      setAutoPilotActive(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!autoPilotActive || !showMagicFab) {
+      return;
+    }
+    if (autoPilotTimeoutRef.current !== null) {
+      window.clearTimeout(autoPilotTimeoutRef.current);
+    }
+    autoPilotTimeoutRef.current = window.setTimeout(() => {
+      autoPilotStep();
+    }, 500);
+    return () => {
+      if (autoPilotTimeoutRef.current !== null) {
+        window.clearTimeout(autoPilotTimeoutRef.current);
+        autoPilotTimeoutRef.current = null;
+      }
+    };
+  }, [autoPilotActive, exerciseIndex, showMagicFab]);
+
   return (
     <Box className="exercise-panel">
       <div className="exercise-score-box">
         <div className="exercise-score-label">Score</div>
         <div className="exercise-score-value">{scoreSnapshot.skillScore}</div>
       </div>
+      {showMagicFab ? (
+        <Fab
+          color="primary"
+          aria-label="Magic answer"
+          className={`exercise-magic-fab${autoPilotActive ? " autopilot" : ""}`}
+          onClick={() => {
+            if (autoPilotHoldTriggeredRef.current) {
+              autoPilotHoldTriggeredRef.current = false;
+              return;
+            }
+            handleMagicSolve();
+          }}
+          onPointerDown={() => {
+            if (autoPilotHoldRef.current !== null) {
+              window.clearTimeout(autoPilotHoldRef.current);
+            }
+            autoPilotHoldTriggeredRef.current = false;
+            autoPilotHoldRef.current = window.setTimeout(() => {
+              autoPilotHoldTriggeredRef.current = true;
+              setAutoPilotActive((prev) => !prev);
+            }, 350);
+          }}
+          onPointerUp={() => {
+            if (autoPilotHoldRef.current !== null) {
+              window.clearTimeout(autoPilotHoldRef.current);
+              autoPilotHoldRef.current = null;
+            }
+          }}
+          onPointerLeave={() => {
+            if (autoPilotHoldRef.current !== null) {
+              window.clearTimeout(autoPilotHoldRef.current);
+              autoPilotHoldRef.current = null;
+            }
+          }}
+          onPointerCancel={() => {
+            if (autoPilotHoldRef.current !== null) {
+              window.clearTimeout(autoPilotHoldRef.current);
+              autoPilotHoldRef.current = null;
+            }
+          }}
+          sx={{
+            position: "fixed",
+            right: "1rem",
+            top: "50%",
+            transform: autoPilotActive
+              ? "translateY(-50%) scale(0.96)"
+              : "translateY(-50%)",
+            zIndex: 1400,
+            boxShadow: autoPilotActive
+              ? "inset 0 0 0 2px rgba(255,255,255,0.4)"
+              : undefined,
+          }}
+        >
+          <KeyRoundedIcon />
+        </Fab>
+      ) : null}
       <Dialog
         open={retryPromptOpen}
         onClose={() => setRetryPromptOpen(false)}
@@ -1065,6 +1351,7 @@ const ExercisesSection = ({
                     guide={guide}
                     fibValue={fibValue}
                     mcqSelection={mcqSelections[idx]}
+                    slideIndex={idx}
                     onMainFibChange={(value) => {
                       setFibAnswers((prev) => {
                         const next = [...prev];
@@ -1081,6 +1368,7 @@ const ExercisesSection = ({
                     onMainOptionSelect={(option) =>
                       handleAnswer(idx, exercise.answer, option)
                     }
+                    onMainRecheck={() => handleMainRecheck(idx)}
                     onStepFibChange={(stepIdx, value) =>
                       handleStepFibChange(idx, stepIdx, value)
                     }

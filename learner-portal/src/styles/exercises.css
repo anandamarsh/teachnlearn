@@ -157,6 +157,21 @@
   min-height: calc(100vh - 200px);
 }
 
+.exercise-magic-fab.autopilot .MuiSvgIcon-root {
+  animation: magicSpin 1.2s linear infinite;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+@keyframes magicSpin {
+  from {
+    transform: rotate(0deg) translateZ(0);
+  }
+  to {
+    transform: rotate(360deg) translateZ(0);
+  }
+}
+
 .exercise-slide-content {
   width: 100%;
 }
