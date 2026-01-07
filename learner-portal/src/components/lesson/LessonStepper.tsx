@@ -17,7 +17,7 @@ type LessonStepperProps = {
   onReset: () => void;
 };
 
-const sectionOrder: LessonSectionKey[] = ["lesson", "references", "exercises"];
+const sectionOrder: LessonSectionKey[] = ["references", "lesson", "exercises"];
 
 const getStepLabel = (key: LessonSectionKey) => {
   if (key === "lesson") {

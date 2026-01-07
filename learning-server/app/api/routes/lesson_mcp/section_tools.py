@@ -128,6 +128,7 @@ def register_section_tools(
         lesson_id: str,
         section_key: str,
         content_html: str = "",
+        create_new: bool = False,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Create a lesson section if it is missing, otherwise overwrite content.
@@ -139,6 +140,7 @@ def register_section_tools(
         - section_key: one of the configured section keys (required; ask if missing)
         Optional:
         - content_html: initial HTML content (JSON for exercises; defaults to empty string)
+        - create_new: when true, creates a new instance for multi sections (lesson/exercises)
 
         The content must be HTML (JSON for exercises).
         Never call this tool without email, lesson_id, and section_key.
@@ -156,12 +158,18 @@ def register_section_tools(
                 "lesson_id": lesson_id,
                 "section_key": section_key,
                 "content_html": content_html,
+                "create_new": create_new,
             },
         )
         cache_key_value = cache_key(
             "lesson_section_create",
             email,
-            {"lesson_id": lesson_id, "section_key": section_key, "content_html": content_html},
+            {
+                "lesson_id": lesson_id,
+                "section_key": section_key,
+                "content_html": content_html,
+                "create_new": create_new,
+            },
         )
         cached = RESULT_CACHE.get(cache_key_value)
         if cached:
@@ -170,9 +178,15 @@ def register_section_tools(
             DEBOUNCE.mark_ignored("lesson_section_create", cache_key_value)
             return {"status": "debounced"}
         try:
-            section = store.put_section(
-                email, lesson_id, section_key, content_html, allow_create=True
-            )
+            if create_new:
+                base_key = store._section_base_key(section_key)
+                section = store.create_section_instance(
+                    email, lesson_id, base_key, content_html
+                )
+            else:
+                section = store.put_section(
+                    email, lesson_id, section_key, content_html, allow_create=True
+                )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc), "key": section_key}
         if section is None:
@@ -184,7 +198,7 @@ def register_section_tools(
                 {
                     "type": "section.created",
                     "lessonId": lesson_id,
-                    "sectionKey": section_key,
+                    "sectionKey": section.get("key", section_key),
                 },
                 delay_seconds=1.0,
             )
@@ -194,6 +208,7 @@ def register_section_tools(
     def lesson_exercises_append(
         lesson_id: str,
         items: list[dict[str, Any]],
+        section_key: str = "exercises",
         email: str | None = None,
     ) -> dict[str, Any]:
         """Append batch items to the exercises JSON section.
@@ -203,6 +218,7 @@ def register_section_tools(
         - email: user email (required; ask the user if missing)
         - lesson_id: target lesson id (required; ask the user if missing)
         - items: list of exercise objects to append (required; ask if missing)
+        - section_key: exercises section key (optional; defaults to "exercises")
 
         This tool only appends to the exercises section. It does not overwrite.
         """
@@ -212,12 +228,12 @@ def register_section_tools(
             return {"error": "items is required"}
         log_params(
             "lesson_exercises_append",
-            {"email": email, "lesson_id": lesson_id, "items": items},
+            {"email": email, "lesson_id": lesson_id, "items": items, "section_key": section_key},
         )
         cache_key_value = cache_key(
             "lesson_exercises_append",
             email,
-            {"lesson_id": lesson_id, "items": items},
+            {"lesson_id": lesson_id, "items": items, "section_key": section_key},
         )
         cached = RESULT_CACHE.get(cache_key_value)
         if cached:
@@ -226,7 +242,7 @@ def register_section_tools(
             DEBOUNCE.mark_ignored("lesson_exercises_append", cache_key_value)
             return {"status": "debounced"}
         try:
-            result = store.append_exercises(email, lesson_id, items)
+            result = store.append_exercises(email, lesson_id, items, section_key=section_key)
         except (RuntimeError, ClientError, json.JSONDecodeError, ValueError) as exc:
             return {"error": str(exc)}
         if result is None:
@@ -238,7 +254,66 @@ def register_section_tools(
                 {
                     "type": "section.updated",
                     "lessonId": lesson_id,
-                    "sectionKey": "exercises",
+                    "sectionKey": section_key,
+                },
+                delay_seconds=1.0,
+            )
+        return result
+
+    @mcp.tool()
+    def lesson_section_delete(
+        lesson_id: str,
+        section_key: str,
+        email: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete a lesson section and its stored content.
+
+        Use when the user needs to remove a section entirely.
+        You must supply:
+        - email: user email (required; ask if missing)
+        - lesson_id: target lesson id (required; ask if missing)
+        - section_key: section key to delete (required; ask if missing)
+        """
+        if not email:
+            return {"error": "email is required"}
+        if not section_key:
+            return {"error": "section_key is required"}
+        if not store.is_valid_section_key(section_key):
+            return {"error": "invalid section_key", "key": section_key}
+        log_params(
+            "lesson_section_delete",
+            {
+                "email": email,
+                "lesson_id": lesson_id,
+                "section_key": section_key,
+            },
+        )
+        cache_key_value = cache_key(
+            "lesson_section_delete",
+            email,
+            {"lesson_id": lesson_id, "section_key": section_key},
+        )
+        cached = RESULT_CACHE.get(cache_key_value)
+        if cached:
+            return cached
+        if not DEBOUNCE.should_run(cache_key_value):
+            DEBOUNCE.mark_ignored("lesson_section_delete", cache_key_value)
+            return {"status": "debounced"}
+        try:
+            removed = store.delete_section(email, lesson_id, section_key)
+        except (RuntimeError, ClientError) as exc:
+            return {"error": str(exc), "key": section_key}
+        if not removed:
+            return {"error": "section not found", "key": section_key}
+        result = {"deleted": True, "sectionKey": section_key}
+        RESULT_CACHE.set(cache_key_value, result)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.deleted",
+                    "lessonId": lesson_id,
+                    "sectionKey": section_key,
                 },
                 delay_seconds=1.0,
             )

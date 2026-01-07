@@ -17,7 +17,7 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, lineNumbers } from "@codemirror/view";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { html as htmlLanguage } from "@codemirror/lang-html";
 import { json as jsonLanguage } from "@codemirror/lang-json";
@@ -108,6 +108,65 @@ const baseSourceTheme = EditorView.theme({
   },
 });
 
+const stripeThemes: Record<SourceThemeKey, Extension> = {
+  vscodeLight: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(25, 118, 210, 0.06)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(25, 118, 210, 0.28)",
+    },
+  }),
+  solarizedLight: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(38, 139, 210, 0.08)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(38, 139, 210, 0.3)",
+    },
+  }),
+  vscodeDark: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(144, 202, 249, 0.08)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(144, 202, 249, 0.32)",
+    },
+  }),
+  oneDark: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(97, 175, 239, 0.08)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(97, 175, 239, 0.3)",
+    },
+  }),
+  dracula: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(189, 147, 249, 0.08)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(189, 147, 249, 0.3)",
+    },
+  }),
+  nord: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(136, 192, 208, 0.08)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(136, 192, 208, 0.3)",
+    },
+  }),
+  solarizedDark: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(38, 139, 210, 0.1)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(38, 139, 210, 0.35)",
+    },
+  }),
+  monokai: EditorView.theme({
+    ".cm-line:nth-child(odd)": { backgroundColor: "rgba(166, 226, 46, 0.08)" },
+    ".cm-line:nth-child(even)": { backgroundColor: "transparent" },
+    ".cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(166, 226, 46, 0.28)",
+    },
+  }),
+};
+
 const buildSourceExtensions = (
   language: "html" | "json",
   theme: SourceThemeKey,
@@ -117,6 +176,7 @@ const buildSourceExtensions = (
   const extensions: Extension[] = [
     language === "json" ? jsonLanguage() : htmlLanguage(),
     syntaxHighlighting(defaultHighlightStyle),
+    lineNumbers(),
     EditorView.lineWrapping,
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
@@ -125,6 +185,7 @@ const buildSourceExtensions = (
     }),
     baseSourceTheme,
     themeExtensions[theme],
+    stripeThemes[theme],
   ];
   if (readOnly) {
     extensions.push(EditorState.readOnly.of(true), EditorView.editable.of(false));
@@ -308,7 +369,7 @@ const SectionEditor = ({
   const jsonViewRef = useRef<EditorView | null>(null);
   const jsonModeRef = useRef<{ readOnly: boolean; theme: SourceThemeKey } | null>(null);
   const jsonContainerNodeRef = useRef<HTMLDivElement | null>(null);
-  const isJsonSection = editorKey === "exercises";
+  const isJsonSection = editorKey === "exercises" || /^exercises-\d+$/.test(editorKey);
 
   useEffect(() => {
     if (!isEditing) {
@@ -664,6 +725,25 @@ const SectionEditor = ({
                 <Button onClick={handleCloseSourceModal}>Cancel</Button>
                 <Button
                   onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(sourceValue);
+                    } catch {
+                      const temp = document.createElement("textarea");
+                      temp.value = sourceValue;
+                      temp.style.position = "fixed";
+                      temp.style.opacity = "0";
+                      document.body.appendChild(temp);
+                      temp.focus();
+                      temp.select();
+                      document.execCommand("copy");
+                      document.body.removeChild(temp);
+                    }
+                  }}
+                >
+                  Copy
+                </Button>
+                <Button
+                  onClick={async () => {
                     const { formatted, error } = await formatSource(
                       sourceValue,
                       sourceLanguage
@@ -706,7 +786,7 @@ const SectionEditor = ({
                     setSourceOpen(false);
                   }}
                 >
-                  Apply
+                  Save
                 </Button>
               </Box>
             </DialogActions>

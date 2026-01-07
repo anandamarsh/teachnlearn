@@ -12,6 +12,11 @@ export type CatalogLesson = {
 
 export type LessonSectionKey = "lesson" | "references" | "exercises";
 
+export type ExerciseSection = {
+  key: string;
+  exercises: ExerciseItem[];
+};
+
 export type ExerciseStep = {
   step: string;
   type: "fib" | "mcq";
@@ -50,6 +55,19 @@ export type ExerciseGuideState = {
 export type LessonProgress = {
   completed: Record<LessonSectionKey, boolean>;
   open: LessonSectionKey;
+  activeExerciseSectionKey?: string;
+  exerciseSections?: Record<
+    string,
+    {
+      exerciseIndex: number;
+      maxExerciseIndex: number;
+      exerciseStatuses: ExerciseStatus[];
+      exerciseGuides: ExerciseGuideState[];
+      fibAnswers: string[];
+      mcqSelections: string[];
+      score: ExerciseScoreSnapshot;
+    }
+  >;
   exerciseIndex?: number;
   maxExerciseIndex?: number;
   exerciseStatuses?: ExerciseStatus[];

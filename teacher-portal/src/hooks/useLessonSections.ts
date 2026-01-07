@@ -4,6 +4,8 @@ import {
   fetchSectionContent,
   fetchSectionsIndex,
   fetchSectionsList,
+  createSectionContent,
+  deleteSectionContent,
   saveSectionContent,
 } from "../api/lessonSections";
 import { useLessonSectionsSocket } from "./useLessonSectionsSocket";
@@ -34,23 +36,42 @@ const DEFAULT_ORDER = [
   "samples",
   "concepts",
   "background",
-  "lesson",
   "references",
+  "lesson",
   "exercises",
 ];
 
+const getBaseKey = (key: string) => {
+  const match = key.match(/^([a-z_]+)-\d+$/);
+  return match ? match[1] : key;
+};
+
+const getKeyIndex = (key: string) => {
+  const match = key.match(/-(\d+)$/);
+  if (!match) {
+    return 1;
+  }
+  return Number(match[1]) || 1;
+};
+
+const isExerciseSection = (key: string) => getBaseKey(key) === "exercises";
+
 const orderSections = (sections: SectionSummary[], order: string[]) => {
-  const byKey = new Map(sections.map((section) => [section.key, section]));
-  const ordered: SectionSummary[] = [];
   const sequence = order.length ? order : DEFAULT_ORDER;
-  sequence.forEach((key) => {
-    const match = byKey.get(key);
-    if (match) {
-      ordered.push(match);
-      byKey.delete(key);
+  const orderMap = new Map(sequence.map((key, idx) => [key, idx]));
+  return [...sections].sort((left, right) => {
+    const leftBase = getBaseKey(left.key);
+    const rightBase = getBaseKey(right.key);
+    const leftRank = orderMap.get(leftBase) ?? 999;
+    const rightRank = orderMap.get(rightBase) ?? 999;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
     }
+    if (leftBase === rightBase) {
+      return getKeyIndex(left.key) - getKeyIndex(right.key);
+    }
+    return left.key.localeCompare(right.key);
   });
-  return ordered;
 };
 
 export const useLessonSections = ({
@@ -174,7 +195,7 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        if (key === "exercises" && Array.isArray(data.content)) {
+        if (isExerciseSection(key) && Array.isArray(data.content)) {
           setContents((prev) => ({
             ...prev,
             [key]: JSON.stringify(data.content, null, 2),
@@ -203,7 +224,7 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        if (key === "exercises" && Array.isArray(data.content)) {
+        if (isExerciseSection(key) && Array.isArray(data.content)) {
           setContents((prev) => ({
             ...prev,
             [key]: JSON.stringify(data.content, null, 2),
@@ -244,6 +265,9 @@ export const useLessonSections = ({
     onPulse,
     onSectionCreated: loadIndex,
     onSectionUpdated: handleSectionUpdated,
+    onSectionDeleted: () => {
+      loadIndex();
+    },
   });
 
   const saveSection = useCallback(
@@ -256,7 +280,7 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         let payload: { contentHtml?: string; content?: unknown };
-        if (key === "exercises") {
+        if (isExerciseSection(key)) {
           try {
             payload = { content: JSON.parse(contentHtml || "[]") };
           } catch (err) {
@@ -268,7 +292,7 @@ export const useLessonSections = ({
           payload = { contentHtml };
         }
         const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, payload);
-        if (key === "exercises" && Array.isArray(data.content)) {
+        if (isExerciseSection(key) && Array.isArray(data.content)) {
           setContents((prev) => ({
             ...prev,
             [key]: JSON.stringify(data.content, null, 2),
@@ -301,5 +325,49 @@ export const useLessonSections = ({
     saveSection,
     refreshIndex: loadIndex,
     refreshSection,
+    createSection: async (baseKey: string) => {
+      if (!isAuthenticated || !baseEndpoint) {
+        return null;
+      }
+      setError("");
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        const contentPayload =
+          baseKey === "exercises" ? { content: [], createNew: true } : { contentHtml: "", createNew: true };
+        const section = await createSectionContent(
+          `${baseEndpoint}/${baseKey}`,
+          headers,
+          contentPayload
+        );
+        await loadIndex();
+        return section;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "Failed to create section";
+        setError(detail);
+        return null;
+      }
+    },
+    deleteSection: async (key: string) => {
+      if (!isAuthenticated || !baseEndpoint) {
+        return false;
+      }
+      setError("");
+      try {
+        const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+        await deleteSectionContent(`${baseEndpoint}/${key}`, headers);
+        setContents((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        loadedKeysRef.current.delete(key);
+        await loadIndex();
+        return true;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "Failed to delete section";
+        setError(detail);
+        return false;
+      }
+    },
   };
 };
