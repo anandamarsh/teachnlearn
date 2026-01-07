@@ -25,8 +25,8 @@ type LessonViewProps = {
 };
 
 const sectionOrder: LessonSectionKey[] = [
-  "lesson",
   "references",
+  "lesson",
   "exercises",
 ];
 
@@ -64,7 +64,16 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     scoreSnapshot,
     setScoreSnapshot,
     reset: resetProgress,
-  } = useLessonProgress(progressKey, exercises.length);
+    exerciseSections,
+    activeExerciseSectionKey,
+    setActiveExerciseSectionKey,
+  } = useLessonProgress(
+    progressKey,
+    exercises.map((section) => ({
+      key: section.key,
+      count: section.exercises.length,
+    }))
+  );
 
   useEffect(() => {
     if (prevLessonIdRef.current && prevLessonIdRef.current !== lesson.id) {
@@ -99,30 +108,65 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     }
   };
 
-  const showCompleteButton = useMemo(
-    () => {
-      if (exerciseGuides.length) {
-        return exerciseGuides.every((guide) => guide.completed);
+  const showCompleteButton = useMemo(() => {
+    if (!exercises.length) {
+      return false;
+    }
+    return exercises.every((section) => {
+      const progress = exerciseSections[section.key];
+      if (!progress) {
+        return false;
+      }
+      if (progress.exerciseGuides.length) {
+        return progress.exerciseGuides.every((guide) => guide.completed);
       }
       return (
-        exerciseStatuses.length > 0 &&
-        exerciseStatuses.every((status) => status !== "unattempted")
+        progress.exerciseStatuses.length > 0 &&
+        progress.exerciseStatuses.every((status) => status !== "unattempted")
       );
-    },
-    [exerciseGuides, exerciseStatuses]
-  );
+    });
+  }, [exerciseSections, exercises]);
+
+  const activeExerciseSection = useMemo(() => {
+    if (!exercises.length) {
+      return null;
+    }
+    if (activeExerciseSectionKey) {
+      return (
+        exercises.find((section) => section.key === activeExerciseSectionKey) ||
+        exercises[0]
+      );
+    }
+    return exercises[0];
+  }, [activeExerciseSectionKey, exercises]);
 
   useEffect(() => {
+    if (!activeExerciseSectionKey) {
+      return;
+    }
     if (scoreSnapshot.skillScore !== 100) {
       return;
     }
-    setCompletedSections((prev) => {
-      if (prev.exercises) {
-        return prev;
-      }
-      return { ...prev, exercises: true };
-    });
-  }, [scoreSnapshot.skillScore, setCompletedSections]);
+    const currentIndex = exercises.findIndex(
+      (section) => section.key === activeExerciseSectionKey
+    );
+    if (currentIndex >= 0 && currentIndex < exercises.length - 1) {
+      setActiveExerciseSectionKey(exercises[currentIndex + 1].key);
+    } else {
+      setCompletedSections((prev) => {
+        if (prev.exercises) {
+          return prev;
+        }
+        return { ...prev, exercises: true };
+      });
+    }
+  }, [
+    activeExerciseSectionKey,
+    exercises,
+    scoreSnapshot.skillScore,
+    setActiveExerciseSectionKey,
+    setCompletedSections,
+  ]);
 
   return (
     <Stack spacing={0}>
@@ -190,31 +234,56 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                     <LinearProgress />
                   </Box>
                 </Box>
-              ) : (
-                <ExercisesSection
-                  exercises={exercises}
-                  lessonId={lesson.id}
-                  lessonTitle={lesson.title}
-                  lessonSubject={lesson.subject}
-                  lessonLevel={lesson.level}
-                  exerciseIndex={exerciseIndex}
-                  setExerciseIndex={setExerciseIndex}
-                  maxExerciseIndex={maxExerciseIndex}
-                  setMaxExerciseIndex={setMaxExerciseIndex}
-                  exerciseStatuses={exerciseStatuses}
-                  setExerciseStatuses={setExerciseStatuses}
-                  exerciseGuides={exerciseGuides}
-                  setExerciseGuides={setExerciseGuides}
-                  fibAnswers={fibAnswers}
-                  setFibAnswers={setFibAnswers}
-                  mcqSelections={mcqSelections}
-                  setMcqSelections={setMcqSelections}
-                  scoreSnapshot={scoreSnapshot}
-                  setScoreSnapshot={setScoreSnapshot}
-                  onComplete={() => handleAdvanceSection("exercises")}
-                  showCompleteButton={showCompleteButton}
-                />
-              )}
+              ) : activeExerciseSection ? (
+                <>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      mb: "0.75rem",
+                    }}
+                  >
+                    <Typography variant="h6">
+                      Exercise Set{" "}
+                      {exercises.findIndex(
+                        (section) => section.key === activeExerciseSection.key
+                      ) + 1}{" "}
+                      of {exercises.length}
+                    </Typography>
+                    {exercises.length > 1 ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {activeExerciseSection.key}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                  <ExercisesSection
+                    key={activeExerciseSection.key}
+                    exercises={activeExerciseSection.exercises}
+                    lessonId={lesson.id}
+                    lessonTitle={lesson.title}
+                    lessonSubject={lesson.subject}
+                    lessonLevel={lesson.level}
+                    exerciseIndex={exerciseIndex}
+                    setExerciseIndex={setExerciseIndex}
+                    maxExerciseIndex={maxExerciseIndex}
+                    setMaxExerciseIndex={setMaxExerciseIndex}
+                    exerciseStatuses={exerciseStatuses}
+                    setExerciseStatuses={setExerciseStatuses}
+                    exerciseGuides={exerciseGuides}
+                    setExerciseGuides={setExerciseGuides}
+                    fibAnswers={fibAnswers}
+                    setFibAnswers={setFibAnswers}
+                    mcqSelections={mcqSelections}
+                    setMcqSelections={setMcqSelections}
+                    scoreSnapshot={scoreSnapshot}
+                    setScoreSnapshot={setScoreSnapshot}
+                    onComplete={() => handleAdvanceSection("exercises")}
+                    showCompleteButton={showCompleteButton}
+                    exerciseSectionKey={activeExerciseSection.key}
+                  />
+                </>
+              ) : null}
             </Box>
           ) : null}
         </Box>

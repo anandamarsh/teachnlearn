@@ -51,6 +51,9 @@ export const useLessonWorkspaceState = ({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState<string | null>(null);
+  const [creatingSection, setCreatingSection] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [deleteTargetKey, setDeleteTargetKey] = useState<string | null>(null);
   const prevContentsRef = useRef<Record<string, string>>({});
 
   const {
@@ -63,6 +66,8 @@ export const useLessonWorkspaceState = ({
     setError,
     loadSection,
     saveSection,
+    createSection,
+    deleteSection,
   } = useLessonSections({
     apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
     auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
@@ -256,6 +261,36 @@ export const useLessonWorkspaceState = ({
     }
   };
 
+  const handleCreateSection = async (baseKey: string) => {
+    if (!createSection || !lesson) {
+      return;
+    }
+    setCreatingSection(true);
+    const created = await createSection(baseKey);
+    setCreatingSection(false);
+    if (!created || !created.key) {
+      return;
+    }
+    setExpandedKeys((prev) => ({ ...prev, [created.key]: true }));
+    setEditingKey(created.key);
+    loadSection(created.key);
+  };
+
+  const handleRequestDelete = (key: string) => {
+    setDeleteTargetKey(key);
+  };
+
+  const handleDeleteSection = async () => {
+    if (!deleteSection || !deleteTargetKey) {
+      return false;
+    }
+    const success = await deleteSection(deleteTargetKey);
+    if (success) {
+      setDeleteTargetKey(null);
+    }
+    return success;
+  };
+
   const handleConfirmClose = () => {
     if (!confirmClose) {
       return;
@@ -331,6 +366,9 @@ export const useLessonWorkspaceState = ({
     openingReport,
     handleAccordionChange,
     handleSaveSection,
+    handleCreateSection,
+    handleRequestDelete,
+    handleDeleteSection,
     handleConfirmClose,
     handleUpdateSubject,
     handleUpdateLevel,
@@ -341,5 +379,10 @@ export const useLessonWorkspaceState = ({
     lesson,
     subjectDraft,
     levelDraft,
+    creatingSection,
+    deleteMode,
+    setDeleteMode,
+    deleteTargetKey,
+    setDeleteTargetKey,
   };
 };

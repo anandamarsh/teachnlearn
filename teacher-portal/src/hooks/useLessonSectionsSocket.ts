@@ -10,6 +10,7 @@ type UseLessonSectionsSocketOptions = {
   onPulse?: (color: "success" | "error") => void;
   onSectionCreated: () => void;
   onSectionUpdated: (sectionKey: string) => void;
+  onSectionDeleted?: (sectionKey: string) => void;
 };
 
 const buildLessonsWsUrl = (apiBaseUrl: string, token: string) => {
@@ -29,6 +30,7 @@ export const useLessonSectionsSocket = ({
   onPulse,
   onSectionCreated,
   onSectionUpdated,
+  onSectionDeleted,
 }: UseLessonSectionsSocketOptions) => {
   const socketRef = useRef<WebSocket | null>(null);
   const heartbeatRef = useRef<number | null>(null);
@@ -37,6 +39,7 @@ export const useLessonSectionsSocket = ({
   const lastPongRef = useRef<number>(Date.now());
   const onSectionCreatedRef = useRef(onSectionCreated);
   const onSectionUpdatedRef = useRef(onSectionUpdated);
+  const onSectionDeletedRef = useRef(onSectionDeleted);
   const onPulseRef = useRef(onPulse);
 
   useEffect(() => {
@@ -46,6 +49,10 @@ export const useLessonSectionsSocket = ({
   useEffect(() => {
     onSectionUpdatedRef.current = onSectionUpdated;
   }, [onSectionUpdated]);
+
+  useEffect(() => {
+    onSectionDeletedRef.current = onSectionDeleted;
+  }, [onSectionDeleted]);
 
   useEffect(() => {
     onPulseRef.current = onPulse;
@@ -163,8 +170,11 @@ export const useLessonSectionsSocket = ({
             if (payload.type === "section.created") {
               onSectionCreatedRef.current();
             }
-            if (payload.sectionKey) {
+            if (payload.type === "section.updated" && payload.sectionKey) {
               onSectionUpdatedRef.current(payload.sectionKey);
+            }
+            if (payload.type === "section.deleted" && payload.sectionKey) {
+              onSectionDeletedRef.current?.(payload.sectionKey);
             }
             onPulseRef.current?.("success");
           } catch {

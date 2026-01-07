@@ -47,3 +47,25 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         if section is None:
             return json_error("section not found", 404)
         return JSONResponse(section)
+
+    @mcp.custom_route(
+        "/catalog/teacher/{teacher_id}/lesson/{lesson_id}/sections/index",
+        methods=["GET"],
+    )
+    async def get_catalog_sections_index(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        teacher_id = request.path_params.get("teacher_id", "").strip()
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not teacher_id:
+            return json_error("teacher_id is required", 400)
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        try:
+            index = store.get_sections_index_sanitized(teacher_id, lesson_id)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if index is None:
+            return json_error("sections index not found", 404)
+        return JSONResponse(index)

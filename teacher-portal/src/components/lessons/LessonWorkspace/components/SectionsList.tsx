@@ -4,11 +4,13 @@ import {
   AccordionSummary,
   Box,
   Checkbox,
+  IconButton,
   LinearProgress,
   Typography,
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import SectionEditor from "../../SectionEditor";
 
 type SectionSummary = {
@@ -41,6 +43,8 @@ type SectionsListProps = {
   ) => (_: unknown, expanded: boolean) => void;
   handleSaveSection: (key: string, contentOverride?: string) => void;
   onDirtyClose: (key: string) => void;
+  deleteMode: boolean;
+  onRequestDelete: (key: string) => void;
 };
 
 const checkboxIconSx = {
@@ -62,6 +66,17 @@ const checkboxCheckedIconSx = {
   color: "common.white",
 };
 
+const formatSectionLabel = (key: string) => {
+  const match = key.match(/^([a-z_]+)-(\d+)$/);
+  if (!match) {
+    return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+  const base = match[1];
+  const index = Number(match[2]);
+  const baseLabel = base.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return `${baseLabel} ${index}`;
+};
+
 const SectionsList = ({
   sections,
   expandedKeys,
@@ -81,6 +96,8 @@ const SectionsList = ({
   handleAccordionChange,
   handleSaveSection,
   onDirtyClose,
+  deleteMode,
+  onRequestDelete,
 }: SectionsListProps) => (
   <Box sx={{ display: "flex", flexDirection: "column", gap: 0, mt: -1 }}>
     {loadingIndex ? (
@@ -130,6 +147,18 @@ const SectionsList = ({
           >
             <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                {deleteMode && canEdit ? (
+                  <IconButton
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRequestDelete(section.key);
+                    }}
+                    sx={{ color: "error.main" }}
+                  >
+                    <DeleteOutlineRoundedIcon fontSize="small" />
+                  </IconButton>
+                ) : null}
                 {!isPublished ? (
                   <Box
                     sx={{
@@ -168,9 +197,7 @@ const SectionsList = ({
                   variant="h3"
                   sx={{ fontSize: "1.05rem", color: "#1565c0" }}
                 >
-                  {section.key
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (char) => char.toUpperCase())}
+                  {formatSectionLabel(section.key)}
                 </Typography>
               </Box>
             </AccordionSummary>
@@ -203,7 +230,7 @@ const SectionsList = ({
                     handleSaveSection(section.key, contentOverride)
                   }
                   saving={savingSection[section.key]}
-                  disabled={loadingSection[section.key] || !canEdit}
+                  disabled={loadingSection[section.key] || !canEdit || deleteMode}
                   dirty={
                     (drafts[section.key] ?? "") !==
                     (contents[section.key] ?? "")

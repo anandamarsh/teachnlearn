@@ -19,6 +19,23 @@ type ProgressState = {
   fibAnswers: string[];
   mcqSelections: string[];
   scoreSnapshot: ExerciseScoreSnapshot;
+  exerciseSections: Record<string, ExerciseSectionProgress>;
+  activeExerciseSectionKey: string | null;
+};
+
+type ExerciseSectionProgress = {
+  exerciseIndex: number;
+  maxExerciseIndex: number;
+  exerciseStatuses: ExerciseStatus[];
+  exerciseGuides: ExerciseGuideState[];
+  fibAnswers: string[];
+  mcqSelections: string[];
+  scoreSnapshot: ExerciseScoreSnapshot;
+};
+
+type ExerciseSectionConfig = {
+  key: string;
+  count: number;
 };
 
 const defaultCompleted = {
@@ -27,12 +44,77 @@ const defaultCompleted = {
   exercises: false,
 };
 
+const buildEmptyScore = (): ExerciseScoreSnapshot => ({
+  questionsAnswered: { thisSession: 0, previousSessions: 0 },
+  skillScore: 0,
+  correctSoFar: 0,
+});
+
+const buildDefaultExerciseGuides = (count: number) =>
+  Array.from({ length: count }).map(() => ({
+    helpActive: false,
+    stepIndex: 0,
+    steps: [] as ExerciseStepProgress[],
+    mainAttempts: 0,
+    mainLastIncorrect: false,
+    mainPending: "none",
+    completed: false,
+  }));
+
+const buildSectionProgress = (count: number): ExerciseSectionProgress => ({
+  exerciseIndex: 0,
+  maxExerciseIndex: 0,
+  exerciseStatuses: Array(count).fill("unattempted"),
+  exerciseGuides: buildDefaultExerciseGuides(count),
+  fibAnswers: Array(count).fill(""),
+  mcqSelections: Array(count).fill(""),
+  scoreSnapshot: buildEmptyScore(),
+});
+
+const normalizeArray = <T,>(
+  values: T[] | undefined,
+  count: number,
+  fillValue: T
+) => Array.from({ length: count }).map((_, idx) => values?.[idx] ?? fillValue);
+
+const normalizeSectionProgress = (
+  progress: ExerciseSectionProgress | undefined,
+  count: number
+): ExerciseSectionProgress => {
+  const base = buildSectionProgress(count);
+  if (!progress) {
+    return base;
+  }
+  return {
+    exerciseIndex:
+      typeof progress.exerciseIndex === "number"
+        ? Math.min(progress.exerciseIndex, Math.max(count - 1, 0))
+        : base.exerciseIndex,
+    maxExerciseIndex:
+      typeof progress.maxExerciseIndex === "number"
+        ? Math.min(progress.maxExerciseIndex, Math.max(count - 1, 0))
+        : base.maxExerciseIndex,
+    exerciseStatuses: normalizeArray(
+      progress.exerciseStatuses,
+      count,
+      "unattempted"
+    ),
+    exerciseGuides:
+      progress.exerciseGuides?.length === count
+        ? progress.exerciseGuides
+        : buildDefaultExerciseGuides(count),
+    fibAnswers: normalizeArray(progress.fibAnswers, count, ""),
+    mcqSelections: normalizeArray(progress.mcqSelections, count, ""),
+    scoreSnapshot: progress.scoreSnapshot || buildEmptyScore(),
+  };
+};
+
 export const useLessonProgress = (
   progressKey: string | null,
-  exerciseCount: number
+  exerciseSections: ExerciseSectionConfig[]
 ) => {
-  const exerciseCountRef = useRef(exerciseCount);
-  const [openSection, setOpenSection] = useState<LessonSectionKey>("lesson");
+  const exerciseCountRef = useRef(exerciseSections);
+  const [openSection, setOpenSection] = useState<LessonSectionKey>("references");
   const [completedSections, setCompletedSections] =
     useState<Record<LessonSectionKey, boolean>>(defaultCompleted);
   const [exerciseIndex, setExerciseIndex] = useState(0);
@@ -46,11 +128,17 @@ export const useLessonProgress = (
     skillScore: 0,
     correctSoFar: 0,
   });
+  const [exerciseSectionsState, setExerciseSectionsState] = useState<
+    Record<string, ExerciseSectionProgress>
+  >({});
+  const [activeExerciseSectionKey, setActiveExerciseSectionKey] = useState<string | null>(
+    null
+  );
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    exerciseCountRef.current = exerciseCount;
-  }, [exerciseCount]);
+    exerciseCountRef.current = exerciseSections;
+  }, [exerciseSections]);
 
   useEffect(() => {
     if (!progressKey) {
@@ -61,7 +149,7 @@ export const useLessonProgress = (
     if (parsed?.open) {
       setOpenSection(parsed.open);
     } else {
-      setOpenSection("lesson");
+      setOpenSection("references");
     }
     if (parsed?.completed) {
       setCompletedSections({
@@ -72,38 +160,57 @@ export const useLessonProgress = (
     } else {
       setCompletedSections(defaultCompleted);
     }
-    const parsedExerciseIndex =
-      typeof parsed?.exerciseIndex === "number" ? parsed.exerciseIndex : 0;
-    setExerciseIndex(parsedExerciseIndex);
-    const parsedStatuses = parsed?.exerciseStatuses || [];
-    setExerciseStatuses(parsedStatuses);
-    const inferredMaxIndex = (() => {
-      if (typeof parsed?.maxExerciseIndex === "number") {
-        return parsed.maxExerciseIndex;
-      }
-      const lastAttempted = parsedStatuses.reduce((acc, status, idx) => {
-        if (status && status !== "unattempted") {
-          return idx;
-        }
-        return acc;
-      }, 0);
-      return Math.max(lastAttempted, parsedExerciseIndex);
-    })();
-    setMaxExerciseIndex(inferredMaxIndex);
-    setExerciseGuides(parsed?.exerciseGuides || []);
-    setFibAnswers(parsed?.fibAnswers || []);
-    setMcqSelections(parsed?.mcqSelections || []);
-    if (parsed?.score) {
-      setScoreSnapshot(parsed.score);
+    const sectionMap = new Map(exerciseSections.map((section) => [section.key, section]));
+    const defaultActiveKey = exerciseSections[0]?.key || null;
+    let nextSections = parsed?.exerciseSections || {};
+    if (!parsed?.exerciseSections && parsed?.exerciseIndex !== undefined) {
+      const legacyKey = defaultActiveKey || "exercises";
+      nextSections = {
+        [legacyKey]: {
+          exerciseIndex: parsed.exerciseIndex ?? 0,
+          maxExerciseIndex: parsed.maxExerciseIndex ?? 0,
+          exerciseStatuses: parsed.exerciseStatuses ?? [],
+          exerciseGuides: parsed.exerciseGuides ?? [],
+          fibAnswers: parsed.fibAnswers ?? [],
+          mcqSelections: parsed.mcqSelections ?? [],
+          scoreSnapshot: parsed.score ?? buildEmptyScore(),
+        },
+      };
+    }
+    const normalizedSections: Record<string, ExerciseSectionProgress> = {};
+    exerciseSections.forEach((section) => {
+      normalizedSections[section.key] = normalizeSectionProgress(
+        nextSections[section.key],
+        section.count
+      );
+    });
+    setExerciseSectionsState(normalizedSections);
+    const nextActiveKey =
+      (parsed?.activeExerciseSectionKey &&
+        normalizedSections[parsed.activeExerciseSectionKey]
+          ? parsed.activeExerciseSectionKey
+          : defaultActiveKey) || null;
+    setActiveExerciseSectionKey(nextActiveKey);
+    if (nextActiveKey && normalizedSections[nextActiveKey]) {
+      const active = normalizedSections[nextActiveKey];
+      setExerciseIndex(active.exerciseIndex);
+      setMaxExerciseIndex(active.maxExerciseIndex);
+      setExerciseStatuses(active.exerciseStatuses);
+      setExerciseGuides(active.exerciseGuides);
+      setFibAnswers(active.fibAnswers);
+      setMcqSelections(active.mcqSelections);
+      setScoreSnapshot(active.scoreSnapshot);
     } else {
-      setScoreSnapshot({
-        questionsAnswered: { thisSession: 0, previousSessions: 0 },
-        skillScore: 0,
-        correctSoFar: 0,
-      });
+      setExerciseIndex(0);
+      setMaxExerciseIndex(0);
+      setExerciseStatuses([]);
+      setExerciseGuides([]);
+      setFibAnswers([]);
+      setMcqSelections([]);
+      setScoreSnapshot(buildEmptyScore());
     }
     setHydratedKey(progressKey);
-  }, [progressKey]);
+  }, [exerciseSections, progressKey]);
 
   useEffect(() => {
     if (!progressKey) {
@@ -115,6 +222,8 @@ export const useLessonProgress = (
     const payload: LessonProgress = {
       open: openSection,
       completed: completedSections,
+      activeExerciseSectionKey,
+      exerciseSections: exerciseSectionsState,
       exerciseIndex,
       maxExerciseIndex,
       exerciseStatuses,
@@ -126,6 +235,8 @@ export const useLessonProgress = (
     writeStorage(progressKey, payload);
   }, [
     completedSections,
+    activeExerciseSectionKey,
+    exerciseSectionsState,
     exerciseIndex,
     maxExerciseIndex,
     exerciseStatuses,
@@ -139,76 +250,98 @@ export const useLessonProgress = (
   ]);
 
   useEffect(() => {
-    if (!exerciseCount) {
+    if (!exerciseSections.length) {
+      setExerciseSectionsState({});
+      setActiveExerciseSectionKey(null);
       return;
     }
-    setExerciseIndex((prev) => (prev < exerciseCount ? prev : 0));
-    if (exerciseStatuses.length !== exerciseCount) {
-      setExerciseStatuses(Array(exerciseCount).fill("unattempted"));
-    }
-    if (exerciseGuides.length !== exerciseCount) {
-      setExerciseGuides((prev) => {
-        const next: ExerciseGuideState[] = Array.from({
-          length: exerciseCount,
-        }).map((_, idx) => {
-          const existing = prev[idx];
-          const completed =
-            existing?.completed ||
-            exerciseStatuses[idx] === "correct" ||
-            exerciseStatuses[idx] === "incorrect";
-          return (
-            existing || {
-              helpActive: false,
-              stepIndex: 0,
-              steps: [],
-              mainAttempts: 0,
-              mainLastIncorrect: false,
-              mainPending: "none",
-              completed,
-            }
-          );
-        });
-        return next;
+    setExerciseSectionsState((prev) => {
+      const next: Record<string, ExerciseSectionProgress> = {};
+      exerciseSections.forEach((section) => {
+        next[section.key] = normalizeSectionProgress(prev[section.key], section.count);
       });
+      return next;
+    });
+    if (
+      !activeExerciseSectionKey ||
+      !exerciseSections.some((section) => section.key === activeExerciseSectionKey)
+    ) {
+      setActiveExerciseSectionKey(exerciseSections[0].key);
     }
-    if (fibAnswers.length !== exerciseCount) {
-      setFibAnswers(Array(exerciseCount).fill(""));
+  }, [exerciseSections, activeExerciseSectionKey]);
+
+  useEffect(() => {
+    if (!activeExerciseSectionKey) {
+      return;
     }
-    if (mcqSelections.length !== exerciseCount) {
-      setMcqSelections(Array(exerciseCount).fill(""));
+    const current = exerciseSectionsState[activeExerciseSectionKey];
+    if (!current) {
+      return;
     }
-  }, [exerciseCount, exerciseStatuses, exerciseGuides.length, fibAnswers.length, mcqSelections.length]);
+    setExerciseIndex(current.exerciseIndex);
+    setMaxExerciseIndex(current.maxExerciseIndex);
+    setExerciseStatuses(current.exerciseStatuses);
+    setExerciseGuides(current.exerciseGuides);
+    setFibAnswers(current.fibAnswers);
+    setMcqSelections(current.mcqSelections);
+    setScoreSnapshot(current.scoreSnapshot);
+  }, [activeExerciseSectionKey, exerciseSectionsState]);
+
+  useEffect(() => {
+    if (!activeExerciseSectionKey) {
+      return;
+    }
+    setExerciseSectionsState((prev) => {
+      const current = prev[activeExerciseSectionKey];
+      if (!current) {
+        return prev;
+      }
+      const next = {
+        ...current,
+        exerciseIndex,
+        maxExerciseIndex,
+        exerciseStatuses,
+        exerciseGuides,
+        fibAnswers,
+        mcqSelections,
+        scoreSnapshot,
+      };
+      if (next === current) {
+        return prev;
+      }
+      return { ...prev, [activeExerciseSectionKey]: next };
+    });
+  }, [
+    activeExerciseSectionKey,
+    exerciseIndex,
+    maxExerciseIndex,
+    exerciseStatuses,
+    exerciseGuides,
+    fibAnswers,
+    mcqSelections,
+    scoreSnapshot,
+  ]);
 
   const reset = useCallback(() => {
     if (progressKey) {
       removeStorage(progressKey);
     }
-    const count = exerciseCountRef.current;
-    setOpenSection("lesson");
+    const sectionConfigs = exerciseCountRef.current;
+    setOpenSection("references");
     setCompletedSections(defaultCompleted);
     setExerciseIndex(0);
     setMaxExerciseIndex(0);
-    setExerciseStatuses(Array(count).fill("unattempted"));
-    setExerciseGuides(
-      Array(count)
-        .fill(null)
-        .map(() => ({
-          helpActive: false,
-          stepIndex: 0,
-          steps: [] as ExerciseStepProgress[],
-          mainAttempts: 0,
-          mainLastIncorrect: false,
-          mainPending: "none",
-          completed: false,
-        }))
-    );
-    setFibAnswers(Array(count).fill(""));
-    setMcqSelections(Array(count).fill(""));
-    setScoreSnapshot({
-      questionsAnswered: { thisSession: 0, previousSessions: 0 },
-      skillScore: 0,
-      correctSoFar: 0,
+    setExerciseStatuses([]);
+    setExerciseGuides([]);
+    setFibAnswers([]);
+    setMcqSelections([]);
+    setScoreSnapshot(buildEmptyScore());
+    const nextSections: Record<string, ExerciseSectionProgress> = {};
+    sectionConfigs.forEach((section) => {
+      nextSections[section.key] = buildSectionProgress(section.count);
     });
+    setExerciseSectionsState(nextSections);
+    setActiveExerciseSectionKey(sectionConfigs[0]?.key ?? null);
   }, [progressKey]);
 
   const state: ProgressState = useMemo(
@@ -222,6 +355,8 @@ export const useLessonProgress = (
       fibAnswers,
       mcqSelections,
       scoreSnapshot,
+      exerciseSections: exerciseSectionsState,
+      activeExerciseSectionKey,
     }),
     [
       completedSections,
@@ -233,6 +368,8 @@ export const useLessonProgress = (
       mcqSelections,
       scoreSnapshot,
       openSection,
+      exerciseSectionsState,
+      activeExerciseSectionKey,
     ]
   );
 
@@ -247,6 +384,7 @@ export const useLessonProgress = (
     setFibAnswers,
     setMcqSelections,
     setScoreSnapshot,
+    setActiveExerciseSectionKey,
     reset,
   };
 };
