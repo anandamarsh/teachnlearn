@@ -27,7 +27,6 @@ type ExercisesSectionProps = {
   lessonTitle: string;
   lessonSubject?: string | null;
   lessonLevel?: string | null;
-  exerciseSectionKey?: string;
   exerciseIndex: number;
   setExerciseIndex: SetState<number>;
   exerciseStatuses: ExerciseStatus[];
@@ -52,7 +51,6 @@ const ExercisesSection = ({
   lessonTitle,
   lessonSubject,
   lessonLevel,
-  exerciseSectionKey,
   exerciseIndex,
   setExerciseIndex,
   exerciseStatuses,
@@ -453,13 +451,9 @@ const ExercisesSection = ({
 
   const ensureSnsSession = () => {
     if (!snsSessionRef.current) {
-      const sectionSuffix = exerciseSectionKey ? ` - ${exerciseSectionKey}` : "";
-      const sectionRef = exerciseSectionKey
-        ? `${lessonId}:${exerciseSectionKey}`
-        : lessonId || "unknown";
       snsSessionRef.current = createSnsSession({
-        skillTitle: (lessonTitle || "Lesson practice") + sectionSuffix,
-        skillRef: sectionRef,
+        skillTitle: lessonTitle || "Lesson practice",
+        skillRef: lessonId || "unknown",
         subject: lessonSubject,
         level: lessonLevel,
       });

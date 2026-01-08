@@ -7,31 +7,26 @@ import {
 } from "@mui/material";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
-import { useMemo } from "react";
+import { LessonSectionKey } from "../../state/types";
 
 type LessonStepperProps = {
-  openSection: string;
-  completedSections: Record<string, boolean>;
-  onOpenSection: (section: string) => void;
-  canNavigateTo: (section: string) => boolean;
-  sectionKeys: string[];
+  openSection: LessonSectionKey;
+  completedSections: Record<LessonSectionKey, boolean>;
+  onOpenSection: (section: LessonSectionKey) => void;
+  canNavigateTo: (section: LessonSectionKey) => boolean;
   onReset: () => void;
 };
 
-const getBaseKey = (key: string) => {
-  const match = key.match(/^([a-z_]+)-\d+$/);
-  return match ? match[1] : key;
-};
+const sectionOrder: LessonSectionKey[] = ["lesson", "references", "exercises"];
 
-const getStepLabel = (key: string) => {
-  const match = key.match(/^([a-z_]+)-(\d+)$/);
-  const baseKey = getBaseKey(key);
-  const baseLabel =
-    baseKey.charAt(0).toUpperCase() + baseKey.slice(1);
-  if (!match) {
-    return baseLabel;
+const getStepLabel = (key: LessonSectionKey) => {
+  if (key === "lesson") {
+    return "Lesson";
   }
-  return `${baseLabel} ${match[2]}`;
+  if (key === "references") {
+    return "References";
+  }
+  return "Exercises";
 };
 
 const LessonStepper = ({
@@ -39,15 +34,13 @@ const LessonStepper = ({
   completedSections,
   onOpenSection,
   canNavigateTo,
-  sectionKeys,
   onReset,
 }: LessonStepperProps) => {
-  const orderedKeys = useMemo(() => sectionKeys.filter((key) => key), [sectionKeys]);
   return (
     <Box className="lesson-stepper">
       <Box className="lesson-stepper-inner">
-        <Stepper nonLinear activeStep={orderedKeys.indexOf(openSection)}>
-          {orderedKeys.map((sectionKey) => (
+        <Stepper nonLinear activeStep={sectionOrder.indexOf(openSection)}>
+          {sectionOrder.map((sectionKey) => (
             <Step
               key={sectionKey}
               completed={completedSections[sectionKey]}
