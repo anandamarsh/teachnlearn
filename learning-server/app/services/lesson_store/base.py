@@ -30,15 +30,38 @@ class LessonStoreBase:
     def _section_key(self, sanitized_email: str, lesson_id: str, filename: str) -> str:
         return f"{self._settings.s3_prefix}/{sanitized_email}/lessons/{lesson_id}/{filename}"
 
+    def _section_base_key(self, section_key: str) -> str:
+        if "-" in section_key:
+            base, suffix = section_key.rsplit("-", 1)
+            if suffix.isdigit():
+                return base
+        return section_key
+
+    def _section_index(self, section_key: str) -> int:
+        if "-" in section_key:
+            base, suffix = section_key.rsplit("-", 1)
+            if suffix.isdigit():
+                return int(suffix)
+            return 1
+        return 1
+
+    def _is_multi_section(self, section_key: str) -> bool:
+        return section_key in {"lesson", "exercises"}
+
     def _section_filename(self, section_key: str) -> str:
-        extension = "json" if section_key == "exercises" else "html"
+        base_key = self._section_base_key(section_key)
+        extension = "json" if base_key == "exercises" else "html"
         return f"{section_key}.{extension}"
 
     def _section_content_type(self, section_key: str) -> str:
-        return "application/json" if section_key == "exercises" else "text/html"
+        return (
+            "application/json"
+            if self._section_base_key(section_key) == "exercises"
+            else "text/html"
+        )
 
     def _section_default_body(self, section_key: str) -> bytes:
-        return b"[]" if section_key == "exercises" else b""
+        return b"[]" if self._section_base_key(section_key) == "exercises" else b""
 
     def _icon_key(self, sanitized_email: str, lesson_id: str, extension: str) -> str:
         safe_extension = extension.lstrip(".").lower()

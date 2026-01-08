@@ -21,6 +21,7 @@ type TitleHeaderProps = {
   subjectValue: string;
   levelValue: string;
   savingMeta: boolean;
+  deleteMode?: boolean;
   onSubjectChange: (value: string) => void;
   onLevelChange: (value: string) => void;
   onEditTitle: () => void;
@@ -44,6 +45,7 @@ const TitleHeader = ({
   subjectValue,
   levelValue,
   savingMeta,
+  deleteMode,
   onSubjectChange,
   onLevelChange,
   onEditTitle,
@@ -340,6 +342,9 @@ const TitleHeader = ({
                   : "none",
             }}
             onClick={() => {
+              if (deleteMode) {
+                return;
+              }
               if (statusLabel === "Ready") {
                 onPublishClick();
                 return;

@@ -1,11 +1,17 @@
-import { useCallback, useState } from "react";
-import { CatalogLesson, ExerciseItem, LessonSectionKey } from "../state/types";
+import { useCallback, useEffect, useState } from "react";
+import { CatalogLesson, ExerciseItem } from "../state/types";
+import {
+  getSectionsAfterBackground,
+  isExercisesSection,
+  normalizeSectionOrder,
+} from "../utils/lessonSections";
 
 type SectionState = {
-  lessonHtml: string;
-  referencesHtml: string;
-  exercises: ExerciseItem[];
-  loading: Record<LessonSectionKey, boolean>;
+  sectionHtml: Record<string, string>;
+  exercisesBySection: Record<string, ExerciseItem[]>;
+  sectionKeys: string[];
+  loading: Record<string, boolean>;
+  indexLoading: boolean;
 };
 
 type UseLessonSectionsOptions = {
@@ -13,40 +19,55 @@ type UseLessonSectionsOptions = {
   fetchWithAuth: (path: string) => Promise<{
     contentHtml?: string;
     content?: unknown;
+    sections?: unknown;
   }>;
 };
 
 export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOptions) => {
-  const [lessonHtml, setLessonHtml] = useState("");
-  const [referencesHtml, setReferencesHtml] = useState("");
-  const [exercises, setExercises] = useState<ExerciseItem[]>([]);
-  const [loading, setLoading] = useState<Record<LessonSectionKey, boolean>>({
-    lesson: false,
-    references: false,
-    exercises: false,
-  });
+  const [sectionHtml, setSectionHtml] = useState<Record<string, string>>({});
+  const [exercisesBySection, setExercisesBySection] = useState<
+    Record<string, ExerciseItem[]>
+  >({});
+  const [sectionKeys, setSectionKeys] = useState<string[]>([]);
+  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [indexLoading, setIndexLoading] = useState(false);
+  const [loadedSections, setLoadedSections] = useState<Record<string, boolean>>({});
 
   const reset = useCallback(() => {
-    setLessonHtml("");
-    setReferencesHtml("");
-    setExercises([]);
+    setSectionHtml({});
+    setExercisesBySection({});
+    setSectionKeys([]);
+    setLoading({});
+    setLoadedSections({});
   }, []);
 
+  const loadSectionIndex = useCallback(async () => {
+    if (!lesson) {
+      setSectionKeys([]);
+      return;
+    }
+    setIndexLoading(true);
+    try {
+      const payload = await fetchWithAuth(
+        `/catalog/teacher/${lesson.teacher}/lesson/${lesson.id}/sections/index`
+      );
+      const ordered = normalizeSectionOrder(payload.sections);
+      const nextKeys = getSectionsAfterBackground(ordered);
+      setSectionKeys(Array.from(new Set(nextKeys)));
+    } finally {
+      setIndexLoading(false);
+    }
+  }, [fetchWithAuth, lesson]);
+
   const loadSection = useCallback(
-    async (sectionKey: LessonSectionKey) => {
+    async (sectionKey: string) => {
       if (!lesson) {
         return;
       }
       if (loading[sectionKey]) {
         return;
       }
-      if (sectionKey === "lesson" && lessonHtml) {
-        return;
-      }
-      if (sectionKey === "references" && referencesHtml) {
-        return;
-      }
-      if (sectionKey === "exercises" && exercises.length) {
+      if (loadedSections[sectionKey]) {
         return;
       }
       setLoading((prev) => ({ ...prev, [sectionKey]: true }));
@@ -54,32 +75,39 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         const payload = await fetchWithAuth(
           `/catalog/teacher/${lesson.teacher}/lesson/${lesson.id}/sections/${sectionKey}`
         );
-        if (sectionKey === "lesson") {
-          setLessonHtml(payload.contentHtml || "");
-        } else if (sectionKey === "references") {
-          setReferencesHtml(payload.contentHtml || "");
-        } else {
+        if (isExercisesSection(sectionKey)) {
           if (Array.isArray(payload.content)) {
-            setExercises(payload.content);
+            setExercisesBySection((prev) => ({ ...prev, [sectionKey]: payload.content }));
             return;
           }
           const rawExercises = payload.contentHtml || "[]";
           const parsed = JSON.parse(rawExercises);
-          setExercises(Array.isArray(parsed) ? parsed : []);
+          setExercisesBySection((prev) => ({
+            ...prev,
+            [sectionKey]: Array.isArray(parsed) ? parsed : [],
+          }));
+          return;
         }
+        setSectionHtml((prev) => ({ ...prev, [sectionKey]: payload.contentHtml || "" }));
       } finally {
         setLoading((prev) => ({ ...prev, [sectionKey]: false }));
+        setLoadedSections((prev) => ({ ...prev, [sectionKey]: true }));
       }
     },
-    [exercises.length, fetchWithAuth, lesson, lessonHtml, loading, referencesHtml]
+    [fetchWithAuth, lesson, loadedSections, loading]
   );
 
-  return {
-    lessonHtml,
-    referencesHtml,
-    exercises,
+  useEffect(() => {
+    loadSectionIndex();
+  }, [loadSectionIndex]);
+
+  const state: SectionState = {
+    sectionHtml,
+    exercisesBySection,
+    sectionKeys,
     loading,
-    loadSection,
-    reset,
+    indexLoading,
   };
+
+  return { ...state, loadSection, reset, loadSectionIndex };
 };

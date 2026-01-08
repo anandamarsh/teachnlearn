@@ -1,14 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import {
-  Box,
-  Container,
-  LinearProgress,
-  Paper,
-  Typography,
-} from "@mui/material";
+import { Box, Container, Paper, Typography } from "@mui/material";
 import "./App.css";
 import BottomNav from "./components/BottomNav";
+import CenteredLoader from "./components/common/CenteredLoader";
 import HomeView from "./components/home/HomeView";
 import LessonView from "./components/lesson/LessonView";
 import { useApiClient } from "./hooks/useApiClient";
@@ -160,18 +155,7 @@ function App() {
   }
 
   if (isLoading || !isAuthenticated) {
-    return (
-      <Box
-        display="flex"
-        minHeight="100vh"
-        alignItems="center"
-        justifyContent="center"
-      >
-        <Box width="12rem">
-          <LinearProgress />
-        </Box>
-      </Box>
-    );
+    return <CenteredLoader />;
   }
 
   return (
@@ -188,13 +172,7 @@ function App() {
           </Paper>
         ) : null}
 
-        {loading ? (
-          <Box display="flex" alignItems="center" justifyContent="center" py={6}>
-            <Box width="12rem">
-              <LinearProgress />
-            </Box>
-          </Box>
-        ) : null}
+        {loading ? <CenteredLoader /> : null}
 
         {page === "home" ? (
           <HomeView
