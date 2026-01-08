@@ -6,15 +6,19 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  LinearProgress,
+  IconButton,
   Stack,
-  Typography,
+  Tab,
+  Tabs,
 } from "@mui/material";
 import { CatalogLesson, LessonSectionKey } from "../../state/types";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useLessonSections } from "../../hooks/useLessonSections";
-import LessonStepper from "./LessonStepper";
 import ExercisesSection from "../exercises/ExercisesSection";
+import { getSectionLabel, isExercisesSection } from "../../utils/lessonSections";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
+import CenteredLoader from "../common/CenteredLoader";
 
 type LessonViewProps = {
   lesson: CatalogLesson;
@@ -24,25 +28,30 @@ type LessonViewProps = {
   }>;
 };
 
-const sectionOrder: LessonSectionKey[] = [
-  "lesson",
-  "references",
-  "exercises",
-];
-
 const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
-  const [resetOpen, setResetOpen] = useState(false);
   const progressKey = `learner-lesson-progress-${lesson.teacher}-${lesson.id}`;
-  const prevLessonIdRef = useRef<string | null>(null);
+  const lastSectionKey = `learner-lesson-last-section-${lesson.teacher}-${lesson.id}`;
+  const appliedLastSectionRef = useRef(false);
+  const [restartPromptOpen, setRestartPromptOpen] = useState(false);
+  const [pendingRestartSection, setPendingRestartSection] =
+    useState<LessonSectionKey | null>(null);
 
   const {
-    lessonHtml,
-    referencesHtml,
-    exercises,
+    sectionHtml,
+    exercisesBySection,
+    sectionKeys,
     loading,
+    indexLoading,
     loadSection,
-    reset: resetSections,
   } = useLessonSections({ lesson, fetchWithAuth });
+
+  const exerciseCountsBySection = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(exercisesBySection).map(([key, items]) => [key, items.length])
+      ),
+    [exercisesBySection]
+  );
 
   const {
     openSection,
@@ -63,37 +72,41 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     setMcqSelections,
     scoreSnapshot,
     setScoreSnapshot,
-    reset: resetProgress,
-  } = useLessonProgress(progressKey, exercises.length);
+    resetExerciseSection,
+  } = useLessonProgress(progressKey, sectionKeys, exerciseCountsBySection);
+
+  const activeExerciseSectionKey = isExercisesSection(openSection)
+    ? openSection
+    : null;
+  const activeExercises = activeExerciseSectionKey
+    ? exercisesBySection[activeExerciseSectionKey] || []
+    : [];
 
   useEffect(() => {
-    if (prevLessonIdRef.current && prevLessonIdRef.current !== lesson.id) {
-      resetSections();
-      resetProgress();
+    if (!openSection) {
+      return;
     }
-    prevLessonIdRef.current = lesson.id;
-  }, [lesson.id, resetProgress, resetSections]);
-
-  useEffect(() => {
+    if (sectionKeys.length && !sectionKeys.includes(openSection)) {
+      return;
+    }
     loadSection(openSection);
-  }, [loadSection, openSection]);
+  }, [loadSection, openSection, sectionKeys]);
 
-  const canNavigateTo = (target: LessonSectionKey) => {
-    if (target === openSection) {
-      return true;
+  useEffect(() => {
+    if (!sectionKeys.length || appliedLastSectionRef.current) {
+      return;
     }
-    if (completedSections[target]) {
-      return true;
+    const saved = window.sessionStorage.getItem(lastSectionKey);
+    if (saved && sectionKeys.includes(saved)) {
+      setOpenSection(saved);
     }
-    const currentIndex = sectionOrder.indexOf(openSection);
-    const targetIndex = sectionOrder.indexOf(target);
-    return targetIndex < currentIndex;
-  };
+    appliedLastSectionRef.current = true;
+  }, [lastSectionKey, sectionKeys, setOpenSection]);
 
   const handleAdvanceSection = (current: LessonSectionKey) => {
     setCompletedSections((prev) => ({ ...prev, [current]: true }));
-    const currentIndex = sectionOrder.indexOf(current);
-    const nextKey = sectionOrder[currentIndex + 1];
+    const currentIndex = sectionKeys.indexOf(current);
+    const nextKey = sectionKeys[currentIndex + 1];
     if (nextKey) {
       setOpenSection(nextKey);
     }
@@ -113,86 +126,91 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   );
 
   useEffect(() => {
+    if (!activeExerciseSectionKey) {
+      return;
+    }
     if (scoreSnapshot.skillScore !== 100) {
       return;
     }
     setCompletedSections((prev) => {
-      if (prev.exercises) {
+      if (prev[activeExerciseSectionKey]) {
         return prev;
       }
-      return { ...prev, exercises: true };
+      return { ...prev, [activeExerciseSectionKey]: true };
     });
-  }, [scoreSnapshot.skillScore, setCompletedSections]);
+  }, [activeExerciseSectionKey, scoreSnapshot.skillScore, setCompletedSections]);
+
+  const activeHtml = sectionHtml[openSection] || "";
+  const activeHtmlLoading = Boolean(loading[openSection]);
 
   return (
     <Stack spacing={0}>
       <Stack spacing={3}>
-        <LessonStepper
-          openSection={openSection}
-          completedSections={completedSections}
-          onOpenSection={setOpenSection}
-          canNavigateTo={canNavigateTo}
-          onReset={() => setResetOpen(true)}
-        />
-        <Box className="lesson-content" sx={{ margin: "1rem auto !important" }}>
-          {openSection === "lesson" ? (
-            <Box>
-              {loading.lesson ? (
-                <Box display="flex" justifyContent="center" py={3}>
-                  <Box width="12rem">
-                    <LinearProgress />
-                  </Box>
-                </Box>
-              ) : (
-                <Box dangerouslySetInnerHTML={{ __html: lessonHtml }} sx={{ mb: 3 }} />
-              )}
-              <Box display="flex" justifyContent="flex-end">
-                <Button
-                  variant="contained"
-                  onClick={() => handleAdvanceSection("lesson")}
-                >
-                  Next
-                </Button>
-              </Box>
-            </Box>
-          ) : null}
-
-          {openSection === "references" ? (
-            <Box>
-              {loading.references ? (
-                <Box display="flex" justifyContent="center" py={3}>
-                  <Box width="12rem">
-                    <LinearProgress />
-                  </Box>
-                </Box>
-              ) : (
-                <Box
-                  dangerouslySetInnerHTML={{ __html: referencesHtml }}
-                  sx={{ mb: 3 }}
+        <Box display="flex" alignItems="center" justifyContent="space-between">
+          <IconButton
+            aria-label="Refresh page"
+            onClick={() => {
+              window.sessionStorage.setItem(lastSectionKey, openSection);
+              window.location.reload();
+            }}
+          >
+            <RefreshRoundedIcon />
+          </IconButton>
+          <Box flex={1} display="flex" justifyContent="center">
+            <Tabs
+              value={openSection}
+              onChange={(_, value) => setOpenSection(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                "& .MuiTab-root": {
+                  mx: 3.5,
+                },
+              }}
+            >
+              {sectionKeys.map((sectionKey) => (
+                <Tab
+                  key={sectionKey}
+                  value={sectionKey}
+                  label={getSectionLabel(sectionKey)}
                 />
-              )}
-              <Box display="flex" justifyContent="flex-end">
-                <Button
-                  variant="contained"
-                  onClick={() => handleAdvanceSection("references")}
-                >
-                  Next
-                </Button>
-              </Box>
-            </Box>
+              ))}
+            </Tabs>
+          </Box>
+          {isExercisesSection(openSection) ? (
+            <IconButton
+              aria-label="Restart exercises"
+              onClick={() => {
+                setPendingRestartSection(openSection);
+                setRestartPromptOpen(true);
+              }}
+            >
+              <RestartAltRoundedIcon />
+            </IconButton>
+          ) : (
+            <Box width={40} />
+          )}
+        </Box>
+        <Box className="lesson-content" sx={{ margin: "1rem auto !important" }}>
+          {indexLoading && !sectionKeys.length ? (
+            null
           ) : null}
-
-          {openSection === "exercises" ? (
+          {!isExercisesSection(openSection) ? (
             <Box>
-              {loading.exercises ? (
-                <Box display="flex" justifyContent="center" py={3}>
-                  <Box width="12rem">
-                    <LinearProgress />
-                  </Box>
-                </Box>
+              {activeHtmlLoading ? (
+                <CenteredLoader />
+              ) : (
+                <Box dangerouslySetInnerHTML={{ __html: activeHtml }} sx={{ mb: 3 }} />
+              )}
+            </Box>
+          ) : (
+            <Box>
+              {activeExerciseSectionKey && loading[activeExerciseSectionKey] ? (
+                <CenteredLoader />
               ) : (
                 <ExercisesSection
-                  exercises={exercises}
+                  exercises={activeExercises}
+                  exerciseSectionKey={openSection}
                   lessonId={lesson.id}
                   lessonTitle={lesson.title}
                   lessonSubject={lesson.subject}
@@ -211,28 +229,33 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                   setMcqSelections={setMcqSelections}
                   scoreSnapshot={scoreSnapshot}
                   setScoreSnapshot={setScoreSnapshot}
-                  onComplete={() => handleAdvanceSection("exercises")}
+                  onComplete={() => handleAdvanceSection(openSection)}
                   showCompleteButton={showCompleteButton}
                 />
               )}
             </Box>
-          ) : null}
+          )}
         </Box>
       </Stack>
-      <Dialog open={resetOpen} onClose={() => setResetOpen(false)}>
-        <DialogTitle>Restart lesson?</DialogTitle>
+      <Dialog
+        open={restartPromptOpen}
+        onClose={() => setRestartPromptOpen(false)}
+      >
+        <DialogTitle>Restart exercises?</DialogTitle>
         <DialogContent>
-          <Typography>Do you want to start the lesson all over?</Typography>
+          This will clear your answers for this exercise section.
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setResetOpen(false)}>Cancel</Button>
+          <Button onClick={() => setRestartPromptOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
             color="error"
             onClick={() => {
-              resetSections();
-              resetProgress();
-              setResetOpen(false);
+              if (pendingRestartSection) {
+                resetExerciseSection(pendingRestartSection);
+              }
+              setRestartPromptOpen(false);
+              setPendingRestartSection(null);
             }}
           >
             Restart

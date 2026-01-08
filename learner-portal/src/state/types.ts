@@ -10,7 +10,7 @@ export type CatalogLesson = {
   content?: string | null;
 };
 
-export type LessonSectionKey = "lesson" | "references" | "exercises";
+export type LessonSectionKey = string;
 
 export type ExerciseStep = {
   step: string;
@@ -50,6 +50,7 @@ export type ExerciseGuideState = {
 export type LessonProgress = {
   completed: Record<LessonSectionKey, boolean>;
   open: LessonSectionKey;
+  exerciseStateBySection?: Record<string, ExerciseSectionState>;
   exerciseIndex?: number;
   maxExerciseIndex?: number;
   exerciseStatuses?: ExerciseStatus[];
@@ -63,4 +64,14 @@ export type ExerciseScoreSnapshot = {
   questionsAnswered: { thisSession: number; previousSessions: number };
   skillScore: number;
   correctSoFar: number;
+};
+
+export type ExerciseSectionState = {
+  exerciseIndex: number;
+  maxExerciseIndex: number;
+  exerciseStatuses: ExerciseStatus[];
+  exerciseGuides: ExerciseGuideState[];
+  fibAnswers: string[];
+  mcqSelections: string[];
+  scoreSnapshot: ExerciseScoreSnapshot;
 };

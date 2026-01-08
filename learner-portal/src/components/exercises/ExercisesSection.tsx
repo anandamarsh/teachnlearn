@@ -23,6 +23,7 @@ type SetState<T> = Dispatch<SetStateAction<T>>;
 
 type ExercisesSectionProps = {
   exercises: ExerciseItem[];
+  exerciseSectionKey: string;
   lessonId: string;
   lessonTitle: string;
   lessonSubject?: string | null;
@@ -47,6 +48,7 @@ type ExercisesSectionProps = {
 
 const ExercisesSection = ({
   exercises,
+  exerciseSectionKey,
   lessonId,
   lessonTitle,
   lessonSubject,
@@ -86,13 +88,13 @@ const ExercisesSection = ({
   });
   const snsSessionRef = useRef<SnsSession | null>(null);
   const snsStartedRef = useRef(false);
+  const startedExercisesRef = useRef<Set<number>>(new Set());
   const snsEndedRef = useRef(false);
   const [retryPromptOpen, setRetryPromptOpen] = useState(false);
   const retryPromptShownRef = useRef(false);
   const [showMagicFab, setShowMagicFab] = useState(false);
   const [autoPilotActive, setAutoPilotActive] = useState(false);
   const magicPin = useMemo(() => String(lessonId || "").trim().toLowerCase(), [lessonId]);
-
   const scrollToIndex = (
     index: number,
     behavior: ScrollBehavior = "smooth",
@@ -461,8 +463,8 @@ const ExercisesSection = ({
     return snsSessionRef.current;
   };
 
-  const startExerciseIfNeeded = () => {
-    if (snsStartedRef.current) {
+  const startExerciseIfNeeded = (exerciseIdx: number) => {
+    if (startedExercisesRef.current.has(exerciseIdx)) {
       return;
     }
     const session = ensureSnsSession();
@@ -475,6 +477,7 @@ const ExercisesSection = ({
       })
     );
     snsStartedRef.current = true;
+    startedExercisesRef.current.add(exerciseIdx);
     updateScoreSnapshot();
   };
 
@@ -552,6 +555,23 @@ const ExercisesSection = ({
   useEffect(() => {
     updateScoreSnapshot();
   }, [exerciseStatuses, exercises.length]);
+
+  useEffect(() => {
+    if (!exerciseStatuses.length) {
+      return;
+    }
+    const allUnattempted = exerciseStatuses.every(
+      (status) => status === "unattempted"
+    );
+    if (!allUnattempted) {
+      return;
+    }
+    if (startedExercisesRef.current.size) {
+      startedExercisesRef.current.clear();
+    }
+    snsStartedRef.current = false;
+    snsEndedRef.current = false;
+  }, [exerciseStatuses]);
 
   useEffect(() => {
     if (!exercises.length) {
@@ -737,7 +757,7 @@ const ExercisesSection = ({
       retryPromptShownRef.current = true;
     }
     const session = ensureSnsSession();
-    startExerciseIfNeeded();
+    startExerciseIfNeeded(index);
     if (session && statusChanged) {
       const score = buildScoreSnapshot(nextStatuses);
       updateScoreSnapshot(nextStatuses);
@@ -792,7 +812,7 @@ const ExercisesSection = ({
       retryPromptShownRef.current = true;
     }
     const session = ensureSnsSession();
-    startExerciseIfNeeded();
+    startExerciseIfNeeded(index);
     if (session && statusChanged) {
       const score = buildScoreSnapshot(nextStatuses);
       updateScoreSnapshot(nextStatuses);
@@ -1252,7 +1272,6 @@ const ExercisesSection = ({
               setExerciseIndex(firstRetry);
               scrollToIndex(firstRetry, "smooth", true);
               const session = ensureSnsSession();
-              startExerciseIfNeeded();
               const nextStatuses = exerciseStatuses.map((status, idx) =>
                 retryIndices.includes(idx) ? "unattempted" : status
               );
