@@ -102,7 +102,7 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        if section_key == "exercises":
+        if store._section_base_key(section_key) == "exercises":
             content_json = payload.get("content")
             if content_json is None:
                 content_json = payload.get("contentJson")
@@ -154,7 +154,7 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        if section_key == "exercises":
+        if store._section_base_key(section_key) == "exercises":
             content_json = payload.get("content")
             if content_json is None:
                 content_json = payload.get("contentJson")
@@ -168,10 +168,17 @@ def register_section_routes(
             content_html = payload.get("contentHtml")
             if content_html is None:
                 content_html = ""
+        create_new = bool(payload.get("createNew"))
         try:
-            section = store.put_section(
-                email, lesson_id, section_key, str(content_html), allow_create=True
-            )
+            if create_new:
+                base_key = store._section_base_key(section_key)
+                section = store.create_section_instance(
+                    email, lesson_id, base_key, str(content_html)
+                )
+            else:
+                section = store.put_section(
+                    email, lesson_id, section_key, str(content_html), allow_create=True
+                )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         if section is None:
@@ -182,10 +189,40 @@ def register_section_routes(
                 {
                     "type": "section.created",
                     "lessonId": lesson_id,
-                    "sectionKey": section_key,
+                    "sectionKey": section.get("key", section_key),
                 },
             )
         return JSONResponse(section, status_code=201)
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["DELETE"])
+    async def delete_section(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        section_key = request.path_params.get("section_key", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        if not section_key:
+            return json_error("section_key is required", 400)
+        if not store.is_valid_section_key(section_key):
+            return json_error("invalid section_key", 400)
+        try:
+            removed = store.delete_section(email, lesson_id, section_key)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if not removed:
+            return json_error("section not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.deleted",
+                    "lessonId": lesson_id,
+                    "sectionKey": section_key,
+                },
+            )
+        return JSONResponse({"deleted": True, "sectionKey": section_key})
 
     @mcp.custom_route("/lesson/id/{lesson_id}/sections/exercises/append", methods=["POST"])
     async def append_exercises(request: Request) -> JSONResponse:
@@ -206,8 +243,9 @@ def register_section_routes(
         items = payload.get("items")
         if not isinstance(items, list):
             return json_error("items must be a JSON array", 400)
+        section_key = payload.get("sectionKey") or "exercises"
         try:
-            result = store.append_exercises(email, lesson_id, items)
+            result = store.append_exercises(email, lesson_id, items, section_key=section_key)
         except (RuntimeError, ClientError, json.JSONDecodeError, ValueError) as exc:
             return json_error(str(exc), 500)
         if result is None:
@@ -218,7 +256,7 @@ def register_section_routes(
                 {
                     "type": "section.updated",
                     "lessonId": lesson_id,
-                    "sectionKey": "exercises",
+                    "sectionKey": section_key,
                 },
             )
         return JSONResponse(result)

@@ -62,3 +62,35 @@ export const saveSectionContent = async (
   }
   return data as { key: string; contentHtml?: string; content?: unknown };
 };
+
+export const createSectionContent = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: { contentHtml?: string; content?: unknown; createNew?: boolean }
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to create section"));
+  }
+  return data as { key: string; contentHtml?: string; content?: unknown };
+};
+
+export const deleteSectionContent = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, {
+    method: "DELETE",
+    headers,
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to delete section"));
+  }
+  return data as { deleted?: boolean; sectionKey?: string };
+};

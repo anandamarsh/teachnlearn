@@ -1,4 +1,14 @@
-import { Box } from "@mui/material";
+import { useState } from "react";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { Lesson } from "../../../state/lessonTypes";
 import type { GetAccessTokenSilently } from "../../../auth/buildAuthHeaders";
 import { useLessonWorkspaceState } from "./hooks/useLessonWorkspaceState";
@@ -41,6 +51,8 @@ const LessonWorkspace = ({
   getAccessTokenSilently,
   onPulse,
 }: LessonWorkspaceProps) => {
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingSection, setDeletingSection] = useState(false);
   const {
     sections,
     contents,
@@ -79,6 +91,9 @@ const LessonWorkspace = ({
     openingReport,
     handleAccordionChange,
     handleSaveSection,
+    handleCreateSection,
+    handleRequestDelete,
+    handleDeleteSection,
     handleConfirmClose,
     handleUpdateSubject,
     handleUpdateLevel,
@@ -87,6 +102,11 @@ const LessonWorkspace = ({
     statusLabel,
     subjectDraft,
     levelDraft,
+    creatingSection,
+    deleteMode,
+    setDeleteMode,
+    deleteTargetKey,
+    setDeleteTargetKey,
   } = useLessonWorkspaceState({
     lesson,
     hasLessons,
@@ -103,6 +123,8 @@ const LessonWorkspace = ({
   if (!lesson) {
     return <EmptyState hasLessons={hasLessons} />;
   }
+
+  const addButtonsDisabled = !canEdit || creatingSection || deleteMode;
 
   return (
     <>
@@ -139,6 +161,7 @@ const LessonWorkspace = ({
           onUnpublishClick={() => setUnpublishOpen(true)}
           onOpenReport={handleOpenReport}
           openingReport={openingReport}
+          deleteMode={deleteMode}
         />
         <SummaryEditor
           contentDraft={contentDraft}
@@ -154,6 +177,132 @@ const LessonWorkspace = ({
           }}
         />
       </Box>
+      {!isPublished ? (
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "0.75rem",
+            mb: "0.5rem",
+            mr: "0.5rem",
+          }}
+        >
+          <Box
+            role="button"
+            onClick={() => {
+              if (addButtonsDisabled) {
+                return;
+              }
+              handleCreateSection("lesson");
+            }}
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              px: 2,
+              py: 0.75,
+              borderRadius: "5rem",
+              backgroundColor: "info.main",
+              color: "common.white",
+              fontSize: "0.85rem",
+              fontWeight: 700,
+              textTransform: "capitalize",
+              cursor: "pointer",
+              opacity: addButtonsDisabled ? 0.6 : 1,
+              userSelect: "none",
+              "&:hover": {
+                backgroundColor: addButtonsDisabled ? "info.main" : "info.dark",
+              },
+              "&:active": {
+                backgroundColor: addButtonsDisabled ? "info.main" : "info.dark",
+              },
+            }}
+          >
+            Add Lesson
+          </Box>
+          <Box
+            role="button"
+            onClick={() => {
+              if (addButtonsDisabled) {
+                return;
+              }
+              handleCreateSection("exercises");
+            }}
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              px: 2,
+              py: 0.75,
+              borderRadius: "5rem",
+              backgroundColor: "secondary.main",
+              color: "common.white",
+              fontSize: "0.85rem",
+              fontWeight: 700,
+              textTransform: "capitalize",
+              cursor: "pointer",
+              opacity: addButtonsDisabled ? 0.6 : 1,
+              userSelect: "none",
+              "&:hover": {
+                backgroundColor:
+                  addButtonsDisabled ? "secondary.main" : "secondary.dark",
+              },
+              "&:active": {
+                backgroundColor:
+                  addButtonsDisabled ? "secondary.main" : "secondary.dark",
+              },
+            }}
+          >
+            Add Exercise
+          </Box>
+        <Box
+          role="button"
+          onClick={() => {
+            if (!canEdit) {
+              return;
+            }
+            setDeleteMode((prev) => !prev);
+            setDeleteTargetKey(null);
+            setDeleteConfirmText("");
+          }}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            px: 2,
+            py: 0.75,
+            borderRadius: "5rem",
+            backgroundColor: deleteMode ? "success.main" : "error.main",
+            color: "common.white",
+            fontSize: "0.85rem",
+            fontWeight: 700,
+            textTransform: "capitalize",
+            cursor: "pointer",
+            opacity: !canEdit ? 0.6 : 1,
+            width: 92,
+            justifyContent: "center",
+            userSelect: "none",
+            "&:hover": {
+              backgroundColor: !canEdit
+                ? deleteMode
+                  ? "success.main"
+                    : "error.main"
+                  : deleteMode
+                  ? "success.dark"
+                  : "error.dark",
+              },
+              "&:active": {
+                backgroundColor: !canEdit
+                  ? deleteMode
+                    ? "success.main"
+                    : "error.main"
+                  : deleteMode
+                  ? "success.dark"
+                  : "error.dark",
+              },
+            }}
+          >
+            {deleteMode ? "Done" : "Delete"}
+          </Box>
+        </Box>
+      ) : null}
       <SectionsList
         sections={sections}
         expandedKeys={expandedKeys}
@@ -173,7 +322,63 @@ const LessonWorkspace = ({
         handleAccordionChange={handleAccordionChange}
         handleSaveSection={handleSaveSection}
         onDirtyClose={(key) => setConfirmClose(key)}
+        deleteMode={deleteMode}
+        onRequestDelete={(key) => {
+          setDeleteConfirmText("");
+          handleRequestDelete(key);
+        }}
       />
+      <Dialog
+        open={Boolean(deleteTargetKey)}
+        onClose={() => {
+          if (deletingSection) {
+            return;
+          }
+          setDeleteTargetKey(null);
+          setDeleteConfirmText("");
+        }}
+      >
+        <DialogTitle>Delete section?</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Typography>
+            Type <strong>Delete</strong> to permanently remove this section.
+          </Typography>
+          <TextField
+            autoFocus
+            label="Type Delete to confirm"
+            value={deleteConfirmText}
+            onChange={(event) => setDeleteConfirmText(event.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (deletingSection) {
+                return;
+              }
+              setDeleteTargetKey(null);
+              setDeleteConfirmText("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleteConfirmText.trim() !== "Delete" || deletingSection}
+            onClick={async () => {
+              setDeletingSection(true);
+              const success = await handleDeleteSection();
+              setDeletingSection(false);
+              if (success) {
+                setDeleteConfirmText("");
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
       <WorkspaceDialogs
         confirmClose={confirmClose}
         onCancelClose={() => setConfirmClose(null)}
