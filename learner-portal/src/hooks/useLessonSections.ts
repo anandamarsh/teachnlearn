@@ -77,14 +77,16 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         );
         if (isExercisesSection(sectionKey)) {
           if (Array.isArray(payload.content)) {
-            setExercisesBySection((prev) => ({ ...prev, [sectionKey]: payload.content }));
+            const items = payload.content as ExerciseItem[];
+            setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
             return;
           }
           const rawExercises = payload.contentHtml || "[]";
           const parsed = JSON.parse(rawExercises);
+          const items = Array.isArray(parsed) ? (parsed as ExerciseItem[]) : [];
           setExercisesBySection((prev) => ({
             ...prev,
-            [sectionKey]: Array.isArray(parsed) ? parsed : [],
+            [sectionKey]: items,
           }));
           return;
         }
