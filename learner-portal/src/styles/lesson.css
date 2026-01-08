@@ -30,6 +30,16 @@
   z-index: 1300;
 }
 
+.lesson-stepper-refresh {
+  position: fixed !important;
+  left: 0.5rem;
+  top: 0.05rem;
+  transform: none;
+  height: 40px;
+  width: 40px;
+  z-index: 1300;
+}
+
 .lesson-stepper .MuiStepLabel-label.Mui-active {
   color: #e65100;
   font-weight: 700;
@@ -86,6 +96,13 @@
 
   .lesson-stepper-reset {
     right: 0.5rem;
+    top: 2.5rem;
+    height: 32px;
+    width: 32px;
+  }
+
+  .lesson-stepper-refresh {
+    left: 0.5rem;
     top: 2.5rem;
     height: 32px;
     width: 32px;

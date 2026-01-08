@@ -7,31 +7,23 @@ import {
 } from "@mui/material";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import { LessonSectionKey } from "../../state/types";
+import { getSectionLabel } from "../../utils/lessonSections";
 
 type LessonStepperProps = {
   openSection: LessonSectionKey;
   completedSections: Record<LessonSectionKey, boolean>;
+  sectionKeys: LessonSectionKey[];
   onOpenSection: (section: LessonSectionKey) => void;
   canNavigateTo: (section: LessonSectionKey) => boolean;
   onReset: () => void;
 };
 
-const sectionOrder: LessonSectionKey[] = ["lesson", "references", "exercises"];
-
-const getStepLabel = (key: LessonSectionKey) => {
-  if (key === "lesson") {
-    return "Lesson";
-  }
-  if (key === "references") {
-    return "References";
-  }
-  return "Exercises";
-};
-
 const LessonStepper = ({
   openSection,
   completedSections,
+  sectionKeys,
   onOpenSection,
   canNavigateTo,
   onReset,
@@ -39,11 +31,11 @@ const LessonStepper = ({
   return (
     <Box className="lesson-stepper">
       <Box className="lesson-stepper-inner">
-        <Stepper nonLinear activeStep={sectionOrder.indexOf(openSection)}>
-          {sectionOrder.map((sectionKey) => (
+        <Stepper nonLinear activeStep={sectionKeys.indexOf(openSection)}>
+          {sectionKeys.map((sectionKey) => (
             <Step
               key={sectionKey}
-              completed={completedSections[sectionKey]}
+              completed={Boolean(completedSections[sectionKey])}
             >
               <StepButton
                 onClick={() => onOpenSection(sectionKey)}
@@ -71,12 +63,15 @@ const LessonStepper = ({
                   />
                 }
               >
-                {getStepLabel(sectionKey)}
+                {getSectionLabel(sectionKey)}
               </StepButton>
             </Step>
           ))}
         </Stepper>
       </Box>
+      <IconButton className="lesson-stepper-refresh" onClick={() => window.location.reload()}>
+        <RefreshRoundedIcon />
+      </IconButton>
       <IconButton className="lesson-stepper-reset" onClick={onReset}>
         <RestartAltRoundedIcon />
       </IconButton>
