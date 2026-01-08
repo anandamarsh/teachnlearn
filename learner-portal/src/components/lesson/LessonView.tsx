@@ -10,7 +10,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { CatalogLesson, LessonSectionKey } from "../../state/types";
+import { CatalogLesson } from "../../state/types";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useLessonSections } from "../../hooks/useLessonSections";
 import LessonStepper from "./LessonStepper";
@@ -24,24 +24,18 @@ type LessonViewProps = {
   }>;
 };
 
-const sectionOrder: LessonSectionKey[] = [
-  "references",
-  "lesson",
-  "exercises",
-];
-
 const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   const [resetOpen, setResetOpen] = useState(false);
   const progressKey = `learner-lesson-progress-${lesson.teacher}-${lesson.id}`;
   const prevLessonIdRef = useRef<string | null>(null);
 
   const {
-    lessonHtml,
-    referencesHtml,
+    contentHtml,
     exercises,
     loading,
     loadSection,
     reset: resetSections,
+    sectionKeys,
   } = useLessonSections({ lesson, fetchWithAuth });
 
   const {
@@ -69,6 +63,7 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     setActiveExerciseSectionKey,
   } = useLessonProgress(
     progressKey,
+    sectionKeys,
     exercises.map((section) => ({
       key: section.key,
       count: section.exercises.length,
@@ -84,25 +79,39 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   }, [lesson.id, resetProgress, resetSections]);
 
   useEffect(() => {
-    loadSection(openSection);
+    if (openSection) {
+      loadSection(openSection);
+    }
   }, [loadSection, openSection]);
 
-  const canNavigateTo = (target: LessonSectionKey) => {
+  useEffect(() => {
+    if (!openSection.startsWith("exercises")) {
+      return;
+    }
+    if (openSection !== activeExerciseSectionKey) {
+      setActiveExerciseSectionKey(openSection);
+    }
+  }, [activeExerciseSectionKey, openSection, setActiveExerciseSectionKey]);
+
+  const canNavigateTo = (target: string) => {
     if (target === openSection) {
       return true;
     }
     if (completedSections[target]) {
       return true;
     }
-    const currentIndex = sectionOrder.indexOf(openSection);
-    const targetIndex = sectionOrder.indexOf(target);
+    const currentIndex = sectionKeys.indexOf(openSection);
+    const targetIndex = sectionKeys.indexOf(target);
+    if (currentIndex < 0 || targetIndex < 0) {
+      return false;
+    }
     return targetIndex < currentIndex;
   };
 
-  const handleAdvanceSection = (current: LessonSectionKey) => {
+  const handleAdvanceSection = (current: string) => {
     setCompletedSections((prev) => ({ ...prev, [current]: true }));
-    const currentIndex = sectionOrder.indexOf(current);
-    const nextKey = sectionOrder[currentIndex + 1];
+    const currentIndex = sectionKeys.indexOf(current);
+    const nextKey = sectionKeys[currentIndex + 1];
     if (nextKey) {
       setOpenSection(nextKey);
     }
@@ -131,14 +140,14 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     if (!exercises.length) {
       return null;
     }
-    if (activeExerciseSectionKey) {
-      return (
-        exercises.find((section) => section.key === activeExerciseSectionKey) ||
-        exercises[0]
-      );
+    const preferredKey = openSection.startsWith("exercises")
+      ? openSection
+      : activeExerciseSectionKey;
+    if (preferredKey) {
+      return exercises.find((section) => section.key === preferredKey) || null;
     }
     return exercises[0];
-  }, [activeExerciseSectionKey, exercises]);
+  }, [activeExerciseSectionKey, exercises, openSection]);
 
   useEffect(() => {
     if (!activeExerciseSectionKey) {
@@ -147,18 +156,14 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     if (scoreSnapshot.skillScore !== 100) {
       return;
     }
-    const currentIndex = exercises.findIndex(
-      (section) => section.key === activeExerciseSectionKey
-    );
-    if (currentIndex >= 0 && currentIndex < exercises.length - 1) {
-      setActiveExerciseSectionKey(exercises[currentIndex + 1].key);
-    } else {
-      setCompletedSections((prev) => {
-        if (prev.exercises) {
-          return prev;
-        }
-        return { ...prev, exercises: true };
-      });
+    setCompletedSections((prev) => ({
+      ...prev,
+      [activeExerciseSectionKey]: true,
+    }));
+    const currentIndex = sectionKeys.indexOf(activeExerciseSectionKey);
+    const nextKey = sectionKeys[currentIndex + 1];
+    if (nextKey) {
+      setOpenSection(nextKey);
     }
   }, [
     activeExerciseSectionKey,
@@ -166,6 +171,8 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     scoreSnapshot.skillScore,
     setActiveExerciseSectionKey,
     setCompletedSections,
+    sectionKeys,
+    setOpenSection,
   ]);
 
   return (
@@ -176,34 +183,13 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
           completedSections={completedSections}
           onOpenSection={setOpenSection}
           canNavigateTo={canNavigateTo}
+          sectionKeys={sectionKeys}
           onReset={() => setResetOpen(true)}
         />
         <Box className="lesson-content" sx={{ margin: "1rem auto !important" }}>
-          {openSection === "lesson" ? (
+          {openSection && openSection.startsWith("lesson") ? (
             <Box>
-              {loading.lesson ? (
-                <Box display="flex" justifyContent="center" py={3}>
-                  <Box width="12rem">
-                    <LinearProgress />
-                  </Box>
-                </Box>
-              ) : (
-                <Box dangerouslySetInnerHTML={{ __html: lessonHtml }} sx={{ mb: 3 }} />
-              )}
-              <Box display="flex" justifyContent="flex-end">
-                <Button
-                  variant="contained"
-                  onClick={() => handleAdvanceSection("lesson")}
-                >
-                  Next
-                </Button>
-              </Box>
-            </Box>
-          ) : null}
-
-          {openSection === "references" ? (
-            <Box>
-              {loading.references ? (
+              {loading[openSection] ? (
                 <Box display="flex" justifyContent="center" py={3}>
                   <Box width="12rem">
                     <LinearProgress />
@@ -211,14 +197,14 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                 </Box>
               ) : (
                 <Box
-                  dangerouslySetInnerHTML={{ __html: referencesHtml }}
+                  dangerouslySetInnerHTML={{ __html: contentHtml[openSection] || "" }}
                   sx={{ mb: 3 }}
                 />
               )}
               <Box display="flex" justifyContent="flex-end">
                 <Button
                   variant="contained"
-                  onClick={() => handleAdvanceSection("references")}
+                  onClick={() => handleAdvanceSection(openSection)}
                 >
                   Next
                 </Button>
@@ -226,9 +212,34 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
             </Box>
           ) : null}
 
-          {openSection === "exercises" ? (
+          {openSection && openSection.startsWith("references") ? (
             <Box>
-              {loading.exercises ? (
+              {loading[openSection] ? (
+                <Box display="flex" justifyContent="center" py={3}>
+                  <Box width="12rem">
+                    <LinearProgress />
+                  </Box>
+                </Box>
+              ) : (
+                <Box
+                  dangerouslySetInnerHTML={{ __html: contentHtml[openSection] || "" }}
+                  sx={{ mb: 3 }}
+                />
+              )}
+              <Box display="flex" justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  onClick={() => handleAdvanceSection(openSection)}
+                >
+                  Next
+                </Button>
+              </Box>
+            </Box>
+          ) : null}
+
+          {openSection && openSection.startsWith("exercises") ? (
+            <Box>
+              {loading[openSection] ? (
                 <Box display="flex" justifyContent="center" py={3}>
                   <Box width="12rem">
                     <LinearProgress />
@@ -278,7 +289,7 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                     setMcqSelections={setMcqSelections}
                     scoreSnapshot={scoreSnapshot}
                     setScoreSnapshot={setScoreSnapshot}
-                    onComplete={() => handleAdvanceSection("exercises")}
+                    onComplete={() => handleAdvanceSection(openSection)}
                     showCompleteButton={showCompleteButton}
                     exerciseSectionKey={activeExerciseSection.key}
                   />

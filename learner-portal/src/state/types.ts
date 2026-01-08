@@ -53,8 +53,8 @@ export type ExerciseGuideState = {
 };
 
 export type LessonProgress = {
-  completed: Record<LessonSectionKey, boolean>;
-  open: LessonSectionKey;
+  completed: Record<string, boolean>;
+  open: string;
   activeExerciseSectionKey?: string;
   exerciseSections?: Record<
     string,

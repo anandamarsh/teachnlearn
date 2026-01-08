@@ -8,6 +8,19 @@ from .s3 import sanitize_email
 
 
 class LessonStoreSections:
+    def _order_sections(self, sections: dict[str, str]) -> dict[str, str]:
+        ordered: dict[str, str] = {}
+        for base_key in self._settings.lesson_sections:
+            matched = [
+                key for key in sections if self._section_base_key(key) == base_key
+            ]
+            matched.sort(key=self._section_index)
+            for key in matched:
+                ordered[key] = sections[key]
+        for key, value in sections.items():
+            if key not in ordered:
+                ordered[key] = value
+        return ordered
     def _initialize_sections(
         self, sanitized_email: str, lesson_id: str, sections: dict[str, str]
     ) -> None:
@@ -120,7 +133,7 @@ class LessonStoreSections:
                 return None
             filename = self._section_filename(section_key)
             sections[section_key] = filename
-            lesson["sections"] = sections
+            lesson["sections"] = self._order_sections(sections)
         key = self._section_key(sanitized, lesson_id, filename)
         try:
             self._s3_client.head_object(Bucket=self._settings.s3_bucket, Key=key)
@@ -154,6 +167,7 @@ class LessonStoreSections:
         meta_map[section_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
+        lesson["sections"] = self._order_sections(lesson.get("sections") or {})
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
@@ -191,7 +205,7 @@ class LessonStoreSections:
             return None
         filename = self._section_filename(new_key)
         sections[new_key] = filename
-        lesson["sections"] = sections
+        lesson["sections"] = self._order_sections(sections)
         key = self._section_key(sanitized, lesson_id, filename)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
@@ -210,6 +224,7 @@ class LessonStoreSections:
         meta_map[new_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
+        lesson["sections"] = self._order_sections(lesson.get("sections") or {})
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
@@ -303,7 +318,7 @@ class LessonStoreSections:
             if exc.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
                 raise
         sections.pop(section_key, None)
-        lesson["sections"] = sections
+        lesson["sections"] = self._order_sections(sections)
         meta_map = lesson.get("sectionsMeta") or {}
         meta_map.pop(section_key, None)
         lesson["sectionsMeta"] = meta_map

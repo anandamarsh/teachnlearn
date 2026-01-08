@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LessonProgress,
-  LessonSectionKey,
   ExerciseScoreSnapshot,
   ExerciseGuideState,
   ExerciseStatus,
@@ -10,8 +9,8 @@ import {
 import { readStorage, removeStorage, writeStorage } from "../util/storage";
 
 type ProgressState = {
-  openSection: LessonSectionKey;
-  completedSections: Record<LessonSectionKey, boolean>;
+  openSection: string;
+  completedSections: Record<string, boolean>;
   exerciseIndex: number;
   maxExerciseIndex: number;
   exerciseStatuses: ExerciseStatus[];
@@ -38,11 +37,11 @@ type ExerciseSectionConfig = {
   count: number;
 };
 
-const defaultCompleted = {
-  lesson: false,
-  references: false,
-  exercises: false,
-};
+const buildCompleted = (sectionKeys: string[]) =>
+  sectionKeys.reduce<Record<string, boolean>>((acc, key) => {
+    acc[key] = false;
+    return acc;
+  }, {});
 
 const buildEmptyScore = (): ExerciseScoreSnapshot => ({
   questionsAnswered: { thisSession: 0, previousSessions: 0 },
@@ -85,14 +84,34 @@ const normalizeSectionProgress = (
   if (!progress) {
     return base;
   }
+  const maxIndex = Math.max(count - 1, 0);
+  const isValid =
+    typeof progress.exerciseIndex === "number" &&
+    typeof progress.maxExerciseIndex === "number" &&
+    progress.exerciseIndex >= 0 &&
+    progress.exerciseIndex <= maxIndex &&
+    progress.maxExerciseIndex >= 0 &&
+    progress.maxExerciseIndex <= maxIndex &&
+    Array.isArray(progress.exerciseStatuses) &&
+    progress.exerciseStatuses.length === count &&
+    Array.isArray(progress.exerciseGuides) &&
+    progress.exerciseGuides.length === count &&
+    Array.isArray(progress.fibAnswers) &&
+    progress.fibAnswers.length === count &&
+    Array.isArray(progress.mcqSelections) &&
+    progress.mcqSelections.length === count &&
+    Boolean(progress.scoreSnapshot);
+  if (isValid) {
+    return progress;
+  }
   return {
     exerciseIndex:
       typeof progress.exerciseIndex === "number"
-        ? Math.min(progress.exerciseIndex, Math.max(count - 1, 0))
+        ? Math.min(progress.exerciseIndex, maxIndex)
         : base.exerciseIndex,
     maxExerciseIndex:
       typeof progress.maxExerciseIndex === "number"
-        ? Math.min(progress.maxExerciseIndex, Math.max(count - 1, 0))
+        ? Math.min(progress.maxExerciseIndex, maxIndex)
         : base.maxExerciseIndex,
     exerciseStatuses: normalizeArray(
       progress.exerciseStatuses,
@@ -111,12 +130,13 @@ const normalizeSectionProgress = (
 
 export const useLessonProgress = (
   progressKey: string | null,
+  sectionKeys: string[],
   exerciseSections: ExerciseSectionConfig[]
 ) => {
   const exerciseCountRef = useRef(exerciseSections);
-  const [openSection, setOpenSection] = useState<LessonSectionKey>("references");
+  const [openSection, setOpenSection] = useState<string>(sectionKeys[0] || "");
   const [completedSections, setCompletedSections] =
-    useState<Record<LessonSectionKey, boolean>>(defaultCompleted);
+    useState<Record<string, boolean>>(buildCompleted(sectionKeys));
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const [maxExerciseIndex, setMaxExerciseIndex] = useState(0);
   const [exerciseStatuses, setExerciseStatuses] = useState<ExerciseStatus[]>([]);
@@ -135,10 +155,49 @@ export const useLessonProgress = (
     null
   );
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  const sectionKeysSignature = useMemo(() => sectionKeys.join("|"), [sectionKeys]);
+  const exerciseSectionsSignature = useMemo(
+    () =>
+      exerciseSections.map((section) => `${section.key}:${section.count}`).join("|"),
+    [exerciseSections]
+  );
+
+  const stableSectionKeys = useMemo(() => sectionKeys, [sectionKeysSignature]);
+  const stableExerciseSections = useMemo(
+    () => exerciseSections,
+    [exerciseSectionsSignature]
+  );
 
   useEffect(() => {
-    exerciseCountRef.current = exerciseSections;
-  }, [exerciseSections]);
+    exerciseCountRef.current = stableExerciseSections;
+  }, [exerciseSectionsSignature, stableExerciseSections]);
+
+  useEffect(() => {
+    if (!stableSectionKeys.length) {
+      setOpenSection("");
+      setCompletedSections({});
+      return;
+    }
+    setOpenSection((prev) =>
+      stableSectionKeys.includes(prev) ? prev : stableSectionKeys[0]
+    );
+    setCompletedSections((prev) => {
+      const next = buildCompleted(stableSectionKeys);
+      Object.keys(next).forEach((key) => {
+        if (typeof prev[key] === "boolean") {
+          next[key] = prev[key];
+        }
+      });
+      const keys = Object.keys(next);
+      if (keys.length === Object.keys(prev).length) {
+        const unchanged = keys.every((key) => prev[key] === next[key]);
+        if (unchanged) {
+          return prev;
+        }
+      }
+      return next;
+    });
+  }, [sectionKeysSignature, stableSectionKeys]);
 
   useEffect(() => {
     if (!progressKey) {
@@ -146,22 +205,31 @@ export const useLessonProgress = (
       return;
     }
     const parsed = readStorage<LessonProgress>(progressKey);
-    if (parsed?.open) {
-      setOpenSection(parsed.open);
-    } else {
-      setOpenSection("references");
-    }
-    if (parsed?.completed) {
-      setCompletedSections({
-        lesson: Boolean(parsed.completed.lesson),
-        references: Boolean(parsed.completed.references),
-        exercises: Boolean(parsed.completed.exercises),
-      });
-    } else {
-      setCompletedSections(defaultCompleted);
-    }
-    const sectionMap = new Map(exerciseSections.map((section) => [section.key, section]));
-    const defaultActiveKey = exerciseSections[0]?.key || null;
+    const initialOpen = stableSectionKeys[0] || "";
+    const nextOpen =
+      parsed?.open && stableSectionKeys.includes(parsed.open)
+        ? parsed.open
+        : initialOpen;
+    setOpenSection((prev) => (prev === nextOpen ? prev : nextOpen));
+    setCompletedSections((prev) => {
+      const nextCompleted = buildCompleted(stableSectionKeys);
+      if (parsed?.completed) {
+        Object.keys(nextCompleted).forEach((key) => {
+          if (typeof parsed.completed[key] === "boolean") {
+            nextCompleted[key] = parsed.completed[key];
+          }
+        });
+      }
+      const keys = Object.keys(nextCompleted);
+      if (keys.length === Object.keys(prev).length) {
+        const unchanged = keys.every((key) => prev[key] === nextCompleted[key]);
+        if (unchanged) {
+          return prev;
+        }
+      }
+      return nextCompleted;
+    });
+    const defaultActiveKey = stableExerciseSections[0]?.key || null;
     let nextSections = parsed?.exerciseSections || {};
     if (!parsed?.exerciseSections && parsed?.exerciseIndex !== undefined) {
       const legacyKey = defaultActiveKey || "exercises";
@@ -178,28 +246,52 @@ export const useLessonProgress = (
       };
     }
     const normalizedSections: Record<string, ExerciseSectionProgress> = {};
-    exerciseSections.forEach((section) => {
+    stableExerciseSections.forEach((section) => {
       normalizedSections[section.key] = normalizeSectionProgress(
         nextSections[section.key],
         section.count
       );
     });
-    setExerciseSectionsState(normalizedSections);
+    setExerciseSectionsState((prev) => {
+      const nextKeys = Object.keys(normalizedSections);
+      const prevKeys = Object.keys(prev);
+      if (
+        nextKeys.length === prevKeys.length &&
+        nextKeys.every((key) => prev[key] === normalizedSections[key])
+      ) {
+        return prev;
+      }
+      return normalizedSections;
+    });
     const nextActiveKey =
       (parsed?.activeExerciseSectionKey &&
         normalizedSections[parsed.activeExerciseSectionKey]
           ? parsed.activeExerciseSectionKey
           : defaultActiveKey) || null;
-    setActiveExerciseSectionKey(nextActiveKey);
+    setActiveExerciseSectionKey((prev) =>
+      prev === nextActiveKey ? prev : nextActiveKey
+    );
     if (nextActiveKey && normalizedSections[nextActiveKey]) {
       const active = normalizedSections[nextActiveKey];
-      setExerciseIndex(active.exerciseIndex);
-      setMaxExerciseIndex(active.maxExerciseIndex);
-      setExerciseStatuses(active.exerciseStatuses);
-      setExerciseGuides(active.exerciseGuides);
-      setFibAnswers(active.fibAnswers);
-      setMcqSelections(active.mcqSelections);
-      setScoreSnapshot(active.scoreSnapshot);
+      setExerciseIndex((prev) =>
+        prev === active.exerciseIndex ? prev : active.exerciseIndex
+      );
+      setMaxExerciseIndex((prev) =>
+        prev === active.maxExerciseIndex ? prev : active.maxExerciseIndex
+      );
+      setExerciseStatuses((prev) =>
+        prev === active.exerciseStatuses ? prev : active.exerciseStatuses
+      );
+      setExerciseGuides((prev) =>
+        prev === active.exerciseGuides ? prev : active.exerciseGuides
+      );
+      setFibAnswers((prev) => (prev === active.fibAnswers ? prev : active.fibAnswers));
+      setMcqSelections((prev) =>
+        prev === active.mcqSelections ? prev : active.mcqSelections
+      );
+      setScoreSnapshot((prev) =>
+        prev === active.scoreSnapshot ? prev : active.scoreSnapshot
+      );
     } else {
       setExerciseIndex(0);
       setMaxExerciseIndex(0);
@@ -210,7 +302,7 @@ export const useLessonProgress = (
       setScoreSnapshot(buildEmptyScore());
     }
     setHydratedKey(progressKey);
-  }, [exerciseSections, progressKey]);
+  }, [exerciseSectionsSignature, progressKey, sectionKeysSignature, stableExerciseSections, stableSectionKeys]);
 
   useEffect(() => {
     if (!progressKey) {
@@ -250,25 +342,38 @@ export const useLessonProgress = (
   ]);
 
   useEffect(() => {
-    if (!exerciseSections.length) {
+    if (!stableExerciseSections.length) {
       setExerciseSectionsState({});
       setActiveExerciseSectionKey(null);
       return;
     }
     setExerciseSectionsState((prev) => {
       const next: Record<string, ExerciseSectionProgress> = {};
-      exerciseSections.forEach((section) => {
-        next[section.key] = normalizeSectionProgress(prev[section.key], section.count);
+      let changed = false;
+      stableExerciseSections.forEach((section) => {
+        const normalized = normalizeSectionProgress(prev[section.key], section.count);
+        next[section.key] = normalized;
+        if (prev[section.key] !== normalized) {
+          changed = true;
+        }
       });
+      if (
+        !changed &&
+        Object.keys(prev).length === Object.keys(next).length
+      ) {
+        return prev;
+      }
       return next;
     });
     if (
       !activeExerciseSectionKey ||
-      !exerciseSections.some((section) => section.key === activeExerciseSectionKey)
+      !stableExerciseSections.some(
+        (section) => section.key === activeExerciseSectionKey
+      )
     ) {
-      setActiveExerciseSectionKey(exerciseSections[0].key);
+      setActiveExerciseSectionKey(stableExerciseSections[0].key);
     }
-  }, [exerciseSections, activeExerciseSectionKey]);
+  }, [exerciseSectionsSignature, activeExerciseSectionKey, stableExerciseSections]);
 
   useEffect(() => {
     if (!activeExerciseSectionKey) {
@@ -327,8 +432,8 @@ export const useLessonProgress = (
       removeStorage(progressKey);
     }
     const sectionConfigs = exerciseCountRef.current;
-    setOpenSection("references");
-    setCompletedSections(defaultCompleted);
+    setOpenSection(stableSectionKeys[0] || "");
+    setCompletedSections(buildCompleted(stableSectionKeys));
     setExerciseIndex(0);
     setMaxExerciseIndex(0);
     setExerciseStatuses([]);
@@ -342,7 +447,7 @@ export const useLessonProgress = (
     });
     setExerciseSectionsState(nextSections);
     setActiveExerciseSectionKey(sectionConfigs[0]?.key ?? null);
-  }, [progressKey]);
+  }, [progressKey, stableSectionKeys]);
 
   const state: ProgressState = useMemo(
     () => ({
