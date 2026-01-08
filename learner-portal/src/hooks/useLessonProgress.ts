@@ -39,7 +39,7 @@ const buildDefaultExerciseState = (exerciseCount: number): ExerciseSectionState 
       steps: [] as ExerciseStepProgress[],
       mainAttempts: 0,
       mainLastIncorrect: false,
-      mainPending: "none",
+      mainPending: "none" as const,
       completed: false,
     }));
   return {
