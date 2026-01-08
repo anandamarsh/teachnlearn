@@ -346,8 +346,10 @@ const ExercisesSection = ({
   const normalizeValue = (value: string | number | null | undefined) =>
     String(value ?? "").trim();
 
+  const stripNumberFormatting = (value: string) => value.replace(/[\s,]+/g, "");
+
   const parseFraction = (value: string) => {
-    const cleaned = value.replace(/\s+/g, "");
+    const cleaned = stripNumberFormatting(value);
     const match = cleaned.match(/^([-+]?\d+)\/([-+]?\d+)$/);
     if (!match) {
       return null;
@@ -364,7 +366,7 @@ const ExercisesSection = ({
   };
 
   const isNumericString = (value: string) => {
-    const cleaned = value.trim();
+    const cleaned = stripNumberFormatting(value);
     return /^[-+]?\d+(\.\d+)?$/.test(cleaned);
   };
 
@@ -384,7 +386,7 @@ const ExercisesSection = ({
     if (!isNumericString(left) || !isNumericString(right)) {
       return false;
     }
-    return Number(left) === Number(right);
+    return Number(stripNumberFormatting(left)) === Number(stripNumberFormatting(right));
   };
 
   const isCorrectAnswer = (submitted: string, answer: string) => {
