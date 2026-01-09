@@ -88,13 +88,17 @@ const ExercisesSection = ({
   });
   const snsSessionRef = useRef<SnsSession | null>(null);
   const snsStartedRef = useRef(false);
-  const startedExercisesRef = useRef<Set<number>>(new Set());
   const snsEndedRef = useRef(false);
+  const snsBlockedRef = useRef(false);
   const [retryPromptOpen, setRetryPromptOpen] = useState(false);
   const retryPromptShownRef = useRef(false);
   const [showMagicFab, setShowMagicFab] = useState(false);
   const [autoPilotActive, setAutoPilotActive] = useState(false);
   const magicPin = useMemo(() => String(lessonId || "").trim().toLowerCase(), [lessonId]);
+  const snsCompletedStorageKey = useMemo(
+    () => `sns-exercise-completed-${lessonId}-${exerciseSectionKey}`,
+    [exerciseSectionKey, lessonId]
+  );
   const scrollToIndex = (
     index: number,
     behavior: ScrollBehavior = "smooth",
@@ -344,9 +348,18 @@ const ExercisesSection = ({
   };
 
   const normalizeValue = (value: string | number | null | undefined) =>
-    String(value ?? "").trim();
+    String(value ?? "").replace(/\s+/g, "");
 
   const stripNumberFormatting = (value: string) => value.replace(/[\s,]+/g, "");
+
+  const normalizeOperators = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[×*]/g, "x")
+      .replace(/[÷]/g, "/")
+      .replace(/[−–—]/g, "-")
+      .replace(/[＋]/g, "+")
+      .replace(/\s+/g, "");
 
   const parseFraction = (value: string) => {
     const cleaned = stripNumberFormatting(value);
@@ -390,8 +403,8 @@ const ExercisesSection = ({
   };
 
   const isCorrectAnswer = (submitted: string, answer: string) => {
-    const normalizedSubmitted = normalizeValue(submitted);
-    const normalizedAnswer = normalizeValue(answer);
+    const normalizedSubmitted = normalizeOperators(normalizeValue(submitted));
+    const normalizedAnswer = normalizeOperators(normalizeValue(answer));
     if (areFractionsEqual(normalizedSubmitted, normalizedAnswer)) {
       return true;
     }
@@ -465,8 +478,11 @@ const ExercisesSection = ({
     return snsSessionRef.current;
   };
 
-  const startExerciseIfNeeded = (exerciseIdx: number) => {
-    if (startedExercisesRef.current.has(exerciseIdx)) {
+  const startExerciseIfNeeded = () => {
+    if (snsBlockedRef.current) {
+      return;
+    }
+    if (snsStartedRef.current) {
       return;
     }
     const session = ensureSnsSession();
@@ -479,15 +495,30 @@ const ExercisesSection = ({
       })
     );
     snsStartedRef.current = true;
-    startedExercisesRef.current.add(exerciseIdx);
     updateScoreSnapshot();
   };
+
+  useEffect(() => {
+    const completed = window.localStorage.getItem(snsCompletedStorageKey) === "true";
+    if (completed) {
+      snsBlockedRef.current = true;
+      emitSnsEvent("ERROR_WARNING", {
+        message:
+          "You have already completed this skill and will not be awarded again.",
+      });
+    } else {
+      snsBlockedRef.current = false;
+    }
+  }, [snsCompletedStorageKey]);
 
   useEffect(() => {
     if (snsEndedRef.current) {
       return;
     }
     if (!snsStartedRef.current) {
+      return;
+    }
+    if (snsBlockedRef.current) {
       return;
     }
     const score = buildScoreSnapshot(exerciseStatuses);
@@ -506,6 +537,8 @@ const ExercisesSection = ({
       })
     );
     snsEndedRef.current = true;
+    snsBlockedRef.current = true;
+    window.localStorage.setItem(snsCompletedStorageKey, "true");
   }, [exerciseStatuses]);
 
   useEffect(() => {
@@ -559,21 +592,9 @@ const ExercisesSection = ({
   }, [exerciseStatuses, exercises.length]);
 
   useEffect(() => {
-    if (!exerciseStatuses.length) {
-      return;
-    }
-    const allUnattempted = exerciseStatuses.every(
-      (status) => status === "unattempted"
-    );
-    if (!allUnattempted) {
-      return;
-    }
-    if (startedExercisesRef.current.size) {
-      startedExercisesRef.current.clear();
-    }
     snsStartedRef.current = false;
     snsEndedRef.current = false;
-  }, [exerciseStatuses]);
+  }, [exerciseSectionKey]);
 
   useEffect(() => {
     if (!exercises.length) {
@@ -758,8 +779,11 @@ const ExercisesSection = ({
       setRetryPromptOpen(true);
       retryPromptShownRef.current = true;
     }
+    if (snsBlockedRef.current) {
+      return;
+    }
     const session = ensureSnsSession();
-    startExerciseIfNeeded(index);
+    startExerciseIfNeeded();
     if (session && statusChanged) {
       const score = buildScoreSnapshot(nextStatuses);
       updateScoreSnapshot(nextStatuses);
@@ -813,8 +837,11 @@ const ExercisesSection = ({
       setRetryPromptOpen(true);
       retryPromptShownRef.current = true;
     }
+    if (snsBlockedRef.current) {
+      return;
+    }
     const session = ensureSnsSession();
-    startExerciseIfNeeded(index);
+    startExerciseIfNeeded();
     if (session && statusChanged) {
       const score = buildScoreSnapshot(nextStatuses);
       updateScoreSnapshot(nextStatuses);
@@ -1273,6 +1300,10 @@ const ExercisesSection = ({
               };
               setExerciseIndex(firstRetry);
               scrollToIndex(firstRetry, "smooth", true);
+              if (snsBlockedRef.current) {
+                setRetryPromptOpen(false);
+                return;
+              }
               const session = ensureSnsSession();
               const nextStatuses = exerciseStatuses.map((status, idx) =>
                 retryIndices.includes(idx) ? "unattempted" : status

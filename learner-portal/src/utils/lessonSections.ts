@@ -1,6 +1,5 @@
 const SECTION_LABELS: Record<string, string> = {
   lesson: "Lesson",
-  references: "References",
   exercises: "Exercises",
   exercise: "Exercise",
 };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CatalogLesson, ExerciseItem } from "../state/types";
 import {
+  getSectionBaseKey,
   getSectionsAfterBackground,
   isExercisesSection,
   normalizeSectionOrder,
@@ -52,7 +53,11 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         `/catalog/teacher/${lesson.teacher}/lesson/${lesson.id}/sections/index`
       );
       const ordered = normalizeSectionOrder(payload.sections);
-      const nextKeys = getSectionsAfterBackground(ordered);
+      const filtered = ordered.filter((key) => {
+        const baseKey = getSectionBaseKey(key);
+        return baseKey !== "references" && baseKey !== "samples";
+      });
+      const nextKeys = getSectionsAfterBackground(filtered);
       setSectionKeys(Array.from(new Set(nextKeys)));
     } finally {
       setIndexLoading(false);
