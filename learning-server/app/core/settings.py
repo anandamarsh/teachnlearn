@@ -40,11 +40,9 @@ def parse_cors_origins() -> list[str]:
 def _load_lesson_sections(path: str) -> tuple[list[str], dict[str, str]]:
     default = [
         "assessment",
-        "samples",
         "concepts",
         "background",
         "lesson",
-        "references",
         "exercises",
     ]
     descriptions: dict[str, str] = {}

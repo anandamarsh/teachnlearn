@@ -33,10 +33,8 @@ type UseLessonSectionsOptions = {
 
 const DEFAULT_ORDER = [
   "assessment",
-  "samples",
   "concepts",
   "background",
-  "references",
   "lesson",
   "exercises",
 ];
@@ -55,6 +53,7 @@ const getKeyIndex = (key: string) => {
 };
 
 const isExerciseSection = (key: string) => getBaseKey(key) === "exercises";
+const HIDDEN_BASE_KEYS = new Set(["samples", "references"]);
 
 const orderSections = (sections: SectionSummary[], order: string[]) => {
   const sequence = order.length ? order : DEFAULT_ORDER;
@@ -133,15 +132,19 @@ export const useLessonSections = ({
       let order = sectionOrderRef.current;
       if (!order.length && sectionsListEndpoint) {
         const listData = await fetchSectionsList(sectionsListEndpoint, headers);
-        order = listData.sections || [];
+        order = (listData.sections || []).filter(
+          (key) => !HIDDEN_BASE_KEYS.has(getBaseKey(key))
+        );
         setSectionOrder(order);
         sectionOrderRef.current = order;
       }
       const data = await fetchSectionsIndex(`${baseEndpoint}/index`, headers);
-      const entries = Object.entries(data.sections || {}).map(([key, filename]) => ({
-        key,
-        filename,
-      }));
+      const entries = Object.entries(data.sections || {})
+        .filter(([key]) => !HIDDEN_BASE_KEYS.has(getBaseKey(key)))
+        .map(([key, filename]) => ({
+          key,
+          filename,
+        }));
       setSections(orderSections(entries, order));
       } catch (err) {
       const detail = err instanceof Error ? err.message : "Failed to load sections index";
