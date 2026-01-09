@@ -32,6 +32,9 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   const progressKey = `learner-lesson-progress-${lesson.teacher}-${lesson.id}`;
   const lastSectionKey = `learner-lesson-last-section-${lesson.teacher}-${lesson.id}`;
   const appliedLastSectionRef = useRef(false);
+  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
+  const initialTabScrollRef = useRef(false);
+  const userTabSelectRef = useRef(false);
   const [restartPromptOpen, setRestartPromptOpen] = useState(false);
   const [pendingRestartSection, setPendingRestartSection] =
     useState<LessonSectionKey | null>(null);
@@ -103,6 +106,54 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     appliedLastSectionRef.current = true;
   }, [lastSectionKey, sectionKeys, setOpenSection]);
 
+  useEffect(() => {
+    if (!tabsContainerRef.current) {
+      return;
+    }
+    if (initialTabScrollRef.current) {
+      return;
+    }
+    const container = tabsContainerRef.current;
+    const forceLeft = () => {
+      container.scrollLeft = 0;
+    };
+    const timeoutA = window.setTimeout(forceLeft, 0);
+    const timeoutB = window.setTimeout(forceLeft, 50);
+    const timeoutC = window.setTimeout(forceLeft, 200);
+    const rafA = window.requestAnimationFrame(forceLeft);
+    const rafB = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(forceLeft);
+    });
+    initialTabScrollRef.current = true;
+    return () => {
+      window.clearTimeout(timeoutA);
+      window.clearTimeout(timeoutB);
+      window.clearTimeout(timeoutC);
+      window.cancelAnimationFrame(rafA);
+      window.cancelAnimationFrame(rafB);
+    };
+  }, [sectionKeys]);
+
+  useEffect(() => {
+    if (!tabsContainerRef.current) {
+      return;
+    }
+    if (!userTabSelectRef.current) {
+      return;
+    }
+    const container = tabsContainerRef.current;
+    const selected = container.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]'
+    );
+    if (!selected) {
+      return;
+    }
+    const target =
+      selected.offsetLeft + selected.offsetWidth / 2 - container.clientWidth / 2;
+    container.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+    userTabSelectRef.current = false;
+  }, [openSection]);
+
   const handleAdvanceSection = (current: LessonSectionKey) => {
     setCompletedSections((prev) => ({ ...prev, [current]: true }));
     const currentIndex = sectionKeys.indexOf(current);
@@ -146,7 +197,12 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   return (
     <Stack spacing={0}>
       <Stack spacing={3}>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
+        <Box
+          className="lesson-tabs-bar"
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+        >
           <IconButton
             aria-label="Refresh page"
             onClick={() => {
@@ -156,15 +212,28 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
           >
             <RefreshRoundedIcon />
           </IconButton>
-          <Box flex={1} display="flex" justifyContent="center">
+          <Box
+            flex={1}
+            display="flex"
+            justifyContent="flex-start"
+            sx={{ overflowX: "auto", maxWidth: "100%", width: "100%" }}
+            ref={tabsContainerRef}
+          >
             <Tabs
               value={openSection}
-              onChange={(_, value) => setOpenSection(value)}
+              onChange={(_, value) => {
+                userTabSelectRef.current = true;
+                setOpenSection(value);
+              }}
               variant="scrollable"
               scrollButtons="auto"
               sx={{
+                minWidth: "max-content",
                 "& .MuiTab-root": {
                   mx: 3.5,
+                },
+                "& .MuiTabs-scroller": {
+                  overflowX: "visible !important",
                 },
               }}
             >

@@ -465,6 +465,28 @@
 }
 
 @media (max-width: 600px) {
+
+  .exercise-score-box {
+    top: 4rem;
+    right: 0.5rem;
+    width: 60px;
+    height: 40px;
+    padding: 0;
+    border-radius: 6px;
+    background: #1e5dbb;
+    border: none;
+    color: #ffffff;
+  }
+
+  .exercise-score-label {
+    display: none;
+  }
+
+  .exercise-score-value {
+    font-size: 1.25rem;
+    letter-spacing: 0;
+  }
+
   .exercise-slide {
     min-height: calc(100vh - 260px);
   }
