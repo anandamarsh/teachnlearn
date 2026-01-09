@@ -15,6 +15,15 @@
   right: 0;
 }
 
+.lesson-tabs-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #fafafa;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
 .lesson-stepper-inner {
   width: min(60%, 720px);
   margin: 0 auto;
@@ -89,6 +98,10 @@
 }
 
 @media (max-width: 600px) {
+  .lesson-tabs-bar .MuiTabs-flexContainer {
+    justify-content: flex-start;
+  }
+
   .lesson-stepper-inner {
     width: 100%;
     padding: 0 0.5rem;
