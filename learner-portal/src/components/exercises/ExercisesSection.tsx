@@ -47,7 +47,7 @@ type ExercisesSectionProps = {
 };
 
 const ExercisesSection = ({
-  exercises,
+  exercises: rawExercises,
   exerciseSectionKey,
   lessonId,
   lessonTitle,
@@ -70,6 +70,7 @@ const ExercisesSection = ({
   onComplete,
   showCompleteButton,
 }: ExercisesSectionProps) => {
+  const [exercises, setExercises] = useState<ExerciseItem[]>([]);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const scrollTimeoutRef = useRef<number | null>(null);
   const advanceTimeoutRef = useRef<number | null>(null);
@@ -99,6 +100,20 @@ const ExercisesSection = ({
     () => `sns-exercise-completed-${lessonId}-${exerciseSectionKey}`,
     [exerciseSectionKey, lessonId]
   );
+  const shuffleStorageKey = useMemo(
+    () => `lp-exercise-order-${lessonId}-${exerciseSectionKey}`,
+    [exerciseSectionKey, lessonId]
+  );
+  const shuffleInitializedRef = useRef(false);
+
+  const buildShuffleOrder = (count: number) => {
+    const order = Array.from({ length: count }, (_, idx) => idx);
+    for (let idx = order.length - 1; idx > 0; idx -= 1) {
+      const swapIndex = Math.floor(Math.random() * (idx + 1));
+      [order[idx], order[swapIndex]] = [order[swapIndex], order[idx]];
+    }
+    return order;
+  };
   const scrollToIndex = (
     index: number,
     behavior: ScrollBehavior = "smooth",
@@ -196,6 +211,71 @@ const ExercisesSection = ({
   };
 
   useEffect(() => {
+    if (!rawExercises.length) {
+      setExercises([]);
+      return;
+    }
+    let order: number[] | null = null;
+    try {
+      const stored = window.localStorage.getItem(shuffleStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length === rawExercises.length) {
+          order = parsed.filter((value) => Number.isInteger(value));
+          if (order.length !== rawExercises.length) {
+            order = null;
+          }
+        }
+      }
+    } catch (_err) {
+      order = null;
+    }
+    if (!order) {
+      order = buildShuffleOrder(rawExercises.length);
+      window.localStorage.setItem(shuffleStorageKey, JSON.stringify(order));
+    }
+    setExercises(order.map((idx) => rawExercises[idx]).filter(Boolean));
+    shuffleInitializedRef.current = true;
+  }, [rawExercises, shuffleStorageKey]);
+
+  useEffect(() => {
+    const hasAttempts = exerciseStatuses.some(
+      (status) => status !== "unattempted"
+    );
+    if (hasAttempts) {
+      shuffleInitializedRef.current = false;
+    }
+  }, [exerciseStatuses]);
+
+  useEffect(() => {
+    if (!rawExercises.length) {
+      return;
+    }
+    const isFreshRun =
+      exerciseIndex === 0 &&
+      maxExerciseIndex === 0 &&
+      exerciseStatuses.length === rawExercises.length &&
+      exerciseStatuses.every((status) => status === "unattempted") &&
+      fibAnswers.every((value) => !value) &&
+      mcqSelections.every((value) => !value) &&
+      exerciseGuides.every((guide) => !guide?.completed);
+    if (!isFreshRun || shuffleInitializedRef.current) {
+      return;
+    }
+    const order = buildShuffleOrder(rawExercises.length);
+    window.localStorage.setItem(shuffleStorageKey, JSON.stringify(order));
+    setExercises(order.map((idx) => rawExercises[idx]).filter(Boolean));
+    shuffleInitializedRef.current = true;
+  }, [
+    exerciseGuides,
+    exerciseIndex,
+    exerciseStatuses,
+    fibAnswers,
+    maxExerciseIndex,
+    mcqSelections,
+    rawExercises,
+    shuffleStorageKey,
+  ]);
     if (exercises.length) {
       scrollToIndex(exerciseIndex);
     }
