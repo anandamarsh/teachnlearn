@@ -18,6 +18,7 @@ import ExercisesSection from "../exercises/ExercisesSection";
 import { getSectionLabel, isExercisesSection } from "../../utils/lessonSections";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CenteredLoader from "../common/CenteredLoader";
 
 type LessonViewProps = {
@@ -38,6 +39,8 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   const [restartPromptOpen, setRestartPromptOpen] = useState(false);
   const [pendingRestartSection, setPendingRestartSection] =
     useState<LessonSectionKey | null>(null);
+  const [showCompleteNotice, setShowCompleteNotice] = useState(false);
+  const completeNoticeTimeoutRef = useRef<number | null>(null);
 
   const {
     sectionHtml,
@@ -59,6 +62,7 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   const {
     openSection,
     completedSections,
+    hydratedExerciseSectionKey,
     setOpenSection,
     setCompletedSections,
     exerciseIndex,
@@ -154,6 +158,32 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     userTabSelectRef.current = false;
   }, [openSection]);
 
+  useEffect(() => {
+    if (completeNoticeTimeoutRef.current !== null) {
+      window.clearTimeout(completeNoticeTimeoutRef.current);
+      completeNoticeTimeoutRef.current = null;
+    }
+    if (!isExercisesSection(openSection)) {
+      setShowCompleteNotice(false);
+      return;
+    }
+    if (!completedSections[openSection]) {
+      setShowCompleteNotice(false);
+      return;
+    }
+    setShowCompleteNotice(true);
+    completeNoticeTimeoutRef.current = window.setTimeout(() => {
+      setShowCompleteNotice(false);
+      completeNoticeTimeoutRef.current = null;
+    }, 3000);
+    return () => {
+      if (completeNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(completeNoticeTimeoutRef.current);
+        completeNoticeTimeoutRef.current = null;
+      }
+    };
+  }, [completedSections, openSection]);
+
   const handleAdvanceSection = (current: LessonSectionKey) => {
     setCompletedSections((prev) => ({ ...prev, [current]: true }));
     const currentIndex = sectionKeys.indexOf(current);
@@ -177,19 +207,22 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   );
 
   useEffect(() => {
-    if (!activeExerciseSectionKey) {
+    if (!hydratedExerciseSectionKey) {
+      return;
+    }
+    if (hydratedExerciseSectionKey !== openSection) {
       return;
     }
     if (scoreSnapshot.skillScore !== 100) {
       return;
     }
     setCompletedSections((prev) => {
-      if (prev[activeExerciseSectionKey]) {
+      if (prev[hydratedExerciseSectionKey]) {
         return prev;
       }
-      return { ...prev, [activeExerciseSectionKey]: true };
+      return { ...prev, [hydratedExerciseSectionKey]: true };
     });
-  }, [activeExerciseSectionKey, scoreSnapshot.skillScore, setCompletedSections]);
+  }, [hydratedExerciseSectionKey, scoreSnapshot.skillScore, setCompletedSections]);
 
   const activeHtml = sectionHtml[openSection] || "";
   const activeHtmlLoading = Boolean(loading[openSection]);
@@ -241,7 +274,17 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                 <Tab
                   key={sectionKey}
                   value={sectionKey}
-                  label={getSectionLabel(sectionKey)}
+                  label={
+                    <Box display="flex" alignItems="center">
+                      {completedSections[sectionKey] ? (
+                        <CheckCircleRoundedIcon
+                          sx={{ color: "success.main", mr: "1rem" }}
+                          fontSize="small"
+                        />
+                      ) : null}
+                      {getSectionLabel(sectionKey)}
+                    </Box>
+                  }
                 />
               ))}
             </Tabs>
@@ -331,6 +374,11 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
           </Button>
         </DialogActions>
       </Dialog>
+      {showCompleteNotice ? (
+        <Box className="lesson-complete-notice">
+          You have already finished this exercise, so try another one.
+        </Box>
+      ) : null}
     </Stack>
   );
 };
