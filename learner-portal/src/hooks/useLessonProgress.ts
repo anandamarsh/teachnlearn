@@ -14,6 +14,7 @@ import { readStorage, removeStorage, writeStorage } from "../util/storage";
 type ProgressState = {
   openSection: LessonSectionKey;
   completedSections: Record<LessonSectionKey, boolean>;
+  hydratedExerciseSectionKey: LessonSectionKey | null;
   exerciseIndex: number;
   maxExerciseIndex: number;
   exerciseStatuses: ExerciseStatus[];
@@ -104,6 +105,8 @@ export const useLessonProgress = (
   const [scoreSnapshot, setScoreSnapshot] = useState<ExerciseScoreSnapshot>(
     defaultScoreSnapshot
   );
+  const [hydratedExerciseSectionKey, setHydratedExerciseSectionKey] =
+    useState<LessonSectionKey | null>(null);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   const sectionKeySignature = sectionKeys.join("|");
   const exerciseStateBySectionRef = useRef<Record<string, ExerciseSectionState>>({});
@@ -122,27 +125,6 @@ export const useLessonProgress = (
       return;
     }
     const parsed = readStorage<LessonProgress>(progressKey);
-    const nextCompleted = sectionKeys.reduce<Record<LessonSectionKey, boolean>>(
-      (acc, key) => {
-        acc[key] = Boolean(parsed?.completed?.[key]);
-        return acc;
-      },
-      {}
-    );
-    const fallbackOpen = sectionKeys[0] || "lesson";
-    const firstIncomplete =
-      sectionKeys.find((key) => !nextCompleted[key]) || fallbackOpen;
-    const parsedOpen = parsed?.open;
-    if (
-      parsedOpen &&
-      sectionKeys.includes(parsedOpen) &&
-      nextCompleted[firstIncomplete]
-    ) {
-      setOpenSection(parsedOpen);
-    } else {
-      setOpenSection(firstIncomplete);
-    }
-    setCompletedSections(nextCompleted);
     let nextExerciseStateBySection = parsed?.exerciseStateBySection || {};
     if (!parsed?.exerciseStateBySection && parsed) {
       const legacyKey = sectionKeys.find((key) => isExercisesSection(key));
@@ -176,12 +158,38 @@ export const useLessonProgress = (
         };
       }
     }
+    const nextCompleted = sectionKeys.reduce<Record<LessonSectionKey, boolean>>(
+      (acc, key) => {
+        acc[key] = Boolean(parsed?.completed?.[key]);
+        const exerciseState = nextExerciseStateBySection[key];
+        if (exerciseState?.scoreSnapshot?.skillScore === 100) {
+          acc[key] = true;
+        }
+        return acc;
+      },
+      {}
+    );
+    const fallbackOpen = sectionKeys[0] || "lesson";
+    const firstIncomplete =
+      sectionKeys.find((key) => !nextCompleted[key]) || fallbackOpen;
+    const parsedOpen = parsed?.open;
+    if (
+      parsedOpen &&
+      sectionKeys.includes(parsedOpen) &&
+      nextCompleted[firstIncomplete]
+    ) {
+      setOpenSection(parsedOpen);
+    } else {
+      setOpenSection(firstIncomplete);
+    }
+    setCompletedSections(nextCompleted);
     setExerciseStateBySection(nextExerciseStateBySection);
     setHydratedKey(progressKey);
   }, [progressKey, sectionKeySignature, sectionKeys]);
 
   useEffect(() => {
     if (!activeExerciseSectionKey) {
+      setHydratedExerciseSectionKey(null);
       return;
     }
     const savedState =
@@ -205,6 +213,7 @@ export const useLessonProgress = (
     setFibAnswers(nextState.fibAnswers);
     setMcqSelections(nextState.mcqSelections);
     setScoreSnapshot(nextState.scoreSnapshot);
+    setHydratedExerciseSectionKey(activeExerciseSectionKey);
   }, [
     activeExerciseCount,
     activeExerciseSectionKey,
@@ -324,6 +333,7 @@ export const useLessonProgress = (
     () => ({
       openSection,
       completedSections,
+      hydratedExerciseSectionKey,
       exerciseIndex,
       maxExerciseIndex,
       exerciseStatuses,
@@ -334,6 +344,7 @@ export const useLessonProgress = (
     }),
     [
       completedSections,
+      hydratedExerciseSectionKey,
       exerciseIndex,
       maxExerciseIndex,
       exerciseStatuses,
