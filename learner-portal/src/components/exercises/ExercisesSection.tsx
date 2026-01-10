@@ -276,6 +276,8 @@ const ExercisesSection = ({
     rawExercises,
     shuffleStorageKey,
   ]);
+
+  useEffect(() => {
     if (exercises.length) {
       scrollToIndex(exerciseIndex);
     }
