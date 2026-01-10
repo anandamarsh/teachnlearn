@@ -15,6 +15,8 @@ import {
   ExerciseStep,
 } from "../../state/types";
 
+const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "");
+
 type ExerciseSlideProps = {
   exercise: ExerciseItem;
   guide: ExerciseGuideState;
@@ -272,8 +274,9 @@ const ExerciseSlide = ({
       : progress?.lastIncorrect
       ? "incorrect"
       : "pending";
-    const answerValue =
+    const answerValueRaw =
       progress?.mcqSelection || progress?.fibAnswer || step.answer;
+    const answerValue = stripHtml(String(answerValueRaw ?? ""));
     const showRevealNote =
       progress?.status === "revealed" && revealState !== "shown";
     const showAnswer =
@@ -403,6 +406,7 @@ const ExerciseSlide = ({
                     isSelected &&
                     progress?.status === "unanswered";
                   const isCorrectPending = isPending && isSelected;
+                  const label = stripHtml(option);
                   return (
                     <Button
                       key={option}
@@ -437,7 +441,7 @@ const ExerciseSlide = ({
                           : undefined,
                       }}
                     >
-                      {option}
+                      {label}
                     </Button>
                   );
                 })}
@@ -603,6 +607,7 @@ const ExerciseSlide = ({
                     const isCorrectFinal =
                       guide.completed && option === exercise.answer;
                     const canRecheck = guide.completed && option === exercise.answer;
+                    const label = stripHtml(option);
                     const highlightColor = isIncorrectPending
                       ? "error.dark"
                       : isCorrectFinal
@@ -651,7 +656,7 @@ const ExerciseSlide = ({
                           },
                         }}
                       >
-                        {option}
+                        {label}
                       </Button>
                     );
                   })}

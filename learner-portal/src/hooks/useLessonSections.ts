@@ -86,6 +86,15 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
             setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
             return;
           }
+          if (
+            payload.content &&
+            typeof payload.content === "object" &&
+            Array.isArray((payload.content as { content?: unknown }).content)
+          ) {
+            const items = (payload.content as { content: ExerciseItem[] }).content;
+            setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
+            return;
+          }
           const rawExercises = payload.contentHtml || "[]";
           const parsed = JSON.parse(rawExercises);
           const items = Array.isArray(parsed) ? (parsed as ExerciseItem[]) : [];
