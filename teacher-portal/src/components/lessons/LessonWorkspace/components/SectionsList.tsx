@@ -116,7 +116,10 @@ const SectionsList = ({
         const content = isEditingSection
           ? drafts[section.key] ?? ""
           : contents[section.key] ?? drafts[section.key] ?? "";
-        const metaLength = sectionsMeta?.[section.key]?.contentLength;
+        const meta = sectionsMeta?.[section.key] as
+          | { contentLength?: number; content_length?: number }
+          | undefined;
+        const metaLength = meta?.contentLength ?? meta?.content_length;
         const localValue = hasDraft
           ? drafts[section.key] ?? ""
           : hasContent

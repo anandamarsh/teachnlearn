@@ -8,6 +8,7 @@ export type CatalogLesson = {
   iconUrl?: string;
   teacher: string;
   content?: string | null;
+  requiresLogin?: boolean | null;
 };
 
 export type LessonSectionKey = string;

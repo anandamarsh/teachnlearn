@@ -7,6 +7,7 @@ export type Lesson = {
   updated_at?: string;
   iconUrl?: string | null;
   content?: string | null;
+  requiresLogin?: boolean | null;
   sections?: Record<string, string>;
   sectionsMeta?: Record<
     string,
@@ -44,8 +45,13 @@ export const normalizeLesson = (
     (item.description as string) ||
     (item.summary as string) ||
     null;
+  const requiresLogin =
+    (item.requiresLogin as boolean | undefined) ??
+    (item.requires_login as boolean | undefined) ??
+    null;
   const sections = item.sections as Record<string, string> | undefined;
-  const sectionsMeta = item.sectionsMeta as
+  const sectionsMeta = (item.sectionsMeta ||
+    item.sections_meta) as
     | Record<
         string,
         {
@@ -65,6 +71,7 @@ export const normalizeLesson = (
     updated_at,
     iconUrl,
     content,
+    requiresLogin,
     sections,
     sectionsMeta,
   };

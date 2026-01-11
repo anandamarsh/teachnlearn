@@ -166,6 +166,38 @@ const LessonsList = ({
     };
   };
 
+  const HIDDEN_BASE_KEYS = new Set(["samples", "references"]);
+  const getBaseKey = (key: string) => {
+    const match = key.match(/^([a-z_]+)-\d+$/);
+    return match ? match[1] : key;
+  };
+
+  const getDerivedStatus = (lesson: Lesson) => {
+    const normalized = (lesson.status || "").toLowerCase().trim();
+    if (normalized.includes("publish") || normalized.includes("active")) {
+      return lesson.status;
+    }
+    if (!lesson.sectionsMeta) {
+      return lesson.status;
+    }
+    const keys = lesson.sections
+      ? Object.keys(lesson.sections)
+      : Object.keys(lesson.sectionsMeta);
+    if (!keys.length) {
+      return lesson.status;
+    }
+    const filled = keys
+      .filter((key) => !HIDDEN_BASE_KEYS.has(getBaseKey(key)))
+      .every((key) => {
+        const meta = lesson.sectionsMeta?.[key] as
+          | { contentLength?: number; content_length?: number }
+          | undefined;
+        const length = meta?.contentLength ?? meta?.content_length;
+        return typeof length === "number" && length > 0;
+      });
+    return filled ? "Ready" : lesson.status;
+  };
+
   const withCacheBuster = (url: string, token?: string | null) => {
     if (!token) {
       return url;
@@ -205,7 +237,8 @@ const LessonsList = ({
         ) : lessons.length ? (
           <List disablePadding sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {lessons.map((lesson) => {
-              const highlight = getStatusHighlight(lesson.status);
+              const derivedStatus = getDerivedStatus(lesson);
+              const highlight = getStatusHighlight(derivedStatus);
               const iconSrc = lesson.iconUrl
                 ? withCacheBuster(lesson.iconUrl, lesson.updated_at)
                 : null;
@@ -262,13 +295,14 @@ const LessonsList = ({
                     <Box
                       sx={{
                         position: "absolute",
-                        top: 6,
-                        left: 6,
-                        width: 10,
-                        height: 10,
+                        top: -6,
+                        right: -6,
+                        width: 15,
+                        height: 15,
                         borderRadius: "999px",
-                        bgcolor: getStatusBadgeColor(lesson.status),
+                        backgroundColor: getStatusBadgeColor(derivedStatus),
                         border: "1px solid #fff",
+                        boxShadow: "0 3px 8px rgba(0,0,0,0.25)",
                         zIndex: 2,
                       }}
                     />
@@ -351,7 +385,7 @@ const LessonsList = ({
                     }
                     secondary={
                       <Typography variant="caption" color="text.secondary" noWrap>
-                        {lesson.status}
+                        {derivedStatus}
                       </Typography>
                     }
                   />

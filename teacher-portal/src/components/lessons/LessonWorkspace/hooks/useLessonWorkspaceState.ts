@@ -15,7 +15,11 @@ type UseLessonWorkspaceStateOptions = {
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
   onUpdateMeta: (
     lessonId: string,
-    updates: { subject?: string | null; level?: string | null }
+    updates: {
+      subject?: string | null;
+      level?: string | null;
+      requiresLogin?: boolean;
+    }
   ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
@@ -37,9 +41,11 @@ export const useLessonWorkspaceState = ({
   const [contentDraft, setContentDraft] = useState("");
   const [subjectDraft, setSubjectDraft] = useState("");
   const [levelDraft, setLevelDraft] = useState("");
+  const [requiresLoginDraft, setRequiresLoginDraft] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
   const [savingContent, setSavingContent] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
+  const [syncingStatus, setSyncingStatus] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -100,6 +106,7 @@ export const useLessonWorkspaceState = ({
     setContentDraft(lesson?.content || "");
     setSubjectDraft(lesson?.subject || "");
     setLevelDraft(lesson?.level || "");
+    setRequiresLoginDraft(Boolean(lesson?.requiresLogin));
   }, [lesson]);
 
   useEffect(() => {
@@ -241,6 +248,20 @@ export const useLessonWorkspaceState = ({
     setSavingMeta(false);
   };
 
+  const handleUpdateRequiresLogin = async (nextValue: boolean) => {
+    if (!lesson) {
+      return;
+    }
+    if (Boolean(lesson.requiresLogin) === nextValue) {
+      setRequiresLoginDraft(Boolean(lesson.requiresLogin));
+      return;
+    }
+    setRequiresLoginDraft(nextValue);
+    setSavingMeta(true);
+    await onUpdateMeta(lesson.id, { requiresLogin: nextValue });
+    setSavingMeta(false);
+  };
+
   const handleAccordionChange =
     (key: string) => (_: unknown, expanded: boolean) => {
       setExpandedKeys((prev) => ({ ...prev, [key]: expanded }));
@@ -308,7 +329,10 @@ export const useLessonWorkspaceState = ({
   const allSectionsFilled =
     sections.length > 0 &&
     sections.every((section) => {
-      const metaLength = metaMap[section.key]?.contentLength;
+      const meta = metaMap[section.key] as
+        | { contentLength?: number; content_length?: number }
+        | undefined;
+      const metaLength = meta?.contentLength ?? meta?.content_length;
       const hasDraft = Object.prototype.hasOwnProperty.call(drafts, section.key);
       const hasContent = Object.prototype.hasOwnProperty.call(contents, section.key);
       if (hasDraft || hasContent) {
@@ -327,6 +351,29 @@ export const useLessonWorkspaceState = ({
     : allSectionsFilled
     ? "Ready"
     : "Draft";
+
+  useEffect(() => {
+    if (!lesson || isPublished || syncingStatus) {
+      return;
+    }
+    const nextStatus = allSectionsFilled ? "ready" : "draft";
+    if (statusValue === nextStatus) {
+      return;
+    }
+    const update = async () => {
+      setSyncingStatus(true);
+      await onUpdateStatus(lesson.id, nextStatus);
+      setSyncingStatus(false);
+    };
+    update();
+  }, [
+    allSectionsFilled,
+    isPublished,
+    lesson,
+    onUpdateStatus,
+    statusValue,
+    syncingStatus,
+  ]);
 
   return {
     sections,
@@ -372,6 +419,7 @@ export const useLessonWorkspaceState = ({
     handleConfirmClose,
     handleUpdateSubject,
     handleUpdateLevel,
+    handleUpdateRequiresLogin,
     isPublished,
     canEdit,
     statusLabel,
@@ -379,6 +427,7 @@ export const useLessonWorkspaceState = ({
     lesson,
     subjectDraft,
     levelDraft,
+    requiresLoginDraft,
     creatingSection,
     deleteMode,
     setDeleteMode,

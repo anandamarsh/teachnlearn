@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Box, Button, Paper, Popper, Stack, Typography } from "@mui/material";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import { CatalogLesson } from "../../state/types";
 import { formatTeacherEmail, withCacheBuster } from "../../util/format";
 
@@ -38,16 +39,26 @@ const HomeView = ({ lessons, onSelectLesson }: HomeViewProps) => {
               }}
               sx={{ minWidth: 0, minHeight: 0, padding: 0 }}
             >
-              {lesson.iconUrl ? (
-                <img
-                  src={withCacheBuster(lesson.iconUrl, lesson.updated_at)}
-                  alt=""
-                  className="home-icon"
-                  loading="lazy"
-                />
-              ) : (
-                <DescriptionRoundedIcon className="home-icon" color="primary" />
-              )}
+              {lesson.requiresLogin ? (
+                <span className="home-lock" aria-label="Login required">
+                  <LockRoundedIcon fontSize="small" />
+                </span>
+              ) : null}
+              <div className="home-icon-wrap">
+                {lesson.iconUrl ? (
+                  <img
+                    src={withCacheBuster(lesson.iconUrl, lesson.updated_at)}
+                    alt=""
+                    className="home-icon"
+                    loading="lazy"
+                  />
+                ) : (
+                  <DescriptionRoundedIcon
+                    className="home-icon"
+                    color="primary"
+                  />
+                )}
+              </div>
             </Button>
             <Typography className="home-title">{lesson.title}</Typography>
           </Box>
