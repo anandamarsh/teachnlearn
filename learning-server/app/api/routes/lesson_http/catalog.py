@@ -29,6 +29,12 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
             return json_error("teacher_id is required", 400)
         if not lesson_id:
             return json_error("lesson_id is required", 400)
+        lesson = store.get_sanitized(teacher_id, lesson_id)
+        if not lesson:
+            return json_error("lesson not found", 404)
+        requires_login = bool(lesson.get("requires_login"))
+        if requires_login and not get_request_email(request, None, settings):
+            return json_error("authentication required", 401)
         try:
             index = store.get_sections_index_sanitized(teacher_id, lesson_id)
         except (RuntimeError, ClientError) as exc:
@@ -53,6 +59,12 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
             return json_error("section_key is required", 400)
         if not store.is_valid_section_key(section_key):
             return json_error("invalid section_key", 400)
+        lesson = store.get_sanitized(teacher_id, lesson_id)
+        if not lesson:
+            return json_error("lesson not found", 404)
+        requires_login = bool(lesson.get("requires_login"))
+        if requires_login and not get_request_email(request, None, settings):
+            return json_error("authentication required", 401)
         try:
             section = store.get_section_sanitized(teacher_id, lesson_id, section_key)
         except (RuntimeError, ClientError) as exc:

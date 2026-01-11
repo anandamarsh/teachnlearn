@@ -73,6 +73,9 @@ def register_lesson_routes(
         content = payload.get("content")
         subject = payload.get("subject")
         level = payload.get("level")
+        requires_login = payload.get("requires_login")
+        if requires_login is None:
+            requires_login = payload.get("requiresLogin")
         try:
             lesson = store.create(
                 email,
@@ -81,6 +84,7 @@ def register_lesson_routes(
                 content=content,
                 subject=subject,
                 level=level,
+                requires_login=requires_login,
             )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
@@ -110,6 +114,9 @@ def register_lesson_routes(
         content = payload.get("content")
         subject = payload.get("subject")
         level = payload.get("level")
+        requires_login = payload.get("requires_login")
+        if requires_login is None:
+            requires_login = payload.get("requiresLogin")
         try:
             lesson = store.update(
                 email,
@@ -119,6 +126,7 @@ def register_lesson_routes(
                 content=content,
                 subject=subject,
                 level=level,
+                requires_login=requires_login,
             )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)

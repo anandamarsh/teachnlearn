@@ -66,6 +66,8 @@ class LessonStoreLessons:
                             payload["subject"] = full.get("subject")
                         if "level" in full:
                             payload["level"] = full.get("level")
+                        if "requires_login" in full:
+                            payload["requires_login"] = full.get("requires_login")
                 payload["teacher"] = account
                 entries.append(payload)
         entries.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
@@ -79,6 +81,7 @@ class LessonStoreLessons:
         content: str | None,
         subject: str | None = None,
         level: str | None = None,
+        requires_login: bool | None = None,
     ) -> dict[str, Any]:
         sanitized = sanitize_email(email)
         now = datetime.now(timezone.utc).isoformat()
@@ -102,6 +105,7 @@ class LessonStoreLessons:
                 status=status,
                 subject=subject,
                 level=level,
+                requires_login=requires_login,
                 content=content,
                 created_at=now,
                 updated_at=now,
@@ -123,6 +127,7 @@ class LessonStoreLessons:
                     "status": status,
                     "subject": subject,
                     "level": level,
+                    "requires_login": requires_login,
                     "updated_at": now,
                 }
             )
@@ -183,6 +188,7 @@ class LessonStoreLessons:
         content: str | None,
         subject: str | None,
         level: str | None,
+        requires_login: bool | None,
     ) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)
         with self._lock:
@@ -200,6 +206,8 @@ class LessonStoreLessons:
                 lesson["subject"] = subject
             if level is not None:
                 lesson["level"] = level
+            if requires_login is not None:
+                lesson["requires_login"] = requires_login
             lesson["updated_at"] = datetime.now(timezone.utc).isoformat()
             lesson_key = self._lesson_key(sanitized, lesson_id)
             self._s3_client.put_object(
@@ -220,6 +228,8 @@ class LessonStoreLessons:
                         entry["subject"] = subject
                     if level is not None:
                         entry["level"] = level
+                    if requires_login is not None:
+                        entry["requires_login"] = requires_login
                     entry["updated_at"] = lesson["updated_at"]
                     updated = True
                     break
@@ -231,6 +241,7 @@ class LessonStoreLessons:
                         "status": lesson.get("status"),
                         "subject": lesson.get("subject"),
                         "level": lesson.get("level"),
+                        "requires_login": lesson.get("requires_login"),
                         "updated_at": lesson["updated_at"],
                     }
                 )
@@ -277,6 +288,7 @@ class LessonStoreLessons:
             subject = lesson.get("subject")
             level = lesson.get("level")
             icon_url = lesson.get("iconUrl")
+            requires_login = lesson.get("requires_login")
             sections = lesson.get("sections") or {
                 key: self._section_filename(key) for key in self._sections
             }
@@ -292,6 +304,7 @@ class LessonStoreLessons:
                 "content": lesson.get("content"),
                 "subject": subject,
                 "level": level,
+                "requires_login": requires_login,
                 "iconUrl": icon_url,
                 "created_at": now,
                 "updated_at": now,
@@ -332,6 +345,7 @@ class LessonStoreLessons:
                     "status": "draft",
                     "subject": subject,
                     "level": level,
+                    "requires_login": requires_login,
                     "iconUrl": icon_url,
                     "updated_at": now,
                 }

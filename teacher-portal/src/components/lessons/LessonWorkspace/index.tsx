@@ -32,7 +32,11 @@ type LessonWorkspaceProps = {
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
   onUpdateMeta: (
     lessonId: string,
-    updates: { subject?: string | null; level?: string | null }
+    updates: {
+      subject?: string | null;
+      level?: string | null;
+      requiresLogin?: boolean;
+    }
   ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
@@ -97,11 +101,13 @@ const LessonWorkspace = ({
     handleConfirmClose,
     handleUpdateSubject,
     handleUpdateLevel,
+    handleUpdateRequiresLogin,
     isPublished,
     canEdit,
     statusLabel,
     subjectDraft,
     levelDraft,
+    requiresLoginDraft,
     creatingSection,
     deleteMode,
     setDeleteMode,
@@ -148,9 +154,11 @@ const LessonWorkspace = ({
           lessonId={lesson.id}
           subjectValue={subjectDraft}
           levelValue={levelDraft}
+          requiresLogin={requiresLoginDraft}
           savingMeta={savingMeta}
           onSubjectChange={handleUpdateSubject}
           onLevelChange={handleUpdateLevel}
+          onRequiresLoginChange={handleUpdateRequiresLogin}
           onEditTitle={() => setEditingTitle(true)}
           onTitleChange={setTitleDraft}
           onFinishTitle={() => {

@@ -1,11 +1,15 @@
 import {
   Box,
+  ClickAwayListener,
   IconButton,
   MenuItem,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
+import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useState } from "react";
 
@@ -20,10 +24,12 @@ type TitleHeaderProps = {
   lessonId: string;
   subjectValue: string;
   levelValue: string;
+  requiresLogin: boolean;
   savingMeta: boolean;
   deleteMode?: boolean;
   onSubjectChange: (value: string) => void;
   onLevelChange: (value: string) => void;
+  onRequiresLoginChange: (value: boolean) => void;
   onEditTitle: () => void;
   onTitleChange: (value: string) => void;
   onFinishTitle: () => void;
@@ -44,10 +50,12 @@ const TitleHeader = ({
   lessonId,
   subjectValue,
   levelValue,
+  requiresLogin,
   savingMeta,
   deleteMode,
   onSubjectChange,
   onLevelChange,
+  onRequiresLoginChange,
   onEditTitle,
   onTitleChange,
   onFinishTitle,
@@ -64,6 +72,7 @@ const TitleHeader = ({
   ];
   const [editingSubject, setEditingSubject] = useState(false);
   const [editingLevel, setEditingLevel] = useState(false);
+  const [editingRequiresLogin, setEditingRequiresLogin] = useState(false);
 
   const normalizeOption = (value: string, options: string[]) => {
     const lowered = value.toLowerCase().trim();
@@ -356,6 +365,62 @@ const TitleHeader = ({
           >
             {statusLabel}
           </Box>
+        </Box>
+        <Box sx={{ display: "flex", alignItems: "center", mr: "0.5rem" }}>
+          {editingRequiresLogin ? (
+            <ClickAwayListener
+              onClickAway={() => setEditingRequiresLogin(false)}
+            >
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                <Switch
+                  checked={requiresLogin}
+                  onChange={(event) => {
+                    onRequiresLoginChange(event.target.checked);
+                    setEditingRequiresLogin(false);
+                  }}
+                  disabled={savingMeta || !canEdit}
+                  size="small"
+                />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: requiresLogin ? "primary.main" : "text.secondary",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    mr: 0.5,
+                  }}
+                >
+                  {requiresLogin ? "Requires Login" : "No Login Required"}
+                </Typography>
+              </Box>
+            </ClickAwayListener>
+          ) : (
+            <IconButton
+              onClick={() => {
+                if (canEdit && !savingMeta) {
+                  setEditingRequiresLogin(true);
+                }
+              }}
+              disabled={!canEdit || savingMeta}
+              aria-label={requiresLogin ? "Requires Login" : "No Login Required"}
+              sx={{
+                height: 56,
+                width: 44,
+                borderRadius: "0.75rem",
+                color: requiresLogin ? "warning.main" : "text.secondary",
+                backgroundColor: "transparent",
+                "&:hover": {
+                  backgroundColor: "action.hover",
+                },
+              }}
+            >
+              {requiresLogin ? (
+                <LockRoundedIcon />
+              ) : (
+                <LockOpenRoundedIcon />
+              )}
+            </IconButton>
+          )}
         </Box>
         <IconButton
           onClick={() => {

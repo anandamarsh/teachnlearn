@@ -122,7 +122,11 @@ function App() {
 
   const handleUpdateMeta = async (
     lessonId: string,
-    updates: { subject?: string | null; level?: string | null }
+    updates: {
+      subject?: string | null;
+      level?: string | null;
+      requiresLogin?: boolean | null;
+    }
   ) => {
     const updated = await updateLessonMeta(lessonId, updates);
     if (updated) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { Box, Container, Paper, Typography } from "@mui/material";
 import "./App.css";
@@ -29,10 +29,7 @@ function App() {
   );
 
   const fetchWithAuth = useApiClient(apiBaseUrl, auth0Audience);
-  const { lessons, loading, error } = useCatalog({
-    isAuthenticated,
-    fetchWithAuth,
-  });
+  const { lessons, loading, error } = useCatalog({ fetchWithAuth });
 
   const slugify = (value: string) =>
     value
@@ -51,8 +48,10 @@ function App() {
     return `/lesson/${lesson.id}`;
   };
 
-  const lessonFromPath = useMemo(() => {
-    const matchByPath = (path: string) => {
+  const pendingLessonKey = "lp-pending-lesson-path";
+
+  const findLessonByPath = useCallback(
+    (path: string) => {
       const cleaned = path.replace(/^\/+|\/+$/g, "");
       if (!cleaned) {
         return null;
@@ -77,25 +76,49 @@ function App() {
         );
       }
       return null;
-    };
-    return matchByPath(window.location.pathname);
-  }, [lessons]);
+    },
+    [lessons]
+  );
+
+  const lessonFromPath = useMemo(
+    () => findLessonByPath(window.location.pathname),
+    [findLessonByPath]
+  );
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      loginWithRedirect();
+    if (!isAuthenticated || !lessons.length) {
+      return;
     }
-  }, [isAuthenticated, isLoading, loginWithRedirect]);
+    const pendingPath = localStorage.getItem(pendingLessonKey);
+    if (!pendingPath) {
+      return;
+    }
+    localStorage.removeItem(pendingLessonKey);
+    const pendingLesson = findLessonByPath(pendingPath);
+    if (pendingLesson) {
+      setSelectedLesson(pendingLesson);
+      setPage("lesson");
+      if (window.location.pathname !== pendingPath) {
+        window.history.pushState({}, "", pendingPath);
+      }
+    }
+  }, [findLessonByPath, isAuthenticated, lessons.length]);
 
   useEffect(() => {
     if (!lessons.length) {
       return;
     }
     if (lessonFromPath) {
+      if (lessonFromPath.requiresLogin && !isAuthenticated) {
+        const nextPath = buildLessonPath(lessonFromPath);
+        localStorage.setItem(pendingLessonKey, nextPath);
+        loginWithRedirect();
+        return;
+      }
       setSelectedLesson(lessonFromPath);
       setPage("lesson");
     }
-  }, [lessonFromPath, lessons.length]);
+  }, [isAuthenticated, lessonFromPath, lessons.length, loginWithRedirect]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -127,6 +150,12 @@ function App() {
           }) || null;
       }
       if (nextLesson) {
+        if (nextLesson.requiresLogin && !isAuthenticated) {
+          const nextPath = buildLessonPath(nextLesson);
+          localStorage.setItem(pendingLessonKey, nextPath);
+          loginWithRedirect();
+          return;
+        }
         setSelectedLesson(nextLesson);
         setPage("lesson");
       } else {
@@ -137,7 +166,7 @@ function App() {
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [lessons]);
+  }, [isAuthenticated, lessons, loginWithRedirect]);
 
   if (configError) {
     return (
@@ -154,7 +183,7 @@ function App() {
     );
   }
 
-  if (isLoading || !isAuthenticated) {
+  if (isLoading) {
     return <CenteredLoader />;
   }
 
@@ -178,6 +207,12 @@ function App() {
           <HomeView
             lessons={lessons}
             onSelectLesson={(lesson) => {
+              if (lesson.requiresLogin && !isAuthenticated) {
+                const nextPath = buildLessonPath(lesson);
+                localStorage.setItem(pendingLessonKey, nextPath);
+                loginWithRedirect();
+                return;
+              }
               setSelectedLesson(lesson);
               setPage("lesson");
               const nextPath = buildLessonPath(lesson);

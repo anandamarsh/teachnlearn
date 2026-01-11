@@ -8,6 +8,8 @@ from .s3 import sanitize_email
 
 
 class LessonStoreSections:
+    _HIDDEN_BASE_KEYS = {"samples", "references"}
+
     def _order_sections(self, sections: dict[str, str]) -> dict[str, str]:
         ordered: dict[str, str] = {}
         for base_key in self._settings.lesson_sections:
@@ -21,6 +23,38 @@ class LessonStoreSections:
             if key not in ordered:
                 ordered[key] = value
         return ordered
+
+    def _sync_ready_status(
+        self, sanitized_email: str, lesson_id: str, lesson: dict[str, Any]
+    ) -> None:
+        status = str(lesson.get("status") or "").lower().strip()
+        if "publish" in status or "active" in status:
+            return
+        sections = lesson.get("sections") or {}
+        meta_map = lesson.get("sectionsMeta") or {}
+        is_ready = False
+        if sections:
+            is_ready = True
+            for key in sections:
+                if self._section_base_key(key) in self._HIDDEN_BASE_KEYS:
+                    continue
+                meta = meta_map.get(key) or {}
+                length = meta.get("contentLength")
+                if length is None:
+                    length = meta.get("content_length")
+                if not isinstance(length, int) or length <= 0:
+                    is_ready = False
+                    break
+        next_status = "ready" if is_ready else "draft"
+        if status != next_status:
+            lesson["status"] = next_status
+        entries = self._load_index(sanitized_email)
+        for entry in entries:
+            if entry.get("id") == lesson_id:
+                entry["status"] = lesson.get("status")
+                entry["updated_at"] = lesson.get("updated_at")
+                break
+        self._save_index(sanitized_email, entries)
     def _initialize_sections(
         self, sanitized_email: str, lesson_id: str, sections: dict[str, str]
     ) -> None:
@@ -168,6 +202,7 @@ class LessonStoreSections:
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
         lesson["sections"] = self._order_sections(lesson.get("sections") or {})
+        self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
@@ -225,6 +260,7 @@ class LessonStoreSections:
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
         lesson["sections"] = self._order_sections(lesson.get("sections") or {})
+        self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
@@ -293,6 +329,7 @@ class LessonStoreSections:
         meta_map[section_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
+        self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,
@@ -323,6 +360,7 @@ class LessonStoreSections:
         meta_map.pop(section_key, None)
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(
             Bucket=self._settings.s3_bucket,

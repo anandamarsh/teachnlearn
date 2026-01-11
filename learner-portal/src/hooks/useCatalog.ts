@@ -3,11 +3,10 @@ import { listCatalogLessons } from "../api/catalog";
 import { CatalogLesson } from "../state/types";
 
 type UseCatalogOptions = {
-  isAuthenticated: boolean;
   fetchWithAuth: (path: string) => Promise<{ lessons?: CatalogLesson[] }>;
 };
 
-export const useCatalog = ({ isAuthenticated, fetchWithAuth }: UseCatalogOptions) => {
+export const useCatalog = ({ fetchWithAuth }: UseCatalogOptions) => {
   const [lessons, setLessons] = useState<CatalogLesson[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +25,8 @@ export const useCatalog = ({ isAuthenticated, fetchWithAuth }: UseCatalogOptions
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      load();
-    }
-  }, [isAuthenticated, load]);
+    load();
+  }, [load]);
 
   return { lessons, loading, error, reload: load };
 };
