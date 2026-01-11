@@ -230,11 +230,17 @@ const ExercisesSection = ({
     } catch (_err) {
       order = null;
     }
+    const createdNewOrder = !order;
     if (!order) {
       order = buildShuffleOrder(rawExercises.length);
       window.localStorage.setItem(shuffleStorageKey, JSON.stringify(order));
     }
     setExercises(order.map((idx) => rawExercises[idx]).filter(Boolean));
+    if (createdNewOrder) {
+      setExerciseIndex(0);
+      setMaxExerciseIndex(0);
+      scrollToIndex(0, "auto", true);
+    }
     shuffleInitializedRef.current = true;
   }, [rawExercises, shuffleStorageKey]);
 
@@ -265,6 +271,9 @@ const ExercisesSection = ({
     const order = buildShuffleOrder(rawExercises.length);
     window.localStorage.setItem(shuffleStorageKey, JSON.stringify(order));
     setExercises(order.map((idx) => rawExercises[idx]).filter(Boolean));
+    setExerciseIndex(0);
+    setMaxExerciseIndex(0);
+    scrollToIndex(0, "auto", true);
     shuffleInitializedRef.current = true;
   }, [
     exerciseGuides,
