@@ -17,6 +17,8 @@ def register_lesson_tools(
         title: str,
         status: str = "draft",
         content: str | None = None,
+        subject: str | None = None,
+        level: str | None = None,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Create a lesson for a user.
@@ -27,6 +29,8 @@ def register_lesson_tools(
         Optional inputs:
         - status: defaults to "draft"
         - content: optional short summary of the uploaded report (2-3 lines). Dont include "using visual models, worked examples, guided practice, and common misconception checks."
+        - subject: optional subject from the list ["Maths", "English", "Science", "Other"]
+        - level: optional level from the list ["Foundation", "Pre School", "Year 1", "Year 2", ... "Year 12"]
 
         Never call this tool if you do not know the email or title.
         """
@@ -34,12 +38,25 @@ def register_lesson_tools(
             return {"error": "email is required"}
         log_params(
             "lesson_create",
-            {"email": email, "title": title, "status": status, "content": content},
+            {
+                "email": email,
+                "title": title,
+                "status": status,
+                "content": content,
+                "subject": subject,
+                "level": level,
+            },
         )
         cache_key_value = cache_key(
             "lesson_create",
             email,
-            {"title": title, "status": status, "content": content},
+            {
+                "title": title,
+                "status": status,
+                "content": content,
+                "subject": subject,
+                "level": level,
+            },
         )
         cached = RESULT_CACHE.get(cache_key_value)
         if cached:
@@ -48,7 +65,14 @@ def register_lesson_tools(
             DEBOUNCE.mark_ignored("lesson_create", cache_key_value)
             return {"status": "debounced"}
         try:
-            lesson = store.create(email, title=title, status=status, content=content)
+            lesson = store.create(
+                email,
+                title=title,
+                status=status,
+                content=content,
+                subject=subject,
+                level=level,
+            )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc)}
         RESULT_CACHE.set(cache_key_value, lesson)
