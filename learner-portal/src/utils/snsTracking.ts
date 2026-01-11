@@ -102,11 +102,15 @@ export const buildSnsExerciseData = (params: {
   score: SnsScore;
   correct?: boolean;
   ended?: boolean;
+  skillTitle?: string;
 }) => {
-  const { session, now, score, correct, ended } = params;
+  const { session, now, score, correct, ended, skillTitle } = params;
   return {
     sessionId: session.sessionId,
-    details: session.details,
+    details: {
+      ...session.details,
+      ...(skillTitle ? { skillTitle } : {}),
+    },
     time: {
       start: formatClockTime(session.startTime),
       end: ended ? formatClockTime(now) : null,

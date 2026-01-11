@@ -106,6 +106,11 @@ const ExercisesSection = ({
   );
   const shuffleInitializedRef = useRef(false);
 
+  const getExerciseNumber = () => {
+    const match = exerciseSectionKey.match(/-(\d+)$/);
+    return match ? Number(match[1]) || 1 : 1;
+  };
+
   const buildShuffleOrder = (count: number) => {
     const order = Array.from({ length: count }, (_, idx) => idx);
     for (let idx = order.length - 1; idx > 0; idx -= 1) {
@@ -618,6 +623,8 @@ const ExercisesSection = ({
     }
     const session = ensureSnsSession();
     const now = new Date();
+    const match = exerciseSectionKey.match(/-(\d+)$/);
+    const exerciseNumber = match ? Number(match[1]) || 1 : 1;
     emitSnsEvent(
       "EXERCISE_ENDED",
       buildSnsExerciseData({
@@ -625,6 +632,7 @@ const ExercisesSection = ({
         now,
         score,
         ended: true,
+        skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${exerciseNumber}`,
       })
     );
     snsEndedRef.current = true;
@@ -885,6 +893,7 @@ const ExercisesSection = ({
           now: new Date(),
           score,
           correct: isCorrect,
+          skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${getExerciseNumber()}`,
         })
       );
     }
@@ -943,6 +952,7 @@ const ExercisesSection = ({
           now: new Date(),
           score,
           correct: isCorrect,
+          skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${getExerciseNumber()}`,
         })
       );
     }
@@ -1409,6 +1419,7 @@ const ExercisesSection = ({
                     now: new Date(),
                     score,
                     correct: false,
+                    skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${getExerciseNumber()}`,
                   })
                 );
               }
