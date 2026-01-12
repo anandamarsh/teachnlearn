@@ -5,7 +5,7 @@ export const listCatalogLessons = async (
   fetchWithAuth: AuthedFetch
 ) => {
   const payload = await fetchWithAuth("/catalog/lessons");
-  return (payload.lessons || []).map((lesson) => {
+  return (payload.lessons || []).map((lesson: unknown) => {
     const raw = lesson as CatalogLesson & {
       requires_login?: boolean | null;
       exercise_config?: ExerciseConfig | null;
