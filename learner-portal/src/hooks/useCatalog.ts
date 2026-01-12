@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { listCatalogLessons } from "../api/catalog";
+import { AuthedFetch } from "../api/client";
 import { CatalogLesson } from "../state/types";
 
 type UseCatalogOptions = {
-  fetchWithAuth: (path: string) => Promise<{ lessons?: CatalogLesson[] }>;
+  fetchWithAuth: AuthedFetch;
 };
 
 export const useCatalog = ({ fetchWithAuth }: UseCatalogOptions) => {

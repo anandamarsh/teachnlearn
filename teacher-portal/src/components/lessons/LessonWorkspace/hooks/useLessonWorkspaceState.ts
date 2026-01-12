@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Lesson } from "../../../../state/lessonTypes";
 import { buildAuthHeaders } from "../../../../auth/buildAuthHeaders";
-import { deleteLessonReport } from "../../../../api/lessons";
+import {
+  deleteLessonReport,
+  fetchExerciseGenerator,
+  saveExerciseGenerator,
+} from "../../../../api/lessons";
 import { useLessonSections } from "../../../../hooks/useLessonSections";
 import type { GetAccessTokenSilently } from "../../../../auth/buildAuthHeaders";
 import { useLessonReport } from "./useLessonReport";
@@ -19,6 +23,10 @@ type UseLessonWorkspaceStateOptions = {
       subject?: string | null;
       level?: string | null;
       requiresLogin?: boolean;
+      exerciseConfig?: {
+        questionsPerExercise?: number | null;
+        exercisesCount?: number | null;
+      } | null;
     }
   ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
@@ -37,11 +45,15 @@ export const useLessonWorkspaceState = ({
   getAccessTokenSilently,
   onPulse,
 }: UseLessonWorkspaceStateOptions) => {
+  const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
+  const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
   const [titleDraft, setTitleDraft] = useState("");
   const [contentDraft, setContentDraft] = useState("");
   const [subjectDraft, setSubjectDraft] = useState("");
   const [levelDraft, setLevelDraft] = useState("");
   const [requiresLoginDraft, setRequiresLoginDraft] = useState(false);
+  const [questionsPerExerciseDraft, setQuestionsPerExerciseDraft] = useState(0);
+  const [exercisesCountDraft, setExercisesCountDraft] = useState(0);
   const [savingTitle, setSavingTitle] = useState(false);
   const [savingContent, setSavingContent] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -55,6 +67,10 @@ export const useLessonWorkspaceState = ({
   >({});
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [exerciseGeneratorSource, setExerciseGeneratorSource] = useState("");
+  const [exerciseGeneratorLoaded, setExerciseGeneratorLoaded] = useState(false);
+  const [exerciseGeneratorLoading, setExerciseGeneratorLoading] = useState(false);
+  const [exerciseGeneratorSaving, setExerciseGeneratorSaving] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState<string | null>(null);
   const [creatingSection, setCreatingSection] = useState(false);
@@ -74,9 +90,10 @@ export const useLessonWorkspaceState = ({
     saveSection,
     createSection,
     deleteSection,
+    setSectionContent,
   } = useLessonSections({
-    apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
-    auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
+    apiBaseUrl,
+    auth0Audience,
     lessonId: lesson?.id || null,
     isAuthenticated,
     getAccessTokenSilently,
@@ -87,6 +104,9 @@ export const useLessonWorkspaceState = ({
   const isPublished =
     statusValue.includes("publish") || statusValue.includes("active");
 
+  const isExerciseSection = (key: string) =>
+    key === "exercises" || /^exercises-\d+$/.test(key);
+
   const { ensureReportUrl, handleOpenReport, openingReport } = useLessonReport({
     lesson,
     titleDraft,
@@ -96,8 +116,8 @@ export const useLessonWorkspaceState = ({
     contents,
     loadSection,
     isPublished,
-    apiBaseUrl: import.meta.env.VITE_TEACHNLEARN_API || "",
-    auth0Audience: import.meta.env.VITE_AUTH0_AUDIENCE || "",
+    apiBaseUrl,
+    auth0Audience,
     getAccessTokenSilently,
   });
 
@@ -107,6 +127,10 @@ export const useLessonWorkspaceState = ({
     setSubjectDraft(lesson?.subject || "");
     setLevelDraft(lesson?.level || "");
     setRequiresLoginDraft(Boolean(lesson?.requiresLogin));
+    setQuestionsPerExerciseDraft(
+      lesson?.exerciseConfig?.questionsPerExercise ?? 0
+    );
+    setExercisesCountDraft(lesson?.exerciseConfig?.exercisesCount ?? 0);
   }, [lesson]);
 
   useEffect(() => {
@@ -114,7 +138,60 @@ export const useLessonWorkspaceState = ({
     setDrafts({});
     setEditingKey(null);
     setConfirmClose(null);
+    setExerciseGeneratorLoaded(false);
+    setExerciseGeneratorSource("");
   }, [lesson?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!lesson || !apiBaseUrl || !isAuthenticated) {
+      setExerciseGeneratorLoaded(false);
+      setExerciseGeneratorSource("");
+      return;
+    }
+    const load = async () => {
+      setExerciseGeneratorLoading(true);
+      try {
+        const headers = await buildAuthHeaders(
+          getAccessTokenSilently,
+          auth0Audience
+        );
+        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/exercise/generator`;
+        const source = await fetchExerciseGenerator(endpoint, headers);
+        if (!cancelled) {
+          setExerciseGeneratorSource(source);
+          setExerciseGeneratorLoaded(true);
+        }
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        const message =
+          err instanceof Error ? err.message : "Failed to load generator";
+        if (message.toLowerCase().includes("not found")) {
+          setExerciseGeneratorSource("");
+          setExerciseGeneratorLoaded(true);
+        } else {
+          onNotify(message, "error");
+        }
+      } finally {
+        if (!cancelled) {
+          setExerciseGeneratorLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiBaseUrl,
+    auth0Audience,
+    getAccessTokenSilently,
+    isAuthenticated,
+    lesson,
+    onNotify,
+  ]);
 
   useEffect(() => {
     if (!sections.length) {
@@ -262,6 +339,37 @@ export const useLessonWorkspaceState = ({
     setSavingMeta(false);
   };
 
+  const handleUpdateExerciseConfig = async (
+    nextQuestions: number,
+    nextExercises: number
+  ) => {
+    if (!lesson) {
+      return;
+    }
+    const normalizedQuestions = Math.min(99, Math.max(0, nextQuestions));
+    const normalizedExercises = Math.min(99, Math.max(0, nextExercises));
+    const currentQuestions = lesson.exerciseConfig?.questionsPerExercise ?? 0;
+    const currentExercises = lesson.exerciseConfig?.exercisesCount ?? 0;
+    if (
+      normalizedQuestions === currentQuestions &&
+      normalizedExercises === currentExercises
+    ) {
+      setQuestionsPerExerciseDraft(currentQuestions);
+      setExercisesCountDraft(currentExercises);
+      return;
+    }
+    setQuestionsPerExerciseDraft(normalizedQuestions);
+    setExercisesCountDraft(normalizedExercises);
+    setSavingMeta(true);
+    await onUpdateMeta(lesson.id, {
+      exerciseConfig: {
+        questionsPerExercise: normalizedQuestions,
+        exercisesCount: normalizedExercises,
+      },
+    });
+    setSavingMeta(false);
+  };
+
   const handleAccordionChange =
     (key: string) => (_: unknown, expanded: boolean) => {
       setExpandedKeys((prev) => ({ ...prev, [key]: expanded }));
@@ -270,16 +378,52 @@ export const useLessonWorkspaceState = ({
       }
     };
 
-  const handleSaveSection = async (key: string, contentOverride?: string) => {
+  const handleSaveSection = async (
+    key: string,
+    contentOverride?: string,
+    language?: "html" | "json" | "javascript"
+  ): Promise<boolean> => {
     const contentHtml = contentOverride ?? drafts[key] ?? "";
-    if (contentOverride !== undefined) {
+    if (contentOverride !== undefined && language !== "javascript") {
       setDrafts((prev) => ({ ...prev, [key]: contentOverride }));
+    }
+    if (language === "javascript" && isExerciseSection(key)) {
+      if (!lesson || !apiBaseUrl || !isAuthenticated) {
+        return false;
+      }
+      if (!contentHtml.trim()) {
+        onNotify("Generator code is required", "error");
+        return false;
+      }
+      setExerciseGeneratorSaving(true);
+      try {
+        const headers = await buildAuthHeaders(
+          getAccessTokenSilently,
+          auth0Audience
+        );
+        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/exercise/generator`;
+        await saveExerciseGenerator(endpoint, headers, { code: contentHtml });
+        setExerciseGeneratorSource(contentHtml);
+        setSectionContent(key, "[]");
+        onNotify("Exercise generator saved", "success");
+        setEditingKey(null);
+        return true;
+      } catch (err) {
+        const detail =
+          err instanceof Error ? err.message : "Failed to save generator";
+        onNotify(detail, "error");
+        return false;
+      } finally {
+        setExerciseGeneratorSaving(false);
+      }
     }
     const saved = await saveSection(key, contentHtml);
     if (saved) {
       onNotify("Section saved", "success");
       setEditingKey(null);
+      return true;
     }
+    return false;
   };
 
   const handleCreateSection = async (baseKey: string) => {
@@ -381,6 +525,10 @@ export const useLessonWorkspaceState = ({
     loadingIndex,
     loadingSection,
     savingSection,
+    exerciseGeneratorSource,
+    exerciseGeneratorLoaded,
+    exerciseGeneratorLoading,
+    exerciseGeneratorSaving,
     titleDraft,
     setTitleDraft,
     contentDraft,
@@ -428,10 +576,13 @@ export const useLessonWorkspaceState = ({
     subjectDraft,
     levelDraft,
     requiresLoginDraft,
+    questionsPerExerciseDraft,
+    exercisesCountDraft,
     creatingSection,
     deleteMode,
     setDeleteMode,
     deleteTargetKey,
     setDeleteTargetKey,
+    handleUpdateExerciseConfig,
   };
 };

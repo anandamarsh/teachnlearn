@@ -21,6 +21,10 @@ type LessonsPageProps = {
       subject?: string | null;
       level?: string | null;
       requiresLogin?: boolean;
+      exerciseConfig?: {
+        questionsPerExercise?: number | null;
+        exercisesCount?: number | null;
+      } | null;
     }
   ) => Promise<Lesson | null>;
   onUploadIcon: (lessonId: string, file: File) => Promise<string | null>;

@@ -247,6 +247,10 @@ export const useLessons = ({
         subject?: string | null;
         level?: string | null;
         requiresLogin?: boolean | null;
+        exerciseConfig?: {
+          questionsPerExercise?: number | null;
+          exercisesCount?: number | null;
+        } | null;
       }
     ) => {
       if (!isAuthenticated || !lessonsEndpoint) {

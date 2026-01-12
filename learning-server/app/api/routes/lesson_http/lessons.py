@@ -5,12 +5,12 @@ from botocore.exceptions import ClientError
 from PIL import Image
 from starlette.datastructures import UploadFile
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from app.core.auth import get_request_email
 from app.core.settings import Settings
 from app.services.lesson_events import LessonEventHub
-from app.services.lesson_store import LessonStore
+from app.services.lesson_store import LessonStore, sanitize_email
 
 from .common import json_error, public_object_url
 
@@ -57,6 +57,68 @@ def register_lesson_routes(
             return json_error("lesson not found", 404)
         return JSONResponse(lesson)
 
+    @mcp.custom_route("/lesson/id/{lesson_id}/exercise/generator", methods=["GET"])
+    async def get_exercise_generator(request: Request) -> Response:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        try:
+            payload = store.get_exercise_generator_sanitized(
+                sanitize_email(email), lesson_id
+            )
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if payload is None:
+            return json_error("exercise generator not found", 404)
+        meta = payload.get("meta") or {}
+        headers = {
+            "Cache-Control": "no-store",
+            "X-Exercise-Generator-Version": str(meta.get("version") or ""),
+            "X-Exercise-Generator-Filename": str(meta.get("filename") or ""),
+        }
+        return Response(
+            payload.get("content", b""),
+            media_type=payload.get("contentType") or "application/javascript",
+            headers=headers,
+        )
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/exercise/generator", methods=["POST"])
+    async def put_exercise_generator(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            return json_error("invalid JSON body", 400)
+        code = payload.get("code")
+        if code is None:
+            code = payload.get("content")
+        if not code:
+            return json_error("code is required", 400)
+        try:
+            meta = store.put_exercise_generator(email, lesson_id, str(code))
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if meta is None:
+            return json_error("lesson not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "exercise.generator.updated",
+                    "lessonId": lesson_id,
+                    "version": meta.get("version"),
+                },
+            )
+        return JSONResponse(meta, status_code=201)
+
     @mcp.custom_route("/lesson", methods=["POST"])
     async def create_lesson(request: Request) -> JSONResponse:
         try:
@@ -76,6 +138,15 @@ def register_lesson_routes(
         requires_login = payload.get("requires_login")
         if requires_login is None:
             requires_login = payload.get("requiresLogin")
+        exercise_config = payload.get("exerciseConfig")
+        if exercise_config is None:
+            questions_per = payload.get("questionsPerExercise")
+            exercises_count = payload.get("exercisesCount")
+            if questions_per is not None or exercises_count is not None:
+                exercise_config = {
+                    "questionsPerExercise": questions_per,
+                    "exercisesCount": exercises_count,
+                }
         try:
             lesson = store.create(
                 email,
@@ -85,6 +156,7 @@ def register_lesson_routes(
                 subject=subject,
                 level=level,
                 requires_login=requires_login,
+                exercise_config=exercise_config,
             )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
@@ -117,6 +189,15 @@ def register_lesson_routes(
         requires_login = payload.get("requires_login")
         if requires_login is None:
             requires_login = payload.get("requiresLogin")
+        exercise_config = payload.get("exerciseConfig")
+        if exercise_config is None:
+            questions_per = payload.get("questionsPerExercise")
+            exercises_count = payload.get("exercisesCount")
+            if questions_per is not None or exercises_count is not None:
+                exercise_config = {
+                    "questionsPerExercise": questions_per,
+                    "exercisesCount": exercises_count,
+                }
         try:
             lesson = store.update(
                 email,
@@ -127,6 +208,7 @@ def register_lesson_routes(
                 subject=subject,
                 level=level,
                 requires_login=requires_login,
+                exercise_config=exercise_config,
             )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)

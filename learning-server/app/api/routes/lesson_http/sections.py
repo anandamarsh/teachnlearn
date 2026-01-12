@@ -103,6 +103,31 @@ def register_section_routes(
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
         if store._section_base_key(section_key) == "exercises":
+            content_type = str(payload.get("contentType") or payload.get("type") or "json")
+            if content_type.lower() in ("js", "javascript"):
+                code = payload.get("code")
+                if code is None:
+                    code = payload.get("content")
+                if code is None:
+                    code = payload.get("contentHtml")
+                if not code:
+                    return json_error("code is required", 400)
+                try:
+                    meta = store.put_exercise_generator(email, lesson_id, str(code))
+                except (RuntimeError, ClientError) as exc:
+                    return json_error(str(exc), 500)
+                if meta is None:
+                    return json_error("lesson not found", 404)
+                if events:
+                    events.publish(
+                        email,
+                        {
+                            "type": "exercise.generator.updated",
+                            "lessonId": lesson_id,
+                            "version": meta.get("version"),
+                        },
+                    )
+                return JSONResponse({"generator": meta})
             content_json = payload.get("content")
             if content_json is None:
                 content_json = payload.get("contentJson")
@@ -155,6 +180,31 @@ def register_section_routes(
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
         if store._section_base_key(section_key) == "exercises":
+            content_type = str(payload.get("contentType") or payload.get("type") or "json")
+            if content_type.lower() in ("js", "javascript"):
+                code = payload.get("code")
+                if code is None:
+                    code = payload.get("content")
+                if code is None:
+                    code = payload.get("contentHtml")
+                if not code:
+                    return json_error("code is required", 400)
+                try:
+                    meta = store.put_exercise_generator(email, lesson_id, str(code))
+                except (RuntimeError, ClientError) as exc:
+                    return json_error(str(exc), 500)
+                if meta is None:
+                    return json_error("lesson not found", 404)
+                if events:
+                    events.publish(
+                        email,
+                        {
+                            "type": "exercise.generator.updated",
+                            "lessonId": lesson_id,
+                            "version": meta.get("version"),
+                        },
+                    )
+                return JSONResponse({"generator": meta}, status_code=201)
             content_json = payload.get("content")
             if content_json is None:
                 content_json = payload.get("contentJson")

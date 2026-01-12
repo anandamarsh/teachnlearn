@@ -49,6 +49,9 @@ const toTitleCase = (value: string) =>
 export const getSectionLabel = (sectionKey: string) => {
   const { baseKey, index } = parseSectionKey(sectionKey);
   const baseLabel = SECTION_LABELS[baseKey] || toTitleCase(baseKey);
+  if (baseKey === "exercise" && index >= 1) {
+    return `${baseLabel} ${index}`;
+  }
   if (index > 1) {
     return `${baseLabel} ${index}`;
   }
