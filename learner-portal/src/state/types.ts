@@ -9,9 +9,23 @@ export type CatalogLesson = {
   teacher: string;
   content?: string | null;
   requiresLogin?: boolean | null;
+  exerciseGenerator?: ExerciseGeneratorMeta | null;
+  exerciseConfig?: ExerciseConfig | null;
 };
 
 export type LessonSectionKey = string;
+
+export type ExerciseConfig = {
+  questionsPerExercise?: number | null;
+  exercisesCount?: number | null;
+};
+
+export type ExerciseGeneratorMeta = {
+  version?: number;
+  updatedAt?: string;
+  filename?: string;
+  contentLength?: number;
+};
 
 export type ExerciseStep = {
   step: string;

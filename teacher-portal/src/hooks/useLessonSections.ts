@@ -217,6 +217,11 @@ export const useLessonSections = ({
     [auth0Audience, baseEndpoint, getAccessTokenSilently, isAuthenticated, loadingSection]
   );
 
+  const setSectionContent = useCallback((key: string, value: string) => {
+    setContents((prev) => ({ ...prev, [key]: value }));
+    loadedKeysRef.current.add(key);
+  }, []);
+
   const refreshSection = useCallback(
     async (key: string) => {
       if (!isAuthenticated || !baseEndpoint) {
@@ -328,6 +333,7 @@ export const useLessonSections = ({
     saveSection,
     refreshIndex: loadIndex,
     refreshSection,
+    setSectionContent,
     createSection: async (baseKey: string) => {
       if (!isAuthenticated || !baseEndpoint) {
         return null;

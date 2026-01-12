@@ -18,6 +18,21 @@ export type Lesson = {
       contentLength?: number;
     }
   >;
+  exerciseGenerator?: ExerciseGeneratorMeta | null;
+  exerciseMode?: string | null;
+  exerciseConfig?: ExerciseConfig | null;
+};
+
+export type ExerciseGeneratorMeta = {
+  version?: number;
+  updatedAt?: string;
+  filename?: string;
+  contentLength?: number;
+};
+
+export type ExerciseConfig = {
+  questionsPerExercise?: number | null;
+  exercisesCount?: number | null;
 };
 
 export const normalizeLesson = (
@@ -62,6 +77,14 @@ export const normalizeLesson = (
         }
       >
     | undefined;
+  const exerciseGenerator = (item.exerciseGenerator ||
+    item.exercise_generator) as ExerciseGeneratorMeta | undefined;
+  const exerciseMode =
+    (item.exerciseMode as string | undefined) ??
+    (item.exercise_mode as string | undefined) ??
+    null;
+  const exerciseConfig = (item.exerciseConfig ||
+    item.exercise_config) as ExerciseConfig | undefined;
   return {
     id: String(id),
     title,
@@ -74,5 +97,8 @@ export const normalizeLesson = (
     requiresLogin,
     sections,
     sectionsMeta,
+    exerciseGenerator,
+    exerciseMode,
+    exerciseConfig: exerciseConfig ?? null,
   };
 };

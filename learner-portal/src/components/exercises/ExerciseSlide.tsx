@@ -59,8 +59,12 @@ const ExerciseSlide = ({
   const showSteps = guide.helpActive && stepCount > 0;
   const showMainInput = !showSteps || stepsComplete;
   const isMainLocked = guide.completed;
+  const displayFibValue =
+    isMainLocked && !fibValue.trim()
+      ? String(exercise.answer ?? "")
+      : fibValue;
   const fibDisabled =
-    !fibValue.trim() ||
+    !displayFibValue.trim() ||
     isMainLocked ||
     guide.mainPending === "incorrectPending";
   const fibCheckDisabled = fibDisabled && !guide.completed;
@@ -509,7 +513,7 @@ const ExerciseSlide = ({
                     className="fib-textfield"
                     variant="outlined"
                     size="medium"
-                    value={fibValue}
+                    value={displayFibValue}
                     onChange={(event) => onMainFibChange(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter") {
@@ -540,7 +544,7 @@ const ExerciseSlide = ({
                       isMainLocked || guide.mainPending === "incorrectPending"
                     }
                     InputProps={{
-                      endAdornment: fibValue ? (
+                      endAdornment: displayFibValue ? (
                         <InputAdornment position="end">
                           <IconButton
                             size="small"

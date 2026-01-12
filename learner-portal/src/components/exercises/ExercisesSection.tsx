@@ -1,5 +1,23 @@
-import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Fab, IconButton, Typography } from "@mui/material";
+import {
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Fab,
+  IconButton,
+  Typography,
+} from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
@@ -18,6 +36,7 @@ import {
 } from "../../utils/snsTracking";
 import ExerciseDots from "./ExerciseDots";
 import ExerciseSlide from "./ExerciseSlide";
+import { AuthedFetch } from "../../api/client";
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
@@ -25,6 +44,16 @@ type ExercisesSectionProps = {
   exercises: ExerciseItem[];
   exerciseSectionKey: string;
   lessonId: string;
+  lessonTeacher: string;
+  generatorAvailable: boolean;
+  generatorVersion?: number | null;
+  questionsPerExercise?: number | null;
+  autoStart?: boolean;
+  regenerateSignal?: number;
+  regenerateSectionKey?: string | null;
+  fetchWithAuth: AuthedFetch;
+  setExercisesForSection: (sectionKey: string, items: ExerciseItem[]) => void;
+  resetExerciseSection: (sectionKey: string, countOverride?: number) => void;
   lessonTitle: string;
   lessonSubject?: string | null;
   lessonLevel?: string | null;
@@ -50,6 +79,16 @@ const ExercisesSection = ({
   exercises: rawExercises,
   exerciseSectionKey,
   lessonId,
+  lessonTeacher,
+  generatorAvailable,
+  generatorVersion,
+  questionsPerExercise,
+  autoStart,
+  regenerateSignal,
+  regenerateSectionKey,
+  fetchWithAuth,
+  setExercisesForSection,
+  resetExerciseSection,
   lessonTitle,
   lessonSubject,
   lessonLevel,
@@ -71,6 +110,12 @@ const ExercisesSection = ({
   showCompleteButton,
 }: ExercisesSectionProps) => {
   const [exercises, setExercises] = useState<ExerciseItem[]>([]);
+  const [stableExercises, setStableExercises] = useState<ExerciseItem[]>(rawExercises);
+  const [generatorLoading, setGeneratorLoading] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const lastRegenerateSignalRef = useRef(0);
+  const generationTimerRef = useRef<number | null>(null);
+  const autoStartedRef = useRef(false);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const scrollTimeoutRef = useRef<number | null>(null);
   const advanceTimeoutRef = useRef<number | null>(null);
@@ -95,7 +140,13 @@ const ExercisesSection = ({
   const retryPromptShownRef = useRef(false);
   const [showMagicFab, setShowMagicFab] = useState(false);
   const [autoPilotActive, setAutoPilotActive] = useState(false);
-  const magicPin = useMemo(() => String(lessonId || "").trim().toLowerCase(), [lessonId]);
+  const magicPin = useMemo(
+    () =>
+      String(lessonId || "")
+        .trim()
+        .toLowerCase(),
+    [lessonId]
+  );
   const snsCompletedStorageKey = useMemo(
     () => `sns-exercise-completed-${lessonId}-${exerciseSectionKey}`,
     [exerciseSectionKey, lessonId]
@@ -119,6 +170,187 @@ const ExercisesSection = ({
     }
     return order;
   };
+
+  const exercisesSource = generatorLoading ? stableExercises : rawExercises;
+
+  useEffect(() => {
+    if (generatorLoading) {
+      return;
+    }
+    setStableExercises(rawExercises);
+  }, [generatorLoading, rawExercises]);
+
+  useEffect(() => {
+    autoStartedRef.current = false;
+    setGenerationProgress(0);
+  }, [exerciseSectionKey]);
+
+  const runGenerator = useCallback((source: string, count: number) => {
+    return new Promise<ExerciseItem[]>((resolve, reject) => {
+      const normalizedSource = source
+        .replace(/^\s*export\s+default\s+/gm, "")
+        .replace(/^\s*export\s+(function|const|let|var|class)\s+/gm, "$1 ");
+      const generatorBlob = new Blob([normalizedSource], {
+        type: "application/javascript",
+      });
+      const generatorUrl = URL.createObjectURL(generatorBlob);
+      const workerSource = `
+self.importScripts(${JSON.stringify(generatorUrl)});
+self.onmessage = async (event) => {
+  const count = Number(event?.data?.count ?? 5);
+  try {
+    if (typeof generateExercise !== "function") {
+      throw new Error("generateExercise is not defined");
+    }
+    let result = generateExercise(count);
+    if (result && typeof result.then === "function") {
+      result = await result;
+    }
+    if (!Array.isArray(result)) {
+      throw new Error("generateExercise must return an array");
+    }
+    self.postMessage({ ok: true, items: result });
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err);
+    self.postMessage({ ok: false, error: message });
+  }
+};
+`;
+      const blob = new Blob([workerSource], {
+        type: "application/javascript",
+      });
+      const url = URL.createObjectURL(blob);
+      const worker = new Worker(url);
+      const timeout = window.setTimeout(() => {
+        worker.terminate();
+        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(generatorUrl);
+        reject(new Error("Exercise generator timed out"));
+      }, 5000);
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        worker.terminate();
+        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(generatorUrl);
+      };
+      worker.onmessage = (event) => {
+        const payload = event.data || {};
+        cleanup();
+        if (payload.ok && Array.isArray(payload.items)) {
+          resolve(payload.items as ExerciseItem[]);
+          return;
+        }
+        reject(new Error(payload.error || "Exercise generation failed"));
+      };
+      worker.onerror = (event) => {
+        cleanup();
+        reject(new Error(event.message || "Exercise generator error"));
+      };
+      worker.postMessage({ count });
+    });
+  }, []);
+
+  const handleGenerate = useCallback(async () => {
+    if (generatorLoading || !generatorAvailable) {
+      return;
+    }
+    setGeneratorLoading(true);
+    const targetCount =
+      typeof questionsPerExercise === "number" && questionsPerExercise > 0
+        ? questionsPerExercise
+        : 5;
+    setGenerationProgress(0);
+    if (generationTimerRef.current !== null) {
+      window.clearInterval(generationTimerRef.current);
+    }
+    generationTimerRef.current = window.setInterval(() => {
+      setGenerationProgress((prev) =>
+        prev < targetCount ? prev + 1 : prev
+      );
+    }, 120);
+    try {
+      const versionSuffix =
+        generatorVersion && Number.isFinite(generatorVersion)
+          ? `?v=${generatorVersion}`
+          : "";
+      const source = await fetchWithAuth(
+        `/catalog/teacher/${lessonTeacher}/lesson/${lessonId}/exercise/generator${versionSuffix}`,
+        { responseType: "text" }
+      );
+      if (typeof source !== "string" || !source.trim()) {
+        throw new Error("Exercise generator not available");
+      }
+      const items = await runGenerator(source, targetCount);
+      setExercisesForSection(exerciseSectionKey, items);
+      resetExerciseSection(exerciseSectionKey, items.length);
+      setGenerationProgress(items.length);
+    } catch (err) {
+      console.warn(
+        err instanceof Error ? err.message : "Unable to generate exercises"
+      );
+    } finally {
+      setGeneratorLoading(false);
+      if (generationTimerRef.current !== null) {
+        window.clearInterval(generationTimerRef.current);
+        generationTimerRef.current = null;
+      }
+    }
+  }, [
+    exerciseSectionKey,
+    fetchWithAuth,
+    generatorAvailable,
+    generatorLoading,
+    generatorVersion,
+    questionsPerExercise,
+    lessonId,
+    lessonTeacher,
+    runGenerator,
+    setExercisesForSection,
+    resetExerciseSection,
+  ]);
+
+  useEffect(() => {
+    if (!regenerateSignal) {
+      return;
+    }
+    if (regenerateSectionKey !== exerciseSectionKey) {
+      return;
+    }
+    if (!generatorAvailable) {
+      return;
+    }
+    if (regenerateSignal === lastRegenerateSignalRef.current) {
+      return;
+    }
+    lastRegenerateSignalRef.current = regenerateSignal;
+    handleGenerate();
+  }, [
+    exerciseSectionKey,
+    generatorAvailable,
+    handleGenerate,
+    regenerateSectionKey,
+    regenerateSignal,
+  ]);
+
+  useEffect(() => {
+    if (!autoStart) {
+      return;
+    }
+    if (!generatorAvailable || generatorLoading || exercises.length) {
+      return;
+    }
+    if (autoStartedRef.current) {
+      return;
+    }
+    autoStartedRef.current = true;
+    handleGenerate();
+  }, [
+    autoStart,
+    exercises.length,
+    generatorAvailable,
+    generatorLoading,
+    handleGenerate,
+  ]);
   const scrollToIndex = (
     index: number,
     behavior: ScrollBehavior = "smooth",
@@ -216,7 +448,7 @@ const ExercisesSection = ({
   };
 
   useEffect(() => {
-    if (!rawExercises.length) {
+    if (!exercisesSource.length) {
       setExercises([]);
       return;
     }
@@ -225,9 +457,9 @@ const ExercisesSection = ({
       const stored = window.localStorage.getItem(shuffleStorageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length === rawExercises.length) {
+        if (Array.isArray(parsed) && parsed.length === exercisesSource.length) {
           order = parsed.filter((value) => Number.isInteger(value));
-          if (order.length !== rawExercises.length) {
+          if (order.length !== exercisesSource.length) {
             order = null;
           }
         }
@@ -237,17 +469,17 @@ const ExercisesSection = ({
     }
     const createdNewOrder = !order;
     if (!order) {
-      order = buildShuffleOrder(rawExercises.length);
+      order = buildShuffleOrder(exercisesSource.length);
       window.localStorage.setItem(shuffleStorageKey, JSON.stringify(order));
     }
-    setExercises(order.map((idx) => rawExercises[idx]).filter(Boolean));
+    setExercises(order.map((idx) => exercisesSource[idx]).filter(Boolean));
     if (createdNewOrder) {
       setExerciseIndex(0);
       setMaxExerciseIndex(0);
       scrollToIndex(0, "auto", true);
     }
     shuffleInitializedRef.current = true;
-  }, [rawExercises, shuffleStorageKey]);
+  }, [exercisesSource, shuffleStorageKey]);
 
   useEffect(() => {
     const hasAttempts = exerciseStatuses.some(
@@ -259,13 +491,13 @@ const ExercisesSection = ({
   }, [exerciseStatuses]);
 
   useEffect(() => {
-    if (!rawExercises.length) {
+    if (!exercisesSource.length) {
       return;
     }
     const isFreshRun =
       exerciseIndex === 0 &&
       maxExerciseIndex === 0 &&
-      exerciseStatuses.length === rawExercises.length &&
+      exerciseStatuses.length === exercisesSource.length &&
       exerciseStatuses.every((status) => status === "unattempted") &&
       fibAnswers.every((value) => !value) &&
       mcqSelections.every((value) => !value) &&
@@ -273,9 +505,9 @@ const ExercisesSection = ({
     if (!isFreshRun || shuffleInitializedRef.current) {
       return;
     }
-    const order = buildShuffleOrder(rawExercises.length);
+    const order = buildShuffleOrder(exercisesSource.length);
     window.localStorage.setItem(shuffleStorageKey, JSON.stringify(order));
-    setExercises(order.map((idx) => rawExercises[idx]).filter(Boolean));
+    setExercises(order.map((idx) => exercisesSource[idx]).filter(Boolean));
     setExerciseIndex(0);
     setMaxExerciseIndex(0);
     scrollToIndex(0, "auto", true);
@@ -287,7 +519,7 @@ const ExercisesSection = ({
     fibAnswers,
     maxExerciseIndex,
     mcqSelections,
-    rawExercises,
+    exercisesSource,
     shuffleStorageKey,
   ]);
 
@@ -320,6 +552,10 @@ const ExercisesSection = ({
       }
       if (scrollTimeoutRef.current !== null) {
         window.clearTimeout(scrollTimeoutRef.current);
+      }
+      if (generationTimerRef.current !== null) {
+        window.clearInterval(generationTimerRef.current);
+        generationTimerRef.current = null;
       }
     },
     []
@@ -364,7 +600,9 @@ const ExercisesSection = ({
     container.addEventListener("touchstart", handleTouchStart, {
       passive: true,
     });
-    container.addEventListener("touchmove", handleTouchMove, { passive: false });
+    container.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
     container.addEventListener("touchend", handleTouchEnd, { passive: true });
     return () => {
       container.removeEventListener("wheel", handleWheel);
@@ -412,7 +650,9 @@ const ExercisesSection = ({
       if (!/[a-z0-9]/.test(key)) {
         return;
       }
-      const nextBuffer = `${magicKeyBufferRef.current}${key}`.slice(-magicPin.length);
+      const nextBuffer = `${magicKeyBufferRef.current}${key}`.slice(
+        -magicPin.length
+      );
       magicKeyBufferRef.current = nextBuffer;
       if (nextBuffer === magicPin) {
         setShowMagicFab((prev) => !prev);
@@ -495,7 +735,10 @@ const ExercisesSection = ({
     if (!isNumericString(left) || !isNumericString(right)) {
       return false;
     }
-    return Number(stripNumberFormatting(left)) === Number(stripNumberFormatting(right));
+    return (
+      Number(stripNumberFormatting(left)) ===
+      Number(stripNumberFormatting(right))
+    );
   };
 
   const isCorrectAnswer = (submitted: string, answer: string) => {
@@ -535,11 +778,11 @@ const ExercisesSection = ({
     statuses: ExerciseStatus[] = exerciseStatuses
   ) => {
     const total = exercises.length;
-    const answered = statuses.filter((status) => status !== "unattempted").length;
+    const answered = statuses.filter(
+      (status) => status !== "unattempted"
+    ).length;
     const correct = statuses.filter((status) => status === "correct").length;
-    const skillScore = total
-      ? Math.round((correct / total) * 100)
-      : 0;
+    const skillScore = total ? Math.round((correct / total) * 100) : 0;
     return {
       questionsAnswered: { thisSession: answered, previousSessions: 0 },
       skillScore,
@@ -552,7 +795,8 @@ const ExercisesSection = ({
       if (
         prev.skillScore === next.skillScore &&
         prev.correctSoFar === next.correctSoFar &&
-        prev.questionsAnswered.thisSession === next.questionsAnswered.thisSession &&
+        prev.questionsAnswered.thisSession ===
+          next.questionsAnswered.thisSession &&
         prev.questionsAnswered.previousSessions ===
           next.questionsAnswered.previousSessions
       ) {
@@ -595,7 +839,8 @@ const ExercisesSection = ({
   };
 
   useEffect(() => {
-    const completed = window.localStorage.getItem(snsCompletedStorageKey) === "true";
+    const completed =
+      window.localStorage.getItem(snsCompletedStorageKey) === "true";
     if (completed) {
       snsBlockedRef.current = true;
       emitSnsEvent("ERROR_WARNING", {
@@ -632,7 +877,9 @@ const ExercisesSection = ({
         now,
         score,
         ended: true,
-        skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${exerciseNumber}`,
+        skillTitle: `${
+          lessonTitle || "Lesson practice"
+        } - Exercise ${exerciseNumber}`,
       })
     );
     snsEndedRef.current = true;
@@ -646,9 +893,10 @@ const ExercisesSection = ({
     }
     setExerciseGuides((prev) => {
       let changed = false;
-      const base = prev.length === exercises.length
-        ? prev
-        : Array.from({ length: exercises.length }).map((_, idx) => prev[idx]);
+      const base =
+        prev.length === exercises.length
+          ? prev
+          : Array.from({ length: exercises.length }).map((_, idx) => prev[idx]);
       if (base.length !== prev.length) {
         changed = true;
       }
@@ -664,14 +912,16 @@ const ExercisesSection = ({
         }
         const existing = guide || buildDefaultGuide(false);
         const steps = existing.steps || [];
-        const nextSteps = Array.from({ length: stepCount }).map((_, stepIdx) => {
-          const prevStep = steps[stepIdx];
-          if (!prevStep) {
-            changed = true;
-            return { ...defaultStepProgress };
+        const nextSteps = Array.from({ length: stepCount }).map(
+          (_, stepIdx) => {
+            const prevStep = steps[stepIdx];
+            if (!prevStep) {
+              changed = true;
+              return { ...defaultStepProgress };
+            }
+            return prevStep;
           }
-          return prevStep;
-        });
+        );
         const nextStepIndex = Math.min(existing.stepIndex, stepCount);
         if (
           nextSteps.length !== steps.length ||
@@ -854,9 +1104,7 @@ const ExercisesSection = ({
       const next = [...prev];
       const prevStatus = next[index];
       if (isCorrect) {
-        if (next[index] !== "incorrect") {
-          next[index] = "correct";
-        }
+        next[index] = "correct";
       } else if (next[index] === "unattempted") {
         next[index] = "incorrect";
       }
@@ -893,7 +1141,9 @@ const ExercisesSection = ({
           now: new Date(),
           score,
           correct: isCorrect,
-          skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${getExerciseNumber()}`,
+          skillTitle: `${
+            lessonTitle || "Lesson practice"
+          } - Exercise ${getExerciseNumber()}`,
         })
       );
     }
@@ -913,9 +1163,7 @@ const ExercisesSection = ({
       const next = [...prev];
       const prevStatus = next[index];
       if (isCorrect) {
-        if (next[index] !== "incorrect") {
-          next[index] = "correct";
-        }
+        next[index] = "correct";
       } else if (next[index] === "unattempted") {
         next[index] = "incorrect";
       }
@@ -952,13 +1200,19 @@ const ExercisesSection = ({
           now: new Date(),
           score,
           correct: isCorrect,
-          skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${getExerciseNumber()}`,
+          skillTitle: `${
+            lessonTitle || "Lesson practice"
+          } - Exercise ${getExerciseNumber()}`,
         })
       );
     }
   };
 
-  const handleStepFibChange = (exerciseIdx: number, stepIdx: number, value: string) => {
+  const handleStepFibChange = (
+    exerciseIdx: number,
+    stepIdx: number,
+    value: string
+  ) => {
     updateGuide(exerciseIdx, (guide) => {
       const steps = [...guide.steps];
       const current = steps[stepIdx] || { ...defaultStepProgress };
@@ -1086,7 +1340,9 @@ const ExercisesSection = ({
               return prev;
             }
             const stepsPrev = [...guidePrev.steps];
-            const currentPrev = stepsPrev[stepIdx] || { ...defaultStepProgress };
+            const currentPrev = stepsPrev[stepIdx] || {
+              ...defaultStepProgress,
+            };
             if (currentPrev.status !== "correctPending") {
               return prev;
             }
@@ -1328,20 +1584,13 @@ const ExercisesSection = ({
           <KeyRoundedIcon />
         </Fab>
       ) : null}
-      <Dialog
-        open={retryPromptOpen}
-        onClose={() => setRetryPromptOpen(false)}
-      >
+      <Dialog open={retryPromptOpen} onClose={() => setRetryPromptOpen(false)}>
         <DialogTitle>Retry wrong questions?</DialogTitle>
         <DialogContent>
-          <Typography>
-            Would you like to retry the wrong questions?
-          </Typography>
+          <Typography>Would you like to retry the wrong questions?</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRetryPromptOpen(false)}>
-            No
-          </Button>
+          <Button onClick={() => setRetryPromptOpen(false)}>No</Button>
           <Button
             variant="contained"
             onClick={() => {
@@ -1419,7 +1668,9 @@ const ExercisesSection = ({
                     now: new Date(),
                     score,
                     correct: false,
-                    skillTitle: `${lessonTitle || "Lesson practice"} - Exercise ${getExerciseNumber()}`,
+                    skillTitle: `${
+                      lessonTitle || "Lesson practice"
+                    } - Exercise ${getExerciseNumber()}`,
                   })
                 );
               }
@@ -1430,7 +1681,25 @@ const ExercisesSection = ({
           </Button>
         </DialogActions>
       </Dialog>
-      {exercises.length ? (
+      {generatorLoading ? (
+        <Box
+          sx={{
+            minHeight: "18rem",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            pb: 2,
+          }}
+        >
+          <ExerciseDots
+            count={generationProgress}
+            currentIndex={Math.max(0, generationProgress - 1)}
+            statuses={Array(generationProgress).fill("unattempted")}
+            maxUnlockedIndex={Math.max(0, generationProgress - 1)}
+            onSelect={() => undefined}
+          />
+        </Box>
+      ) : exercises.length ? (
         <>
           <Box className="exercise-carousel-wrap">
             <IconButton
@@ -1440,11 +1709,14 @@ const ExercisesSection = ({
             >
               <ChevronLeftRoundedIcon />
             </IconButton>
-            <Box className="exercise-carousel" ref={carouselRef} onScroll={handleCarouselScroll}>
+            <Box
+              className="exercise-carousel"
+              ref={carouselRef}
+              onScroll={handleCarouselScroll}
+            >
               {exercises.map((exercise, idx) => {
                 const fibValue = fibAnswers[idx] ?? "";
-                const guide =
-                  exerciseGuides[idx] || buildDefaultGuide(false);
+                const guide = exerciseGuides[idx] || buildDefaultGuide(false);
                 return (
                   <ExerciseSlide
                     key={idx}
@@ -1466,7 +1738,9 @@ const ExercisesSection = ({
                         mainPending: "none",
                       }));
                     }}
-                    onMainFibSubmit={() => handleFibSubmit(idx, exercise.answer)}
+                    onMainFibSubmit={() =>
+                      handleFibSubmit(idx, exercise.answer)
+                    }
                     onMainOptionSelect={(option) =>
                       handleAnswer(idx, exercise.answer, option)
                     }
@@ -1494,7 +1768,11 @@ const ExercisesSection = ({
               className="exercise-carousel-nav"
               onClick={() =>
                 goToIndex(
-                  Math.min(exerciseIndex + 1, maxExerciseIndex, exercises.length - 1)
+                  Math.min(
+                    exerciseIndex + 1,
+                    maxExerciseIndex,
+                    exercises.length - 1
+                  )
                 )
               }
               disabled={exerciseIndex >= maxExerciseIndex}
@@ -1516,6 +1794,17 @@ const ExercisesSection = ({
             }}
           />
         </>
+      ) : generatorAvailable ? (
+        <Box
+          sx={{
+            minHeight: "18rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Typography>Preparing questions...</Typography>
+        </Box>
       ) : (
         <Typography>No exercises available.</Typography>
       )}

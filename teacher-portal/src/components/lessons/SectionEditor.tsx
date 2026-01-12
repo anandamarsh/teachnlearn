@@ -20,6 +20,7 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView, lineNumbers } from "@codemirror/view";
 import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { html as htmlLanguage } from "@codemirror/lang-html";
+import { javascript as javascriptLanguage } from "@codemirror/lang-javascript";
 import { json as jsonLanguage } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { dracula } from "@uiw/codemirror-theme-dracula";
@@ -79,6 +80,8 @@ type SourceThemeKey =
   | "solarizedLight"
   | "solarizedDark"
   | "monokai";
+
+type SourceLanguage = "html" | "json" | "javascript";
 
 const themeExtensions: Record<SourceThemeKey, Extension> = {
   vscodeLight,
@@ -168,13 +171,17 @@ const stripeThemes: Record<SourceThemeKey, Extension> = {
 };
 
 const buildSourceExtensions = (
-  language: "html" | "json",
+  language: SourceLanguage,
   theme: SourceThemeKey,
   onChange: (value: string) => void,
   readOnly = false
 ) => {
   const extensions: Extension[] = [
-    language === "json" ? jsonLanguage() : htmlLanguage(),
+    language === "json"
+      ? jsonLanguage()
+      : language === "javascript"
+      ? javascriptLanguage()
+      : htmlLanguage(),
     syntaxHighlighting(defaultHighlightStyle),
     lineNumbers(),
     EditorView.lineWrapping,
@@ -330,7 +337,10 @@ LessonHtmlEditor.defaultConfig = {
 type SectionEditorProps = {
   content: string;
   onChange: (content: string) => void;
-  onSave: (contentOverride?: string) => void;
+  onSave: (
+    contentOverride?: string,
+    language?: SourceLanguage
+  ) => Promise<boolean> | boolean;
   saving?: boolean;
   disabled?: boolean;
   dirty?: boolean;
@@ -339,6 +349,9 @@ type SectionEditorProps = {
   onToggleEdit: () => void;
   onCancelEdit: () => void;
   onDirtyClose: () => void;
+  sourceOverrides?: Partial<Record<SourceLanguage, string>>;
+  exerciseGeneratorActive?: boolean;
+  exerciseGeneratorSource?: string;
 };
 
 const SectionEditor = ({
@@ -353,23 +366,48 @@ const SectionEditor = ({
   onToggleEdit,
   onCancelEdit,
   onDirtyClose,
+  sourceOverrides,
+  exerciseGeneratorActive,
+  exerciseGeneratorSource,
 }: SectionEditorProps) => {
   const editorRef = useRef<ClassicEditor | null>(null);
   const isSyncingRef = useRef(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [sourceValue, setSourceValue] = useState("");
-  const [sourceLanguage, setSourceLanguage] = useState<"html" | "json">("html");
+  const [sourceLanguage, setSourceLanguage] = useState<SourceLanguage>("html");
   const [sourceError, setSourceError] = useState("");
   const [sourceTheme, setSourceTheme] =
     useState<SourceThemeKey>("vscodeLight");
   const [suppressJsonAutoOpen, setSuppressJsonAutoOpen] = useState(false);
+  const sourceDraftsRef = useRef<Partial<Record<SourceLanguage, string>>>({});
   const sourceContainerRef = useRef<HTMLDivElement | null>(null);
   const sourceViewRef = useRef<EditorView | null>(null);
   const jsonContainerRef = useRef<HTMLDivElement | null>(null);
   const jsonViewRef = useRef<EditorView | null>(null);
-  const jsonModeRef = useRef<{ readOnly: boolean; theme: SourceThemeKey } | null>(null);
+  const jsonModeRef = useRef<{
+    readOnly: boolean;
+    theme: SourceThemeKey;
+    language: SourceLanguage;
+  } | null>(null);
   const jsonContainerNodeRef = useRef<HTMLDivElement | null>(null);
   const isJsonSection = editorKey === "exercises" || /^exercises-\d+$/.test(editorKey);
+  const generatorActive = Boolean(exerciseGeneratorActive);
+
+  const getSourceSeed = (language: SourceLanguage, fallback: string) => {
+    const draft = sourceDraftsRef.current[language];
+    if (typeof draft === "string") {
+      return draft;
+    }
+    const override = sourceOverrides?.[language];
+    if (typeof override === "string") {
+      return override;
+    }
+    return fallback;
+  };
+
+  useEffect(() => {
+    sourceDraftsRef.current[sourceLanguage] = sourceValue;
+  }, [sourceLanguage, sourceValue]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -398,11 +436,20 @@ const SectionEditor = ({
     if (suppressJsonAutoOpen) {
       return;
     }
-    setSourceValue(content || "");
+    const preferredLanguage: SourceLanguage =
+      sourceOverrides?.javascript ? "javascript" : "json";
+    setSourceValue(getSourceSeed(preferredLanguage, content || ""));
     setSourceError("");
-    setSourceLanguage("json");
+    setSourceLanguage(preferredLanguage);
     setSourceOpen(true);
-  }, [content, isEditing, isJsonSection, sourceOpen, suppressJsonAutoOpen]);
+  }, [
+    content,
+    isEditing,
+    isJsonSection,
+    sourceOpen,
+    sourceOverrides,
+    suppressJsonAutoOpen,
+  ]);
 
   useEffect(() => {
     if (!isJsonSection) {
@@ -421,14 +468,20 @@ const SectionEditor = ({
       jsonContainerNodeRef.current = container;
     }
     const readOnly = true;
-    const docValue = typeof content === "string" ? content : "";
+    const docValue = generatorActive
+      ? exerciseGeneratorSource || ""
+      : typeof content === "string"
+      ? content
+      : "";
+    const language: SourceLanguage = generatorActive ? "javascript" : "json";
     const mode = jsonModeRef.current;
     const shouldRebuild =
       containerChanged ||
       !jsonViewRef.current ||
       !mode ||
       mode.readOnly !== readOnly ||
-      mode.theme !== sourceTheme;
+      mode.theme !== sourceTheme ||
+      mode.language !== language;
     if (shouldRebuild) {
       jsonViewRef.current?.destroy();
       jsonViewRef.current = new EditorView({
@@ -436,7 +489,7 @@ const SectionEditor = ({
         state: EditorState.create({
           doc: docValue,
           extensions: buildSourceExtensions(
-            "json",
+            language,
             sourceTheme,
             (value) => {
               if (!readOnly) {
@@ -447,7 +500,7 @@ const SectionEditor = ({
           ),
         }),
       });
-      jsonModeRef.current = { readOnly, theme: sourceTheme };
+      jsonModeRef.current = { readOnly, theme: sourceTheme, language };
       return;
     }
     const view = jsonViewRef.current;
@@ -459,7 +512,7 @@ const SectionEditor = ({
       const state = EditorState.create({
         doc: docValue,
         extensions: buildSourceExtensions(
-          "json",
+          language,
           sourceTheme,
           (value) => {
             if (!readOnly) {
@@ -471,11 +524,19 @@ const SectionEditor = ({
       });
       view.setState(state);
     }
-  }, [content, isJsonSection, onChange, sourceTheme]);
+  }, [
+    content,
+    exerciseGeneratorSource,
+    generatorActive,
+    isJsonSection,
+    onChange,
+    sourceTheme,
+  ]);
 
   const handleSourceLanguageChange = (event: SelectChangeEvent) => {
-    const value = event.target.value === "json" ? "json" : "html";
+    const value = event.target.value as SourceLanguage;
     setSourceLanguage(value);
+    setSourceValue(getSourceSeed(value, sourceValue));
     setSourceError("");
   };
 
@@ -520,10 +581,11 @@ const SectionEditor = ({
     sourceViewRef.current.setState(state);
   }, [sourceLanguage, sourceOpen, sourceTheme]);
 
-  const formatSource = async (value: string, language: "html" | "json") => {
+  const formatSource = async (value: string, language: SourceLanguage) => {
     try {
+      const parser = language === "javascript" ? "babel" : language;
       const formatted = await prettier.format(value, {
-        parser: language,
+        parser,
         plugins: language === "html" ? [parserHtml] : [parserBabel, parserEstree],
       });
       return { formatted, error: "" };
@@ -600,10 +662,15 @@ const SectionEditor = ({
           </IconButton>
           <IconButton
             onClick={async () => {
-              const startValue = isJsonSection
+              const language: SourceLanguage = isJsonSection
+                ? sourceOverrides?.javascript
+                  ? "javascript"
+                  : "json"
+                : "html";
+              const fallback = isJsonSection
                 ? content ?? ""
                 : stripEditorArtifacts(editorRef.current?.getData() ?? content ?? "");
-              const language = isJsonSection ? "json" : "html";
+              const startValue = getSourceSeed(language, fallback);
               const { formatted, error } = await formatSource(startValue, language);
               setSourceValue(formatted);
               setSourceError(error);
@@ -697,10 +764,12 @@ const SectionEditor = ({
                   value={sourceLanguage}
                   onChange={handleSourceLanguageChange}
                   sx={{ minWidth: 110 }}
-                  disabled={isJsonSection}
                 >
-                  <MenuItem value="html">HTML</MenuItem>
+                  {!isJsonSection ? <MenuItem value="html">HTML</MenuItem> : null}
                   <MenuItem value="json">JSON</MenuItem>
+                  {isJsonSection ? (
+                    <MenuItem value="javascript">JavaScript</MenuItem>
+                  ) : null}
                 </Select>
                 <Select
                   size="small"
@@ -757,8 +826,10 @@ const SectionEditor = ({
                 <Button
                   variant="contained"
                   onClick={async () => {
+                    const currentValue =
+                      sourceViewRef.current?.state.doc.toString() ?? sourceValue;
                     const { formatted, error } = await formatSource(
-                      sourceValue,
+                      currentValue,
                       sourceLanguage
                     );
                     if (error) {
@@ -779,9 +850,20 @@ const SectionEditor = ({
                       window.setTimeout(() => {
                         isSyncingRef.current = false;
                       }, 0);
-                    } else {
+                    } else if (sourceLanguage === "json") {
                       onChange(cleaned);
-                      onSave(cleaned);
+                      const saved = await onSave(cleaned, "json");
+                      if (!saved) {
+                        return;
+                      }
+                    } else {
+                      sourceDraftsRef.current.javascript = cleaned;
+                      setSourceValue(cleaned);
+                      setSuppressJsonAutoOpen(true);
+                      const saved = await onSave(cleaned, "javascript");
+                      if (!saved) {
+                        return;
+                      }
                     }
                     setSourceOpen(false);
                   }}

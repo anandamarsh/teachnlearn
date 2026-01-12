@@ -150,3 +150,38 @@ export const uploadLessonIcon = async (
   }
   return data as { url?: string };
 };
+
+export const fetchExerciseGenerator = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, { headers });
+  const text = await response.text();
+  if (!response.ok) {
+    let data: unknown = null;
+    try {
+      data = text ? (JSON.parse(text) as unknown) : null;
+    } catch {
+      data = null;
+    }
+    throw new Error(extractError(data, "Failed to load exercise generator"));
+  }
+  return text;
+};
+
+export const saveExerciseGenerator = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: { code: string }
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to save exercise generator"));
+  }
+  return data as { version?: number; filename?: string };
+};

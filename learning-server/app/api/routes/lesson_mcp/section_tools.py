@@ -61,6 +61,8 @@ def register_section_tools(
         lesson_id: str,
         section_key: str,
         content_html: str,
+        content_type: str = "json",
+        code: str | None = None,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Update an existing lesson section's HTML content (JSON for exercises).
@@ -72,7 +74,10 @@ def register_section_tools(
         - section_key: one of the configured section keys (required; ask if missing)
         - content_html: full HTML content to store (JSON for exercises; required; ask if missing)
 
-        The content must be HTML (JSON for exercises).
+        For exercises:
+        - content_type: "json" (default) or "js"
+        - when content_type is "js", send code (or content_html) as JS source
+        The content must be HTML (JSON for exercises) unless using content_type="js".
 
         Never call this tool without all required inputs.
         """
@@ -82,6 +87,37 @@ def register_section_tools(
             return {"error": "section_key is required"}
         if not store.is_valid_section_key(section_key):
             return {"error": "invalid section_key", "key": section_key}
+        if store._section_base_key(section_key) == "exercises" and content_type.lower() in (
+            "js",
+            "javascript",
+        ):
+            source = code if code is not None else content_html
+            if not source:
+                return {"error": "code is required"}
+            log_params(
+                "lesson_exercise_generator_put",
+                {
+                    "email": email,
+                    "lesson_id": lesson_id,
+                    "content_length": len(source),
+                },
+            )
+            try:
+                meta = store.put_exercise_generator(email, lesson_id, source)
+            except (RuntimeError, ClientError) as exc:
+                return {"error": str(exc)}
+            if meta is None:
+                return {"error": "lesson not found", "id": lesson_id}
+            if events:
+                events.publish(
+                    email,
+                    {
+                        "type": "exercise.generator.updated",
+                        "lessonId": lesson_id,
+                        "version": meta.get("version"),
+                    },
+                )
+            return {"generator": meta}
         log_params(
             "lesson_section_put",
             {
@@ -129,6 +165,8 @@ def register_section_tools(
         section_key: str,
         content_html: str = "",
         create_new: bool = False,
+        content_type: str = "json",
+        code: str | None = None,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Create a lesson section if it is missing, otherwise overwrite content.
@@ -142,7 +180,10 @@ def register_section_tools(
         - content_html: initial HTML content (JSON for exercises; defaults to empty string)
         - create_new: when true, creates a new instance for multi sections (lesson/exercises)
 
-        The content must be HTML (JSON for exercises).
+        For exercises:
+        - content_type: "json" (default) or "js"
+        - when content_type is "js", send code (or content_html) as JS source
+        The content must be HTML (JSON for exercises) unless using content_type="js".
         Never call this tool without email, lesson_id, and section_key.
         """
         if not email:
@@ -151,6 +192,37 @@ def register_section_tools(
             return {"error": "section_key is required"}
         if not store.is_valid_section_key(section_key):
             return {"error": "invalid section_key", "key": section_key}
+        if store._section_base_key(section_key) == "exercises" and content_type.lower() in (
+            "js",
+            "javascript",
+        ):
+            source = code if code is not None else content_html
+            if not source:
+                return {"error": "code is required"}
+            log_params(
+                "lesson_exercise_generator_put",
+                {
+                    "email": email,
+                    "lesson_id": lesson_id,
+                    "content_length": len(source),
+                },
+            )
+            try:
+                meta = store.put_exercise_generator(email, lesson_id, source)
+            except (RuntimeError, ClientError) as exc:
+                return {"error": str(exc)}
+            if meta is None:
+                return {"error": "lesson not found", "id": lesson_id}
+            if events:
+                events.publish(
+                    email,
+                    {
+                        "type": "exercise.generator.updated",
+                        "lessonId": lesson_id,
+                        "version": meta.get("version"),
+                    },
+                )
+            return {"generator": meta}
         log_params(
             "lesson_section_create",
             {

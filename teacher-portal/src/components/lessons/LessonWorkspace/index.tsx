@@ -36,6 +36,10 @@ type LessonWorkspaceProps = {
       subject?: string | null;
       level?: string | null;
       requiresLogin?: boolean;
+      exerciseConfig?: {
+        questionsPerExercise?: number | null;
+        exercisesCount?: number | null;
+      } | null;
     }
   ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
@@ -63,6 +67,7 @@ const LessonWorkspace = ({
     loadingIndex,
     loadingSection,
     savingSection,
+    exerciseGeneratorSource,
     titleDraft,
     setTitleDraft,
     contentDraft,
@@ -108,11 +113,14 @@ const LessonWorkspace = ({
     subjectDraft,
     levelDraft,
     requiresLoginDraft,
+    questionsPerExerciseDraft,
+    exercisesCountDraft,
     creatingSection,
     deleteMode,
     setDeleteMode,
     deleteTargetKey,
     setDeleteTargetKey,
+    handleUpdateExerciseConfig,
   } = useLessonWorkspaceState({
     lesson,
     hasLessons,
@@ -317,6 +325,11 @@ const LessonWorkspace = ({
         loadingIndex={loadingIndex}
         loadingSection={loadingSection}
         savingSection={savingSection}
+        exerciseGeneratorSource={exerciseGeneratorSource}
+        exerciseMode={lesson.exerciseMode}
+        questionsPerExercise={questionsPerExerciseDraft}
+        exercisesCount={exercisesCountDraft}
+        onExerciseConfigChange={handleUpdateExerciseConfig}
         printSelections={printSelections}
         setPrintSelections={setPrintSelections}
         isPublished={isPublished}

@@ -19,6 +19,7 @@ def register_lesson_tools(
         content: str | None = None,
         subject: str | None = None,
         level: str | None = None,
+        exercise_config: dict[str, int] | None = None,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Create a lesson for a user.
@@ -45,6 +46,7 @@ def register_lesson_tools(
                 "content": content,
                 "subject": subject,
                 "level": level,
+                "exercise_config": exercise_config,
             },
         )
         cache_key_value = cache_key(
@@ -56,6 +58,7 @@ def register_lesson_tools(
                 "content": content,
                 "subject": subject,
                 "level": level,
+                "exercise_config": exercise_config,
             },
         )
         cached = RESULT_CACHE.get(cache_key_value)
@@ -72,6 +75,7 @@ def register_lesson_tools(
                 content=content,
                 subject=subject,
                 level=level,
+                exercise_config=exercise_config,
             )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc)}
@@ -91,6 +95,7 @@ def register_lesson_tools(
         content: str | None = None,
         subject: str | None = None,
         level: str | None = None,
+        exercise_config: dict[str, int] | None = None,
         email: str | None = None,
     ) -> dict[str, Any]:
         """Update a lesson's fields.
@@ -120,6 +125,7 @@ def register_lesson_tools(
                 "content": content,
                 "subject": subject,
                 "level": level,
+                "exercise_config": exercise_config,
             },
         )
         cache_key_value = cache_key(
@@ -132,6 +138,7 @@ def register_lesson_tools(
                 "content": content,
                 "subject": subject,
                 "level": level,
+                "exercise_config": exercise_config,
             },
         )
         cached = RESULT_CACHE.get(cache_key_value)
@@ -149,6 +156,7 @@ def register_lesson_tools(
                 content=content,
                 subject=subject,
                 level=level,
+                exercise_config=exercise_config,
             )
         except (RuntimeError, ClientError) as exc:
             return {"error": str(exc), "id": lesson_id}
@@ -161,6 +169,54 @@ def register_lesson_tools(
                 {"type": "lesson.updated", "lessonId": lesson_id},
             )
         return lesson
+
+    @mcp.tool()
+    def lesson_exercise_generator_put(
+        lesson_id: str,
+        code: str,
+        email: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload a lesson's exercise generator JS file.
+
+        Use when the user provides exercise-generator.js to store for a lesson.
+        You must supply:
+        - email: user email (required; ask the user if missing)
+        - lesson_id: target lesson id (required; ask the user if missing)
+        - code: full JS source (required; ask if missing)
+
+        The JS must define a global `generateExercise(noOfQuestions = 5)` function
+        that returns an array of exercise items with `question_html`, `type`, and `answer`.
+        """
+        if not email:
+            return {"error": "email is required"}
+        if not lesson_id:
+            return {"error": "lesson_id is required"}
+        if not code:
+            return {"error": "code is required"}
+        log_params(
+            "lesson_exercise_generator_put",
+            {
+                "email": email,
+                "lesson_id": lesson_id,
+                "content_length": len(code),
+            },
+        )
+        try:
+            meta = store.put_exercise_generator(email, lesson_id, code)
+        except (RuntimeError, ClientError) as exc:
+            return {"error": str(exc)}
+        if meta is None:
+            return {"error": "lesson not found", "id": lesson_id}
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "exercise.generator.updated",
+                    "lessonId": lesson_id,
+                    "version": meta.get("version"),
+                },
+            )
+        return meta
 
     @mcp.tool()
     def lesson_delete(lesson_id: str, email: str | None = None) -> dict[str, Any]:
