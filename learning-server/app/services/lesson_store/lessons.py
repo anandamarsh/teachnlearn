@@ -68,6 +68,12 @@ class LessonStoreLessons:
                             payload["level"] = full.get("level")
                         if "requires_login" in full:
                             payload["requires_login"] = full.get("requires_login")
+                        if "exerciseConfig" in full:
+                            payload["exerciseConfig"] = full.get("exerciseConfig")
+                        if "exerciseGenerator" in full:
+                            payload["exerciseGenerator"] = full.get("exerciseGenerator")
+                        if "exerciseMode" in full:
+                            payload["exerciseMode"] = full.get("exerciseMode")
                 payload["teacher"] = account
                 entries.append(payload)
         entries.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
@@ -82,6 +88,7 @@ class LessonStoreLessons:
         subject: str | None = None,
         level: str | None = None,
         requires_login: bool | None = None,
+        exercise_config: dict[str, int] | None = None,
     ) -> dict[str, Any]:
         sanitized = sanitize_email(email)
         now = datetime.now(timezone.utc).isoformat()
@@ -107,12 +114,16 @@ class LessonStoreLessons:
                 level=level,
                 requires_login=requires_login,
                 content=content,
+                exercise_config=exercise_config,
                 created_at=now,
                 updated_at=now,
             )
             ensure_lesson_prefix(sanitized, lesson_id, self._settings)
             lesson_key = self._lesson_key(sanitized, lesson_id)
             lesson_payload = lesson.__dict__ | {"sections": sections, "sectionsMeta": sections_meta}
+            exercise_config_value = lesson_payload.pop("exercise_config", None)
+            if exercise_config_value is not None:
+                lesson_payload["exerciseConfig"] = exercise_config_value
             self._s3_client.put_object(
                 Bucket=self._settings.s3_bucket,
                 Key=lesson_key,
@@ -128,6 +139,7 @@ class LessonStoreLessons:
                     "subject": subject,
                     "level": level,
                     "requires_login": requires_login,
+                    "exerciseConfig": exercise_config,
                     "updated_at": now,
                 }
             )
@@ -189,6 +201,7 @@ class LessonStoreLessons:
         subject: str | None,
         level: str | None,
         requires_login: bool | None,
+        exercise_config: dict[str, int] | None,
     ) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)
         with self._lock:
@@ -208,6 +221,8 @@ class LessonStoreLessons:
                 lesson["level"] = level
             if requires_login is not None:
                 lesson["requires_login"] = requires_login
+            if exercise_config is not None:
+                lesson["exerciseConfig"] = exercise_config
             lesson["updated_at"] = datetime.now(timezone.utc).isoformat()
             lesson_key = self._lesson_key(sanitized, lesson_id)
             self._s3_client.put_object(
@@ -230,6 +245,8 @@ class LessonStoreLessons:
                         entry["level"] = level
                     if requires_login is not None:
                         entry["requires_login"] = requires_login
+                    if exercise_config is not None:
+                        entry["exerciseConfig"] = exercise_config
                     entry["updated_at"] = lesson["updated_at"]
                     updated = True
                     break

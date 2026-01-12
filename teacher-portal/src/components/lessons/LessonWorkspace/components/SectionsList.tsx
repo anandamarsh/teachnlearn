@@ -6,6 +6,7 @@ import {
   Checkbox,
   IconButton,
   LinearProgress,
+  TextField,
   Typography,
 } from "@mui/material";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
@@ -41,7 +42,16 @@ type SectionsListProps = {
   handleAccordionChange: (
     key: string
   ) => (_: unknown, expanded: boolean) => void;
-  handleSaveSection: (key: string, contentOverride?: string) => void;
+  handleSaveSection: (
+    key: string,
+    contentOverride?: string,
+    language?: "html" | "json" | "javascript"
+  ) => Promise<boolean>;
+  exerciseGeneratorSource?: string;
+  exerciseMode?: string | null;
+  questionsPerExercise?: number;
+  exercisesCount?: number;
+  onExerciseConfigChange?: (questionsPerExercise: number, exercisesCount: number) => void;
   onDirtyClose: (key: string) => void;
   deleteMode: boolean;
   onRequestDelete: (key: string) => void;
@@ -95,6 +105,11 @@ const SectionsList = ({
   setEditingKey,
   handleAccordionChange,
   handleSaveSection,
+  exerciseGeneratorSource,
+  exerciseMode,
+  questionsPerExercise = 0,
+  exercisesCount = 0,
+  onExerciseConfigChange,
   onDirtyClose,
   deleteMode,
   onRequestDelete,
@@ -108,6 +123,10 @@ const SectionsList = ({
       </Box>
     ) : (
       sections.map((section) => {
+        const isExerciseSection =
+          section.key === "exercises" || /^exercises-\d+$/.test(section.key);
+        const generatorActive =
+          isExerciseSection && exerciseMode === "generator";
         const isExpanded = Boolean(expandedKeys[section.key]);
         const isEditingSection = editingKey === section.key;
         const hasDraft = Object.prototype.hasOwnProperty.call(drafts, section.key);
@@ -149,7 +168,7 @@ const SectionsList = ({
             }}
           >
             <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1 }}>
                 {deleteMode && canEdit ? (
                   <IconButton
                     size="small"
@@ -203,6 +222,43 @@ const SectionsList = ({
                   {formatSectionLabel(section.key)}
                 </Typography>
               </Box>
+              {isExerciseSection ? (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    mr: "1rem",
+                  }}
+                >
+                  <TextField
+                    label="Questions"
+                    size="small"
+                    type="number"
+                    value={questionsPerExercise}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      const next = Number(event.target.value || 0);
+                      onExerciseConfigChange?.(next, exercisesCount);
+                    }}
+                    inputProps={{ min: 0, max: 99 }}
+                    sx={{ width: 120 }}
+                  />
+                  <TextField
+                    label="Exercises"
+                    size="small"
+                    type="number"
+                    value={exercisesCount}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      const next = Number(event.target.value || 0);
+                      onExerciseConfigChange?.(questionsPerExercise, next);
+                    }}
+                    inputProps={{ min: 0, max: 99 }}
+                    sx={{ width: 120 }}
+                  />
+                </Box>
+              ) : null}
             </AccordionSummary>
             <AccordionDetails
               sx={{
@@ -229,8 +285,8 @@ const SectionsList = ({
                       [section.key]: value,
                     })
                   }
-                  onSave={(contentOverride) =>
-                    handleSaveSection(section.key, contentOverride)
+                  onSave={(contentOverride, language) =>
+                    handleSaveSection(section.key, contentOverride, language)
                   }
                   saving={savingSection[section.key]}
                   disabled={loadingSection[section.key] || !canEdit || deleteMode}
@@ -240,6 +296,13 @@ const SectionsList = ({
                   }
                   editorKey={section.key}
                   isEditing={isEditingSection}
+                  exerciseGeneratorActive={generatorActive}
+                  exerciseGeneratorSource={exerciseGeneratorSource || ""}
+                  sourceOverrides={
+                    isExerciseSection
+                      ? { javascript: exerciseGeneratorSource || "" }
+                      : undefined
+                  }
                   onToggleEdit={() => {
                     if (canEdit) {
                       setEditingKey(section.key);

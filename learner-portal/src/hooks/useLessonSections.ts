@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AuthedFetch } from "../api/client";
 import { CatalogLesson, ExerciseItem } from "../state/types";
 import {
   getSectionBaseKey,
@@ -17,11 +18,7 @@ type SectionState = {
 
 type UseLessonSectionsOptions = {
   lesson: CatalogLesson | null;
-  fetchWithAuth: (path: string) => Promise<{
-    contentHtml?: string;
-    content?: unknown;
-    sections?: unknown;
-  }>;
+  fetchWithAuth: AuthedFetch;
 };
 
 export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOptions) => {
@@ -57,12 +54,38 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         const baseKey = getSectionBaseKey(key);
         return baseKey !== "references" && baseKey !== "samples";
       });
-      const nextKeys = getSectionsAfterBackground(filtered);
+      const baseKeys = getSectionsAfterBackground(filtered).filter(
+        (key) => getSectionBaseKey(key) !== "exercises"
+      );
+      const exercisesCount = lesson.exerciseConfig?.exercisesCount ?? 0;
+      const exerciseTabs =
+        exercisesCount > 0
+          ? Array.from({ length: exercisesCount }, (_, idx) => `exercise-${idx + 1}`)
+          : [];
+      const lessonIndex = baseKeys.findIndex(
+        (key) => getSectionBaseKey(key) === "lesson"
+      );
+      const nextKeys =
+        lessonIndex >= 0
+          ? [
+              ...baseKeys.slice(0, lessonIndex + 1),
+              ...exerciseTabs,
+              ...baseKeys.slice(lessonIndex + 1),
+            ]
+          : [...baseKeys, ...exerciseTabs];
       setSectionKeys(Array.from(new Set(nextKeys)));
     } finally {
       setIndexLoading(false);
     }
   }, [fetchWithAuth, lesson]);
+
+  const setExercisesForSection = useCallback(
+    (sectionKey: string, items: ExerciseItem[]) => {
+      setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
+      setLoadedSections((prev) => ({ ...prev, [sectionKey]: true }));
+    },
+    []
+  );
 
   const loadSection = useCallback(
     async (sectionKey: string) => {
@@ -73,6 +96,12 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         return;
       }
       if (loadedSections[sectionKey]) {
+        return;
+      }
+      const baseKey = getSectionBaseKey(sectionKey);
+      if (baseKey === "exercise") {
+        setExercisesBySection((prev) => ({ ...prev, [sectionKey]: [] }));
+        setLoadedSections((prev) => ({ ...prev, [sectionKey]: true }));
         return;
       }
       setLoading((prev) => ({ ...prev, [sectionKey]: true }));
@@ -125,5 +154,11 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
     indexLoading,
   };
 
-  return { ...state, loadSection, reset, loadSectionIndex };
+  return {
+    ...state,
+    loadSection,
+    reset,
+    loadSectionIndex,
+    setExercisesForSection,
+  };
 };

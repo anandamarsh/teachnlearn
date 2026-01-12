@@ -20,13 +20,11 @@ import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CenteredLoader from "../common/CenteredLoader";
+import { AuthedFetch } from "../../api/client";
 
 type LessonViewProps = {
   lesson: CatalogLesson;
-  fetchWithAuth: (path: string) => Promise<{
-    contentHtml?: string;
-    content?: unknown;
-  }>;
+  fetchWithAuth: AuthedFetch;
 };
 
 const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
@@ -41,6 +39,9 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     useState<LessonSectionKey | null>(null);
   const [showCompleteNotice, setShowCompleteNotice] = useState(false);
   const completeNoticeTimeoutRef = useRef<number | null>(null);
+  const [regenerateSignal, setRegenerateSignal] = useState(0);
+  const [regenerateSectionKey, setRegenerateSectionKey] =
+    useState<LessonSectionKey | null>(null);
 
   const {
     sectionHtml,
@@ -49,6 +50,7 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     loading,
     indexLoading,
     loadSection,
+    setExercisesForSection,
   } = useLessonSections({ lesson, fetchWithAuth });
 
   const exerciseCountsBySection = useMemo(
@@ -324,6 +326,16 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                   exercises={activeExercises}
                   exerciseSectionKey={openSection}
                   lessonId={lesson.id}
+                  lessonTeacher={lesson.teacher}
+                  generatorAvailable={Boolean(lesson.exerciseGenerator?.version)}
+                  generatorVersion={lesson.exerciseGenerator?.version}
+                  questionsPerExercise={lesson.exerciseConfig?.questionsPerExercise}
+                  autoStart={isExercisesSection(openSection)}
+                  regenerateSignal={regenerateSignal}
+                  regenerateSectionKey={regenerateSectionKey}
+                  fetchWithAuth={fetchWithAuth}
+                  setExercisesForSection={setExercisesForSection}
+                  resetExerciseSection={resetExerciseSection}
                   lessonTitle={lesson.title}
                   lessonSubject={lesson.subject}
                   lessonLevel={lesson.level}
@@ -365,6 +377,14 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
             onClick={() => {
               if (pendingRestartSection) {
                 resetExerciseSection(pendingRestartSection);
+                if (
+                  isExercisesSection(pendingRestartSection) &&
+                  lesson.exerciseGenerator?.version
+                ) {
+                  setExercisesForSection(pendingRestartSection, []);
+                  setRegenerateSectionKey(pendingRestartSection);
+                  setRegenerateSignal((prev) => prev + 1);
+                }
               }
               setRestartPromptOpen(false);
               setPendingRestartSection(null);

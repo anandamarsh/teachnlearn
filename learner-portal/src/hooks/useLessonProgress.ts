@@ -379,8 +379,11 @@ export const useLessonProgress = (
   }, [exerciseStateBySection]);
 
   const resetExerciseSection = useCallback(
-    (sectionKey: LessonSectionKey) => {
-      const count = exerciseCountsBySection[sectionKey] || 0;
+    (sectionKey: LessonSectionKey, countOverride?: number) => {
+      const count =
+        typeof countOverride === "number"
+          ? countOverride
+          : exerciseCountsBySection[sectionKey] || 0;
       const defaultState = buildDefaultExerciseState(count);
       setExerciseStateBySection((prev) => ({
         ...prev,

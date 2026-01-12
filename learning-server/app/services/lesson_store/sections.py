@@ -201,6 +201,8 @@ class LessonStoreSections:
         meta_map[section_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
+        if self._section_base_key(section_key) == "exercises":
+            self._clear_exercise_generator(sanitized, lesson_id, lesson, next_mode="json")
         lesson["sections"] = self._order_sections(lesson.get("sections") or {})
         self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
@@ -259,6 +261,8 @@ class LessonStoreSections:
         meta_map[new_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
+        if base_key == "exercises":
+            self._clear_exercise_generator(sanitized, lesson_id, lesson, next_mode="json")
         lesson["sections"] = self._order_sections(lesson.get("sections") or {})
         self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
@@ -329,6 +333,7 @@ class LessonStoreSections:
         meta_map[section_key] = meta_payload
         lesson["sectionsMeta"] = meta_map
         lesson["updated_at"] = now
+        self._clear_exercise_generator(sanitized, lesson_id, lesson, next_mode="json")
         self._sync_ready_status(sanitized, lesson_id, lesson)
         lesson_key = self._lesson_key(sanitized, lesson_id)
         self._s3_client.put_object(

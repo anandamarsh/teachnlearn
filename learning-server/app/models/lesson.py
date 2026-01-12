@@ -10,5 +10,6 @@ class Lesson:
     level: str | None
     requires_login: bool | None
     content: str | None
+    exercise_config: dict[str, int] | None
     created_at: str
     updated_at: str
