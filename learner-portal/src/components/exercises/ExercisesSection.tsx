@@ -1208,6 +1208,37 @@ self.onmessage = async (event) => {
     }
   };
 
+  useEffect(() => {
+    const exercise = exercises[exerciseIndex];
+    const guide = exerciseGuides[exerciseIndex];
+    if (!exercise || !guide) {
+      return;
+    }
+    if (guide.completed || exerciseStatuses[exerciseIndex] === "correct") {
+      return;
+    }
+    const stepCount = exercise.steps?.length ?? 0;
+    if (!stepCount || !guide.helpActive || guide.stepIndex < stepCount) {
+      return;
+    }
+    const answer = String(exercise.answer ?? "");
+    if (!answer) {
+      return;
+    }
+    if (exercise.type === "fib") {
+      handleFibSubmit(exerciseIndex, answer, answer);
+    } else {
+      handleAnswer(exerciseIndex, answer, answer);
+    }
+  }, [
+    exerciseGuides,
+    exerciseIndex,
+    exerciseStatuses,
+    exercises,
+    handleAnswer,
+    handleFibSubmit,
+  ]);
+
   const handleStepFibChange = (
     exerciseIdx: number,
     stepIdx: number,
