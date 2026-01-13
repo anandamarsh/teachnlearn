@@ -183,5 +183,5 @@ export const saveExerciseGenerator = async (
   if (!response.ok) {
     throw new Error(extractError(data, "Failed to save exercise generator"));
   }
-  return data as { version?: number; filename?: string };
+  return data as { updatedAt?: string; filename?: string; contentLength?: number };
 };

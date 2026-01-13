@@ -8,8 +8,10 @@ from .s3 import sanitize_email
 
 
 class LessonStoreExerciseGenerator:
-    def _exercise_generator_filename(self, version: int) -> str:
-        return f"exercise-generator.v{version}.js"
+    _EXERCISE_GENERATOR_FILENAME = "exercise.js"
+
+    def _exercise_generator_filename(self) -> str:
+        return self._EXERCISE_GENERATOR_FILENAME
 
     def _exercise_generator_key(
         self, sanitized_email: str, lesson_id: str, filename: str
@@ -27,9 +29,7 @@ class LessonStoreExerciseGenerator:
         if isinstance(meta, dict):
             filename = meta.get("filename")
             if not filename:
-                version = int(meta.get("version") or 0)
-                if version > 0:
-                    filename = self._exercise_generator_filename(version)
+                filename = self._exercise_generator_filename()
             if filename:
                 storage_key = self._exercise_generator_key(
                     sanitized_email, lesson_id, filename
@@ -56,8 +56,10 @@ class LessonStoreExerciseGenerator:
             if lesson is None:
                 return None
             existing = lesson.get("exerciseGenerator") or {}
-            version = int(existing.get("version") or 0) + 1
-            filename = self._exercise_generator_filename(version)
+            filename = self._exercise_generator_filename()
+            existing_filename = existing.get("filename")
+            if existing_filename and existing_filename != filename:
+                self._clear_exercise_generator(sanitized, lesson_id, lesson)
             storage_key = self._exercise_generator_key(sanitized, lesson_id, filename)
             self._s3_client.put_object(
                 Bucket=self._settings.s3_bucket,
@@ -67,30 +69,32 @@ class LessonStoreExerciseGenerator:
             )
             now = datetime.now(timezone.utc).isoformat()
             sections = lesson.get("sections") or {}
+            sections["exercises"] = filename
+            lesson["sections"] = sections
             exercises_filename = sections.get("exercises")
             if exercises_filename:
                 exercises_key = self._section_key(
                     sanitized, lesson_id, exercises_filename
                 )
-                empty_payload = "[]"
-                self._s3_client.put_object(
-                    Bucket=self._settings.s3_bucket,
-                    Key=exercises_key,
-                    Body=empty_payload.encode("utf-8"),
-                    ContentType=self._section_content_type("exercises"),
-                )
+                try:
+                    self._s3_client.delete_object(
+                        Bucket=self._settings.s3_bucket,
+                        Key=exercises_key,
+                    )
+                except ClientError as exc:
+                    if exc.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
+                        raise
                 meta_map = lesson.get("sectionsMeta") or {}
                 meta = meta_map.get("exercises") or {}
                 meta_payload = {
                     "key": "exercises",
                     "updatedAt": now,
                     "version": int(meta.get("version", 0)) + 1,
-                    "contentLength": len(empty_payload),
+                    "contentLength": 0,
                 }
                 meta_map["exercises"] = meta_payload
                 lesson["sectionsMeta"] = meta_map
             meta = {
-                "version": version,
                 "updatedAt": now,
                 "filename": filename,
                 "contentLength": len(code),
@@ -153,10 +157,7 @@ class LessonStoreExerciseGenerator:
             return None
         filename = meta.get("filename")
         if not filename:
-            version = int(meta.get("version") or 0)
-            if version <= 0:
-                return None
-            filename = self._exercise_generator_filename(version)
+            filename = self._exercise_generator_filename()
         storage_key = self._exercise_generator_key(sanitized_email, lesson_id, filename)
         try:
             obj = self._s3_client.get_object(

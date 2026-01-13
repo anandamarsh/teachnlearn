@@ -76,8 +76,8 @@ def register_lesson_routes(
         meta = payload.get("meta") or {}
         headers = {
             "Cache-Control": "no-store",
-            "X-Exercise-Generator-Version": str(meta.get("version") or ""),
             "X-Exercise-Generator-Filename": str(meta.get("filename") or ""),
+            "X-Exercise-Generator-Updated-At": str(meta.get("updatedAt") or ""),
         }
         return Response(
             payload.get("content", b""),
@@ -114,7 +114,7 @@ def register_lesson_routes(
                 {
                     "type": "exercise.generator.updated",
                     "lessonId": lesson_id,
-                    "version": meta.get("version"),
+                    "updatedAt": meta.get("updatedAt"),
                 },
             )
         return JSONResponse(meta, status_code=201)

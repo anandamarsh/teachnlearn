@@ -114,7 +114,7 @@ def register_section_tools(
                     {
                         "type": "exercise.generator.updated",
                         "lessonId": lesson_id,
-                        "version": meta.get("version"),
+                        "updatedAt": meta.get("updatedAt"),
                     },
                 )
             return {"generator": meta}
@@ -219,7 +219,7 @@ def register_section_tools(
                     {
                         "type": "exercise.generator.updated",
                         "lessonId": lesson_id,
-                        "version": meta.get("version"),
+                        "updatedAt": meta.get("updatedAt"),
                     },
                 )
             return {"generator": meta}

@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Lesson } from "../../../../state/lessonTypes";
 import { buildAuthHeaders } from "../../../../auth/buildAuthHeaders";
-import {
-  deleteLessonReport,
-  fetchExerciseGenerator,
-  saveExerciseGenerator,
-} from "../../../../api/lessons";
+import { deleteLessonReport } from "../../../../api/lessons";
+import { fetchSectionContent } from "../../../../api/lessonSections";
 import { useLessonSections } from "../../../../hooks/useLessonSections";
 import type { GetAccessTokenSilently } from "../../../../auth/buildAuthHeaders";
 import { useLessonReport } from "./useLessonReport";
@@ -156,9 +153,11 @@ export const useLessonWorkspaceState = ({
           getAccessTokenSilently,
           auth0Audience
         );
-        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/exercise/generator`;
-        const source = await fetchExerciseGenerator(endpoint, headers);
+        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/sections/exercises`;
+        const data = await fetchSectionContent(endpoint, headers);
         if (!cancelled) {
+          const source =
+            typeof data.contentHtml === "string" ? data.contentHtml : "";
           setExerciseGeneratorSource(source);
           setExerciseGeneratorLoaded(true);
         }
@@ -388,7 +387,7 @@ export const useLessonWorkspaceState = ({
       setDrafts((prev) => ({ ...prev, [key]: contentOverride }));
     }
     if (language === "javascript" && isExerciseSection(key)) {
-      if (!lesson || !apiBaseUrl || !isAuthenticated) {
+      if (!lesson || !isAuthenticated) {
         return false;
       }
       if (!contentHtml.trim()) {
@@ -396,26 +395,17 @@ export const useLessonWorkspaceState = ({
         return false;
       }
       setExerciseGeneratorSaving(true);
-      try {
-        const headers = await buildAuthHeaders(
-          getAccessTokenSilently,
-          auth0Audience
-        );
-        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/exercise/generator`;
-        await saveExerciseGenerator(endpoint, headers, { code: contentHtml });
+      const saved = await saveSection(key, contentHtml, { contentType: "js" });
+      setExerciseGeneratorSaving(false);
+      if (saved) {
         setExerciseGeneratorSource(contentHtml);
         setSectionContent(key, "[]");
         onNotify("Exercise generator saved", "success");
         setEditingKey(null);
         return true;
-      } catch (err) {
-        const detail =
-          err instanceof Error ? err.message : "Failed to save generator";
-        onNotify(detail, "error");
-        return false;
-      } finally {
-        setExerciseGeneratorSaving(false);
       }
+      onNotify("Failed to save generator", "error");
+      return false;
     }
     const saved = await saveSection(key, contentHtml);
     if (saved) {

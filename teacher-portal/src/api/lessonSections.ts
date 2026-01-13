@@ -43,13 +43,24 @@ export const fetchSectionContent = async (
   if (!response.ok) {
     throw new Error(extractError(data, "Failed to load section"));
   }
-  return data as { key: string; contentHtml?: string; content?: unknown };
+  return data as {
+    key: string;
+    contentHtml?: string;
+    content?: unknown;
+    contentType?: string;
+    exerciseMode?: string;
+  };
 };
 
 export const saveSectionContent = async (
   endpoint: string,
   headers: Record<string, string>,
-  payload: { contentHtml?: string; content?: unknown }
+  payload: {
+    contentHtml?: string;
+    content?: unknown;
+    contentType?: string;
+    code?: string;
+  }
 ) => {
   const response = await fetch(endpoint, {
     method: "PUT",
@@ -60,7 +71,12 @@ export const saveSectionContent = async (
   if (!response.ok) {
     throw new Error(extractError(data, "Failed to save section"));
   }
-  return data as { key: string; contentHtml?: string; content?: unknown };
+  return data as {
+    key?: string;
+    contentHtml?: string;
+    content?: unknown;
+    generator?: { updatedAt?: string; filename?: string; contentLength?: number };
+  };
 };
 
 export const createSectionContent = async (

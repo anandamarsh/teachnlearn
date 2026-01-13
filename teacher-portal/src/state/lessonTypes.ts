@@ -14,7 +14,6 @@ export type Lesson = {
     {
       key?: string;
       updatedAt?: string;
-      version?: number;
       contentLength?: number;
     }
   >;
@@ -24,7 +23,6 @@ export type Lesson = {
 };
 
 export type ExerciseGeneratorMeta = {
-  version?: number;
   updatedAt?: string;
   filename?: string;
   contentLength?: number;
@@ -72,7 +70,6 @@ export const normalizeLesson = (
         {
           key?: string;
           updatedAt?: string;
-          version?: number;
           contentLength?: number;
         }
       >

@@ -253,6 +253,7 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
             justifyContent="flex-start"
             sx={{ overflowX: "auto", maxWidth: "100%", width: "100%" }}
             ref={tabsContainerRef}
+            className="lesson-tabs-scroll"
           >
             <Tabs
               value={openSection}
@@ -327,8 +328,11 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                   exerciseSectionKey={openSection}
                   lessonId={lesson.id}
                   lessonTeacher={lesson.teacher}
-                  generatorAvailable={Boolean(lesson.exerciseGenerator?.version)}
-                  generatorVersion={lesson.exerciseGenerator?.version}
+                  generatorAvailable={
+                    lesson.exerciseMode === "generator" ||
+                    Boolean(lesson.exerciseGenerator)
+                  }
+                  generatorUpdatedAt={lesson.exerciseGenerator?.updatedAt}
                   questionsPerExercise={lesson.exerciseConfig?.questionsPerExercise}
                   autoStart={isExercisesSection(openSection)}
                   regenerateSignal={regenerateSignal}
@@ -379,7 +383,7 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                 resetExerciseSection(pendingRestartSection);
                 if (
                   isExercisesSection(pendingRestartSection) &&
-                  lesson.exerciseGenerator?.version
+                  lesson.exerciseGenerator?.updatedAt
                 ) {
                   setExercisesForSection(pendingRestartSection, []);
                   setRegenerateSectionKey(pendingRestartSection);

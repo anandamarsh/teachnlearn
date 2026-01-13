@@ -198,7 +198,12 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        if (isExerciseSection(key) && Array.isArray(data.content)) {
+        if (isExerciseSection(key) && typeof data.contentHtml === "string") {
+          setContents((prev) => ({
+            ...prev,
+            [key]: "[]",
+          }));
+        } else if (isExerciseSection(key) && Array.isArray(data.content)) {
           setContents((prev) => ({
             ...prev,
             [key]: JSON.stringify(data.content, null, 2),
@@ -232,7 +237,12 @@ export const useLessonSections = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        if (isExerciseSection(key) && Array.isArray(data.content)) {
+        if (isExerciseSection(key) && typeof data.contentHtml === "string") {
+          setContents((prev) => ({
+            ...prev,
+            [key]: "[]",
+          }));
+        } else if (isExerciseSection(key) && Array.isArray(data.content)) {
           setContents((prev) => ({
             ...prev,
             [key]: JSON.stringify(data.content, null, 2),
@@ -279,7 +289,11 @@ export const useLessonSections = ({
   });
 
   const saveSection = useCallback(
-    async (key: string, contentHtml: string) => {
+    async (
+      key: string,
+      contentHtml: string,
+      options?: { contentType?: "js" | "json" | "html" }
+    ) => {
       if (!isAuthenticated || !baseEndpoint) {
         return false;
       }
@@ -287,8 +301,10 @@ export const useLessonSections = ({
       setError("");
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-        let payload: { contentHtml?: string; content?: unknown };
-        if (isExerciseSection(key)) {
+        let payload: { contentHtml?: string; content?: unknown; contentType?: string; code?: string };
+        if (isExerciseSection(key) && options?.contentType === "js") {
+          payload = { contentType: "js", code: contentHtml };
+        } else if (isExerciseSection(key)) {
           try {
             payload = { content: JSON.parse(contentHtml || "[]") };
           } catch (err) {
@@ -300,7 +316,12 @@ export const useLessonSections = ({
           payload = { contentHtml };
         }
         const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, payload);
-        if (isExerciseSection(key) && Array.isArray(data.content)) {
+        if (data.generator) {
+          setContents((prev) => ({
+            ...prev,
+            [key]: "[]",
+          }));
+        } else if (isExerciseSection(key) && Array.isArray(data.content)) {
           setContents((prev) => ({
             ...prev,
             [key]: JSON.stringify(data.content, null, 2),

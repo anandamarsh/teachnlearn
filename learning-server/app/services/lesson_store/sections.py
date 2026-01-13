@@ -38,6 +38,11 @@ class LessonStoreSections:
             for key in sections:
                 if self._section_base_key(key) in self._HIDDEN_BASE_KEYS:
                     continue
+                if (
+                    self._section_base_key(key) == "exercises"
+                    and lesson.get("exerciseMode") == "generator"
+                ):
+                    continue
                 meta = meta_map.get(key) or {}
                 length = meta.get("contentLength")
                 if length is None:
@@ -93,8 +98,12 @@ class LessonStoreSections:
             return False
         return self._section_index(section_key) > 1
 
-    def get_section(self, email: str, lesson_id: str, section_key: str) -> dict[str, Any] | None:
+    def get_section(
+        self, email: str, lesson_id: str, section_key: str
+    ) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)
+        lesson = self.get(email, lesson_id)
+        exercise_mode = (lesson or {}).get("exerciseMode")
         index = self.get_sections_index(email, lesson_id)
         if not index:
             return None
@@ -105,11 +114,21 @@ class LessonStoreSections:
         try:
             obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
         except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                if self._section_base_key(section_key) == "exercises":
+                    return {"key": section_key, "content": []}
                 return None
             raise
         content = obj["Body"].read().decode("utf-8")
         if self._section_base_key(section_key) == "exercises":
+            if filename.endswith(".js"):
+                return {
+                    "key": section_key,
+                    "contentHtml": content,
+                    "contentType": obj.get("ContentType")
+                    or "application/javascript",
+                    "exerciseMode": exercise_mode or "generator",
+                }
             payload = json.loads(content) if content.strip() else []
             return {"key": section_key, "content": payload}
         return {"key": section_key, "contentHtml": content}
@@ -117,6 +136,8 @@ class LessonStoreSections:
     def get_section_sanitized(
         self, sanitized_email: str, lesson_id: str, section_key: str
     ) -> dict[str, Any] | None:
+        lesson = self.get_sanitized(sanitized_email, lesson_id)
+        exercise_mode = (lesson or {}).get("exerciseMode")
         index = self.get_sections_index_sanitized(sanitized_email, lesson_id)
         if not index:
             return None
@@ -127,11 +148,21 @@ class LessonStoreSections:
         try:
             obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
         except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                if self._section_base_key(section_key) == "exercises":
+                    return {"key": section_key, "content": []}
                 return None
             raise
         content = obj["Body"].read().decode("utf-8")
         if self._section_base_key(section_key) == "exercises":
+            if filename.endswith(".js"):
+                return {
+                    "key": section_key,
+                    "contentHtml": content,
+                    "contentType": obj.get("ContentType")
+                    or "application/javascript",
+                    "exerciseMode": exercise_mode or "generator",
+                }
             payload = json.loads(content) if content.strip() else []
             return {"key": section_key, "content": payload}
         return {"key": section_key, "contentHtml": content}
@@ -157,6 +188,13 @@ class LessonStoreSections:
             return None
         sections = lesson.get("sections") or {}
         filename = sections.get(section_key)
+        if (
+            self._section_base_key(section_key) == "exercises"
+            and lesson.get("exerciseMode") == "generator"
+        ):
+            filename = self._section_filename(section_key)
+            sections[section_key] = filename
+            lesson["sections"] = self._order_sections(sections)
         if not filename:
             if not allow_create:
                 return None

@@ -24,6 +24,23 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
+.lesson-tabs-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lesson-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.lesson-tabs-scroll .MuiTabs-scroller {
+  scrollbar-width: none;
+}
+
+.lesson-tabs-scroll .MuiTabs-scroller::-webkit-scrollbar {
+  display: none;
+}
+
 .lesson-stepper-inner {
   width: min(60%, 720px);
   margin: 0 auto;

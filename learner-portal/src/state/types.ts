@@ -21,7 +21,6 @@ export type ExerciseConfig = {
 };
 
 export type ExerciseGeneratorMeta = {
-  version?: number;
   updatedAt?: string;
   filename?: string;
   contentLength?: number;

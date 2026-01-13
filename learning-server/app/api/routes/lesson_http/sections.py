@@ -119,14 +119,14 @@ def register_section_routes(
                 if meta is None:
                     return json_error("lesson not found", 404)
                 if events:
-                    events.publish(
-                        email,
-                        {
-                            "type": "exercise.generator.updated",
-                            "lessonId": lesson_id,
-                            "version": meta.get("version"),
-                        },
-                    )
+                        events.publish(
+                            email,
+                            {
+                                "type": "exercise.generator.updated",
+                                "lessonId": lesson_id,
+                                "updatedAt": meta.get("updatedAt"),
+                            },
+                        )
                 return JSONResponse({"generator": meta})
             content_json = payload.get("content")
             if content_json is None:
@@ -196,14 +196,14 @@ def register_section_routes(
                 if meta is None:
                     return json_error("lesson not found", 404)
                 if events:
-                    events.publish(
-                        email,
-                        {
-                            "type": "exercise.generator.updated",
-                            "lessonId": lesson_id,
-                            "version": meta.get("version"),
-                        },
-                    )
+                        events.publish(
+                            email,
+                            {
+                                "type": "exercise.generator.updated",
+                                "lessonId": lesson_id,
+                                "updatedAt": meta.get("updatedAt"),
+                            },
+                        )
                 return JSONResponse({"generator": meta}, status_code=201)
             content_json = payload.get("content")
             if content_json is None:

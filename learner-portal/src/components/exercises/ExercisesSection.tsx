@@ -46,7 +46,7 @@ type ExercisesSectionProps = {
   lessonId: string;
   lessonTeacher: string;
   generatorAvailable: boolean;
-  generatorVersion?: number | null;
+  generatorUpdatedAt?: string | null;
   questionsPerExercise?: number | null;
   autoStart?: boolean;
   regenerateSignal?: number;
@@ -81,7 +81,7 @@ const ExercisesSection = ({
   lessonId,
   lessonTeacher,
   generatorAvailable,
-  generatorVersion,
+  generatorUpdatedAt,
   questionsPerExercise,
   autoStart,
   regenerateSignal,
@@ -269,15 +269,18 @@ self.onmessage = async (event) => {
       );
     }, 120);
     try {
-      const versionSuffix =
-        generatorVersion && Number.isFinite(generatorVersion)
-          ? `?v=${generatorVersion}`
+      const cacheBust =
+        generatorUpdatedAt && String(generatorUpdatedAt).trim()
+          ? `?ts=${encodeURIComponent(String(generatorUpdatedAt))}`
           : "";
-      const source = await fetchWithAuth(
-        `/catalog/teacher/${lessonTeacher}/lesson/${lessonId}/exercise/generator${versionSuffix}`,
-        { responseType: "text" }
+      const payload = await fetchWithAuth(
+        `/catalog/teacher/${lessonTeacher}/lesson/${lessonId}/sections/exercises${cacheBust}`
       );
-      if (typeof source !== "string" || !source.trim()) {
+      const source =
+        payload && typeof payload.contentHtml === "string"
+          ? payload.contentHtml
+          : "";
+      if (!source.trim()) {
         throw new Error("Exercise generator not available");
       }
       const items = await runGenerator(source, targetCount);
@@ -300,7 +303,7 @@ self.onmessage = async (event) => {
     fetchWithAuth,
     generatorAvailable,
     generatorLoading,
-    generatorVersion,
+    generatorUpdatedAt,
     questionsPerExercise,
     lessonId,
     lessonTeacher,
