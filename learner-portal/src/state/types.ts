@@ -11,6 +11,7 @@ export type CatalogLesson = {
   requiresLogin?: boolean | null;
   exerciseGenerator?: ExerciseGeneratorMeta | null;
   exerciseConfig?: ExerciseConfig | null;
+  exerciseMode?: string | null;
 };
 
 export type LessonSectionKey = string;
