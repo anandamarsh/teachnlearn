@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Alert,
@@ -18,6 +18,7 @@ import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
 import LessonsPage from "./components/lessons/LessonsPage";
 import { useLessons } from "./hooks/useLessons";
+import { buildAuthHeaders } from "./auth/buildAuthHeaders";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
@@ -79,10 +80,22 @@ function App() {
     message: "",
     severity: "success",
   });
+  const [otpTrigger, setOtpTrigger] = useState(0);
+  const prevAuthRef = useRef(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpStatus, setOtpStatus] = useState<"idle" | "loading" | "error">("idle");
+  const otpStorageKey = "tp_otp_cache_v1";
 
   const notify = useCallback((message: string, severity: "success" | "error") => {
     setSnackbar({ open: true, message, severity });
   }, []);
+
+  const handleLogout = useCallback(() => {
+    setOtpCode("");
+    setOtpStatus("idle");
+    window.sessionStorage.removeItem(otpStorageKey);
+    logout({ logoutParams: { returnTo: window.location.origin } });
+  }, [logout]);
 
   const handleCreateLesson = async () => {
     if (!isAuthenticated) {
@@ -209,6 +222,79 @@ function App() {
     }
   }, [isAuthenticated, isLoading, loginWithRedirect]);
 
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (isAuthenticated && !prevAuthRef.current) {
+      setOtpTrigger((prev) => prev + 1);
+    }
+    if (!isAuthenticated && prevAuthRef.current) {
+      setOtpCode("");
+      setOtpStatus("idle");
+      window.sessionStorage.removeItem(otpStorageKey);
+    }
+    prevAuthRef.current = isAuthenticated;
+  }, [isAuthenticated, isLoading]);
+
+  const fetchOtp = useCallback(async () => {
+    if (!apiBaseUrl || !auth0Audience) {
+      return;
+    }
+    setOtpStatus("loading");
+    try {
+      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      const response = await fetch(`${apiBaseUrl}/auth/otp`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch OTP");
+      }
+      const data = await response.json();
+      const code = String(data.code || "");
+      const expiresIn = Number(data.expiresIn || 0);
+      setOtpCode(code);
+      setOtpStatus("idle");
+      if (code && expiresIn > 0) {
+        const payload = {
+          code,
+          expiresAt: Date.now() + expiresIn * 1000,
+          userSub: user?.sub || "",
+        };
+        window.sessionStorage.setItem(otpStorageKey, JSON.stringify(payload));
+      }
+    } catch {
+      setOtpStatus("error");
+    }
+  }, [apiBaseUrl, auth0Audience, getAccessTokenSilently, user?.sub]);
+
+  useEffect(() => {
+    if (otpTrigger <= 0) {
+      return;
+    }
+    try {
+      const cached = window.sessionStorage.getItem(otpStorageKey);
+      if (cached) {
+        const parsed = JSON.parse(cached) as {
+          code?: string;
+          expiresAt?: number;
+          userSub?: string;
+        };
+        const sameUser = Boolean(parsed.userSub && parsed.userSub === (user?.sub || ""));
+        const valid = Boolean(parsed.expiresAt && parsed.expiresAt > Date.now());
+        if (parsed.code && sameUser && valid) {
+          setOtpCode(parsed.code);
+          setOtpStatus("idle");
+          return;
+        }
+      }
+    } catch {
+      window.sessionStorage.removeItem(otpStorageKey);
+    }
+    fetchOtp();
+  }, [fetchOtp, otpTrigger, user?.sub]);
+
   if (isLoading || !isAuthenticated) {
     return (
       <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
@@ -227,7 +313,12 @@ function App() {
       pb={page === "home" ? 0 : 10}
     >
       {page === "home" ? (
-        <Home onLessonsClick={() => setPage("lessons")} />
+        <Home
+          onLessonsClick={() => setPage("lessons")}
+          otpCode={otpCode}
+          otpStatus={otpStatus}
+          onReloadOtp={fetchOtp}
+        />
       ) : (
         <LessonsPage
           lessons={lessons}
@@ -264,7 +355,7 @@ function App() {
         showDuplicate={page === "lessons" && Boolean(selectedLesson)}
         showDelete={page === "lessons" && Boolean(selectedLesson) && !isSelectedPublished}
         onAuthClick={() => loginWithRedirect()}
-        onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+        onLogout={handleLogout}
       />
       <Dialog
         open={deleteOpen}

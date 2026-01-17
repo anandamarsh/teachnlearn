@@ -1,9 +1,11 @@
 import requests
+from fastapi import HTTPException
 from jose import jwt
 from jose.exceptions import JWTError
 from starlette.requests import Request
 
 from app.core.settings import Settings
+from app.core.otp import verify_otp
 
 
 def get_jwks(domain: str) -> dict:
@@ -66,28 +68,65 @@ def fetch_userinfo_email(token: str, domain: str) -> str | None:
     return data.get("email")
 
 
-def get_request_email(request: Request, payload: dict | None, settings: Settings) -> str | None:
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header and settings.auth0_domain and settings.auth0_audience:
+def get_request_email(request: Request, payload: dict | None, settings: Settings) -> str:
+    auth = request.headers.get("authorization", "")
+    token = None
+    if auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1].strip()
+    else:
+        print("AUTH DEBUG: Authorization header missing or not Bearer")
+
+    if token and token == settings.custom_gpt_api_key:
+        email = request.query_params.get("email")
+        if not email:
+            print("AUTH DEBUG: CustomGPT API key valid, missing email query param")
+            raise HTTPException(status_code=400, detail="Missing email query parameter")
+        otp = request.query_params.get("otp")
+        if not otp:
+            otp = request.query_params.get("passcode")
+        if not otp:
+            print("AUTH DEBUG: CustomGPT API key valid, missing otp query param")
+            raise HTTPException(status_code=400, detail="Missing otp query parameter")
+        if not verify_otp(email, otp, settings):
+            print("AUTH DEBUG: CustomGPT API key valid, invalid OTP for email")
+            raise HTTPException(status_code=403, detail="Invalid or expired OTP")
+        print(f"AUTH DEBUG: Authorized by CustomGPT API key, email: {email.strip()}")
+        return email.strip()
+
+    if token and settings.auth0_domain and settings.auth0_audience:
+        print("AUTH DEBUG: Bearer token present, attempting Auth0 JWT validation")
         try:
-            token = get_token_auth_header(request)
             payload_data = decode_jwt(token, settings)
-            email = payload_data.get("email")
-            if not email:
-                email = payload_data.get("https://sitnstudy.com/email")
-            if not email:
-                for key, value in payload_data.items():
-                    if key.endswith("/email"):
-                        email = value
-                        break
-            if not email:
-                email = fetch_userinfo_email(token, settings.auth0_domain)
-            return email
+        except HTTPException:
+            print("AUTH DEBUG: Auth0 JWT invalid")
+            raise
         except ValueError:
-            return None
-    if payload and payload.get("email"):
-        return str(payload["email"]).strip()
-    return request.headers.get("x-user-email")
+            print("AUTH DEBUG: Auth0 JWT invalid")
+            raise HTTPException(status_code=401, detail="Invalid token")
+        email = payload_data.get("email")
+        if not email:
+            email = payload_data.get("https://sitnstudy.com/email")
+        if not email:
+            for key, value in payload_data.items():
+                if key.endswith("/email"):
+                    email = value
+                    break
+        if not email:
+            email = fetch_userinfo_email(token, settings.auth0_domain)
+        if not email:
+            print("AUTH DEBUG: Auth0 JWT validated but email not found in token or userinfo")
+            raise HTTPException(status_code=401, detail="Email not found in token")
+        print(f"AUTH DEBUG: Authorized by Auth0 JWT, email: {str(email).strip()}")
+        return str(email).strip()
+
+    if token:
+        if not settings.auth0_domain or not settings.auth0_audience:
+            print("AUTH DEBUG: Bearer token present but Auth0 settings missing")
+        else:
+            print("AUTH DEBUG: Bearer token present but did not match CustomGPT key or valid Auth0 JWT")
+    else:
+        print("AUTH DEBUG: No bearer token provided")
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def get_email_from_token(token: str, settings: Settings) -> str | None:

@@ -19,6 +19,8 @@ class Settings:
         self.lesson_sections_path = os.getenv("LESSON_SECTIONS_FILE") or str(
             Path(__file__).resolve().parents[2] / "lesson_sections.json"
         )
+        self.custom_gpt_api_key = os.getenv("CUSTOM_GPT_API_KEY", "")
+        self.otp_ttl_seconds = int(os.getenv("OTP_TTL_SECONDS", "600"))
         self.lesson_sections, self.lesson_section_descriptions = _load_lesson_sections(
             self.lesson_sections_path
         )
