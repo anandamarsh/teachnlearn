@@ -4,7 +4,7 @@ from botocore.exceptions import ClientError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from app.core.auth import get_request_email
+from app.core.auth import get_request_email, is_auth0_bearer_request
 from app.core.settings import Settings
 from app.services.lesson_events import LessonEventHub
 from app.services.lesson_store import LessonStore
@@ -98,6 +98,10 @@ def register_section_routes(
             return json_error("section_key is required", 400)
         if not store.is_valid_section_key(section_key):
             return json_error("invalid section_key", 400)
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            return json_error("lesson is protected", 403)
         try:
             payload = await request.json()
         except json.JSONDecodeError:
@@ -175,6 +179,10 @@ def register_section_routes(
             return json_error("section_key is required", 400)
         if not store.is_valid_section_key(section_key):
             return json_error("invalid section_key", 400)
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            return json_error("lesson is protected", 403)
         try:
             payload = await request.json()
         except json.JSONDecodeError:
@@ -257,6 +265,10 @@ def register_section_routes(
             return json_error("section_key is required", 400)
         if not store.is_valid_section_key(section_key):
             return json_error("invalid section_key", 400)
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            return json_error("lesson is protected", 403)
         try:
             removed = store.delete_section(email, lesson_id, section_key)
         except (RuntimeError, ClientError) as exc:
@@ -286,6 +298,10 @@ def register_section_routes(
         lesson_id = request.path_params.get("lesson_id", "").strip()
         if not lesson_id:
             return json_error("lesson_id is required", 400)
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            return json_error("lesson is protected", 403)
         try:
             payload = await request.json()
         except json.JSONDecodeError:

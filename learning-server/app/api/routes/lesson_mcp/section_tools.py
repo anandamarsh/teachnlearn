@@ -10,6 +10,16 @@ from app.services.lesson_store import LessonStore
 from .common import DEBOUNCE, RESULT_CACHE, cache_key, log_params
 
 
+def _blocked_if_protected(
+    store: LessonStore, email: str | None, lesson_id: str
+) -> dict[str, Any] | None:
+    if not email or not lesson_id:
+        return None
+    if store.is_protected_lesson(email, lesson_id):
+        return {"error": "lesson is protected"}
+    return None
+
+
 def register_section_tools(
     mcp: Any, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
 ) -> None:
@@ -87,6 +97,9 @@ def register_section_tools(
             return {"error": "section_key is required"}
         if not store.is_valid_section_key(section_key):
             return {"error": "invalid section_key", "key": section_key}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         if store._section_base_key(section_key) == "exercises" and content_type.lower() in (
             "js",
             "javascript",
@@ -192,6 +205,9 @@ def register_section_tools(
             return {"error": "section_key is required"}
         if not store.is_valid_section_key(section_key):
             return {"error": "invalid section_key", "key": section_key}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         if store._section_base_key(section_key) == "exercises" and content_type.lower() in (
             "js",
             "javascript",
@@ -298,6 +314,9 @@ def register_section_tools(
             return {"error": "email is required"}
         if not items:
             return {"error": "items is required"}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         log_params(
             "lesson_exercises_append",
             {"email": email, "lesson_id": lesson_id, "items": items, "section_key": section_key},
@@ -352,6 +371,9 @@ def register_section_tools(
             return {"error": "section_key is required"}
         if not store.is_valid_section_key(section_key):
             return {"error": "invalid section_key", "key": section_key}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         log_params(
             "lesson_section_delete",
             {

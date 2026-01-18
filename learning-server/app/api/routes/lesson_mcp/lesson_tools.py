@@ -9,6 +9,16 @@ from app.services.lesson_store import LessonStore
 from .common import DEBOUNCE, RESULT_CACHE, cache_key, log_params
 
 
+def _blocked_if_protected(
+    store: LessonStore, email: str | None, lesson_id: str
+) -> dict[str, Any] | None:
+    if not email or not lesson_id:
+        return None
+    if store.is_protected_lesson(email, lesson_id):
+        return {"error": "lesson is protected"}
+    return None
+
+
 def register_lesson_tools(
     mcp: Any, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
 ) -> None:
@@ -115,6 +125,9 @@ def register_lesson_tools(
         """
         if not email:
             return {"error": "email is required"}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         log_params(
             "lesson_update",
             {
@@ -191,6 +204,9 @@ def register_lesson_tools(
             return {"error": "email is required"}
         if not lesson_id:
             return {"error": "lesson_id is required"}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         if not code:
             return {"error": "code is required"}
         log_params(
@@ -232,6 +248,9 @@ def register_lesson_tools(
         """
         if not email:
             return {"error": "email is required"}
+        blocked = _blocked_if_protected(store, email, lesson_id)
+        if blocked:
+            return blocked
         log_params("lesson_delete", {"email": email, "lesson_id": lesson_id})
         cache_key_value = cache_key("lesson_delete", email, {"lesson_id": lesson_id})
         cached = RESULT_CACHE.get(cache_key_value)

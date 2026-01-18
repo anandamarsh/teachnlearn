@@ -200,8 +200,8 @@ const buildSourceExtensions = (
   return extensions;
 };
 
-const stripEditorArtifacts = (value: string) =>
-  value
+const stripEditorArtifacts = (value?: string) =>
+  (value ?? "")
     .replace(/\sdata-list-item-id="[^"]*"/g, "")
     .replace(/\sdata-list-id="[^"]*"/g, "");
 
@@ -406,8 +406,11 @@ const SectionEditor = ({
   };
 
   useEffect(() => {
+    if (!sourceOpen) {
+      return;
+    }
     sourceDraftsRef.current[sourceLanguage] = sourceValue;
-  }, [sourceLanguage, sourceValue]);
+  }, [sourceLanguage, sourceOpen, sourceValue]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -417,7 +420,9 @@ const SectionEditor = ({
     if (!instance) {
       return;
     }
-    if (instance.getData() !== (content || "")) {
+    const currentData = stripEditorArtifacts(instance.getData());
+    const normalizedContent = stripEditorArtifacts(content ?? "");
+    if (currentData !== normalizedContent) {
       isSyncingRef.current = true;
       instance.setData(content || "");
       window.setTimeout(() => {
@@ -717,7 +722,7 @@ const SectionEditor = ({
                   if (!instance || isSyncingRef.current) {
                     return;
                   }
-                  onChange(stripEditorArtifacts(instance.getData()));
+                  onChange(instance.getData());
                 }}
               />
             )}

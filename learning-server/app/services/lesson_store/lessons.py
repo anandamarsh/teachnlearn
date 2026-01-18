@@ -10,6 +10,13 @@ from .s3 import delete_lesson_prefix, ensure_lesson_prefix, sanitize_email
 
 
 class LessonStoreLessons:
+    def is_protected_lesson(self, email: str, lesson_id: str) -> bool:
+        lesson = self.get(email, lesson_id)
+        if not lesson:
+            return False
+        title = str(lesson.get("title") or "").strip().lower()
+        return title == "lesson template"
+
     def list_all(self, email: str) -> list[dict[str, Any]]:
         sanitized = sanitize_email(email)
         with self._lock:

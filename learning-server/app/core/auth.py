@@ -156,3 +156,19 @@ def get_email_from_token(token: str, settings: Settings) -> str | None:
     if email:
         return str(email)
     return fetch_userinfo_email(token, settings.auth0_domain)
+
+
+def is_auth0_bearer_request(request: Request, settings: Settings) -> bool:
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return False
+    token = auth.split(" ", 1)[1].strip()
+    if not token or token == settings.custom_gpt_api_key:
+        return False
+    if not settings.auth0_domain or not settings.auth0_audience:
+        return False
+    try:
+        decode_jwt(token, settings)
+    except (ValueError, HTTPException):
+        return False
+    return True

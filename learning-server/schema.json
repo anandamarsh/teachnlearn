@@ -123,6 +123,156 @@
         ]
       }
     },
+    "/lesson/with-sections": {
+      "post": {
+        "operationId": "CreateLessonWithSections",
+        "description": "Create a new lesson along with multiple sections in one request.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lesson": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "subject": {
+                        "type": "string"
+                      },
+                      "level": {
+                        "type": "string"
+                      },
+                      "requiresLogin": {
+                        "type": "boolean"
+                      },
+                      "summary": {
+                        "type": "string"
+                      },
+                      "exerciseConfig": {
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "summary",
+                      "subject",
+                      "level"
+                    ]
+                  },
+                  "sections": {
+                    "type": "object",
+                    "description": "Map of section keys to contentHtml or structured objects.",
+                    "properties": {
+                      "assessment": {
+                        "type": "object",
+                        "properties": {
+                          "contentHtml": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "contentHtml"
+                        ]
+                      },
+                      "concepts": {
+                        "type": "object",
+                        "properties": {
+                          "contentHtml": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "contentHtml"
+                        ]
+                      },
+                      "background": {
+                        "type": "object",
+                        "properties": {
+                          "contentHtml": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "contentHtml"
+                        ]
+                      },
+                      "lesson": {
+                        "type": "object",
+                        "properties": {
+                          "contentHtml": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "contentHtml"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "assessment",
+                      "concepts",
+                      "background",
+                      "lesson"
+                    ]
+                  },
+                  "exerciseGenerator": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "lesson"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Lesson created with sections"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          }
+        ]
+      }
+    },
     "/lesson/{status}": {
       "get": {
         "operationId": "LessonListByStatus",
