@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://f4a17de05717.ngrok-free.app"
+      "url": "https://api.teacher.sitnstudy.com"
     }
   ],
   "paths": {
@@ -82,12 +82,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "title",
-                  "summary",
-                  "subject",
-                  "level"
-                ]
+                "required": ["title", "summary", "subject", "level"]
               }
             }
           }
@@ -164,12 +159,7 @@
                         "type": "object"
                       }
                     },
-                    "required": [
-                      "title",
-                      "summary",
-                      "subject",
-                      "level"
-                    ]
+                    "required": ["title", "summary", "subject", "level"]
                   },
                   "sections": {
                     "type": "object",
@@ -183,9 +173,7 @@
                             "minLength": 1
                           }
                         },
-                        "required": [
-                          "contentHtml"
-                        ]
+                        "required": ["contentHtml"]
                       },
                       "concepts": {
                         "type": "object",
@@ -195,9 +183,7 @@
                             "minLength": 1
                           }
                         },
-                        "required": [
-                          "contentHtml"
-                        ]
+                        "required": ["contentHtml"]
                       },
                       "background": {
                         "type": "object",
@@ -207,9 +193,7 @@
                             "minLength": 1
                           }
                         },
-                        "required": [
-                          "contentHtml"
-                        ]
+                        "required": ["contentHtml"]
                       },
                       "lesson": {
                         "type": "object",
@@ -219,9 +203,7 @@
                             "minLength": 1
                           }
                         },
-                        "required": [
-                          "contentHtml"
-                        ]
+                        "required": ["contentHtml"]
                       }
                     },
                     "required": [
@@ -235,9 +217,7 @@
                     "type": "object"
                   }
                 },
-                "required": [
-                  "lesson"
-                ]
+                "required": ["lesson"]
               }
             }
           }
@@ -1117,9 +1097,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "items"
-                ]
+                "required": ["items"]
               }
             }
           }
@@ -1227,9 +1205,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "html"
-                ]
+                "required": ["html"]
               }
             }
           }

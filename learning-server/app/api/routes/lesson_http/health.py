@@ -18,3 +18,15 @@ def register_health(mcp) -> None:
         except (OSError, json.JSONDecodeError) as exc:
             return JSONResponse({"detail": f"Failed to load schema: {exc}"}, status_code=500)
         return JSONResponse(payload)
+
+    @mcp.custom_route("/llm-asset/schema.json", methods=["GET"])
+    async def get_llm_schema(_: Request) -> JSONResponse:
+        repo_root = Path(__file__).resolve().parents[5]
+        schema_path = repo_root / "teacher-portal" / "public" / "llm-assets" / "schema.json"
+        try:
+            payload = json.loads(schema_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return JSONResponse(
+                {"detail": f"Failed to load LLM schema: {exc}"}, status_code=500
+            )
+        return JSONResponse(payload)
