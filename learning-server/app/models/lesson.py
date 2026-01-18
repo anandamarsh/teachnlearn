@@ -9,7 +9,7 @@ class Lesson:
     subject: str | None
     level: str | None
     requires_login: bool | None
-    content: str | None
+    summary: str | None
     exercise_config: dict[str, int] | None
     created_at: str
     updated_at: str

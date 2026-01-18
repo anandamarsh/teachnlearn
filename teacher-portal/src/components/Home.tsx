@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Box, Button, Container, IconButton, Stack, Typography } from "@mui/material";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 
 type HomeProps = {
   onLessonsClick: () => void;
+  onProfileClick: () => void;
   otpCode: string;
   otpStatus: "idle" | "loading" | "error";
   onReloadOtp: () => void;
@@ -13,6 +15,7 @@ type HomeProps = {
 
 const Home = ({
   onLessonsClick,
+  onProfileClick,
   otpCode,
   otpStatus,
   onReloadOtp,
@@ -132,6 +135,24 @@ const Home = ({
           onClick={onLessonsClick}
         >
           Lessons
+        </Button>
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={<PersonRoundedIcon />}
+          sx={{
+            height: 64,
+            fontSize: "1.1rem",
+            justifyContent: "flex-start",
+            px: 4,
+            borderRadius: "5rem",
+            width: "70%",
+            minWidth: 260,
+            boxShadow: "0 12px 18px rgba(0,0,0,0.18)",
+          }}
+          onClick={onProfileClick}
+        >
+          Profile
         </Button>
       </Box>
     </Container>

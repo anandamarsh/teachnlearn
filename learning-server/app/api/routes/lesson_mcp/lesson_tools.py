@@ -16,7 +16,7 @@ def register_lesson_tools(
     def lesson_create(
         title: str,
         status: str = "draft",
-        content: str | None = None,
+        summary: str | None = None,
         subject: str | None = None,
         level: str | None = None,
         exercise_config: dict[str, int] | None = None,
@@ -29,7 +29,7 @@ def register_lesson_tools(
         - title: lesson title (required; ask the user if missing)
         Optional inputs:
         - status: defaults to "draft"
-        - content: optional short summary of the uploaded report (2-3 lines). Dont include "using visual models, worked examples, guided practice, and common misconception checks."
+        - summary: optional short summary of the uploaded report (2-3 lines). Dont include "using visual models, worked examples, guided practice, and common misconception checks."
         - subject: optional subject from the list ["Maths", "English", "Science", "Other"]
         - level: optional level from the list ["Foundation", "Pre School", "Year 1", "Year 2", ... "Year 12"]
 
@@ -43,7 +43,7 @@ def register_lesson_tools(
                 "email": email,
                 "title": title,
                 "status": status,
-                "content": content,
+                "summary": summary,
                 "subject": subject,
                 "level": level,
                 "exercise_config": exercise_config,
@@ -55,7 +55,7 @@ def register_lesson_tools(
             {
                 "title": title,
                 "status": status,
-                "content": content,
+                "summary": summary,
                 "subject": subject,
                 "level": level,
                 "exercise_config": exercise_config,
@@ -72,7 +72,7 @@ def register_lesson_tools(
                 email,
                 title=title,
                 status=status,
-                content=content,
+                summary=summary,
                 subject=subject,
                 level=level,
                 exercise_config=exercise_config,
@@ -92,7 +92,7 @@ def register_lesson_tools(
         lesson_id: str,
         title: str | None = None,
         status: str | None = None,
-        content: str | None = None,
+        summary: str | None = None,
         subject: str | None = None,
         level: str | None = None,
         exercise_config: dict[str, int] | None = None,
@@ -100,14 +100,14 @@ def register_lesson_tools(
     ) -> dict[str, Any]:
         """Update a lesson's fields.
 
-        Use when the user wants to update a lesson's title, status, content, subject, or level.
+        Use when the user wants to update a lesson's title, status, summary, subject, or level.
         You must supply:
         - email: user email (required; ask the user if missing)
         - lesson_id: target lesson id (required; ask the user if missing)
         Provide at least one of:
         - title
         - status
-        - content
+        - summary
         - subject
         - level
 
@@ -122,7 +122,7 @@ def register_lesson_tools(
                 "lesson_id": lesson_id,
                 "title": title,
                 "status": status,
-                "content": content,
+                "summary": summary,
                 "subject": subject,
                 "level": level,
                 "exercise_config": exercise_config,
@@ -135,7 +135,7 @@ def register_lesson_tools(
                 "lesson_id": lesson_id,
                 "title": title,
                 "status": status,
-                "content": content,
+                "summary": summary,
                 "subject": subject,
                 "level": level,
                 "exercise_config": exercise_config,
@@ -153,7 +153,7 @@ def register_lesson_tools(
                 lesson_id,
                 title=title,
                 status=status,
-                content=content,
+                summary=summary,
                 subject=subject,
                 level=level,
                 exercise_config=exercise_config,

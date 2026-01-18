@@ -17,13 +17,14 @@ import "./App.css";
 import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
 import LessonsPage from "./components/lessons/LessonsPage";
+import Profile from "./components/Profile";
 import { useLessons } from "./hooks/useLessons";
 import { buildAuthHeaders } from "./auth/buildAuthHeaders";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
 
-type PageKey = "home" | "lessons";
+type PageKey = "home" | "lessons" | "profile";
 
 function App() {
   const {
@@ -315,11 +316,13 @@ function App() {
       {page === "home" ? (
         <Home
           onLessonsClick={() => setPage("lessons")}
+          onProfileClick={() => setPage("profile")}
           otpCode={otpCode}
           otpStatus={otpStatus}
           onReloadOtp={fetchOtp}
         />
-      ) : (
+      ) : null}
+      {page === "lessons" ? (
         <LessonsPage
           lessons={lessons}
           selectedLesson={selectedLesson}
@@ -341,7 +344,15 @@ function App() {
             }))
           }
         />
-      )}
+      ) : null}
+      {page === "profile" ? (
+        <Profile
+          apiBaseUrl={apiBaseUrl}
+          auth0Audience={auth0Audience}
+          getAccessTokenSilently={getAccessTokenSilently}
+          onNotify={notify}
+        />
+      ) : null}
 
       <BottomNav
         isAuthenticated={isAuthenticated}
@@ -349,6 +360,7 @@ function App() {
         currentPage={page}
         onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
+        onProfileClick={() => setPage("profile")}
         onCreateLesson={handleCreateLesson}
         onDuplicateLesson={() => setDuplicateOpen(true)}
         onDeleteLesson={() => setDeleteOpen(true)}

@@ -199,7 +199,7 @@ export const useLessons = ({
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         const data = await updateLesson(`${lessonsEndpoint}/id/${lessonId}`, headers, {
-          content,
+          summary: content,
         });
         const updated = normalizeLesson(data as Record<string, unknown>, lessonId);
         setLessons((prev) =>

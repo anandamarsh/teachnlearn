@@ -120,7 +120,7 @@ export const useLessonWorkspaceState = ({
 
   useEffect(() => {
     setTitleDraft(lesson?.title || "");
-    setContentDraft(lesson?.content || "");
+    setContentDraft(lesson?.summary || "");
     setSubjectDraft(lesson?.subject || "");
     setLevelDraft(lesson?.level || "");
     setRequiresLoginDraft(Boolean(lesson?.requiresLogin));
@@ -249,9 +249,9 @@ export const useLessonWorkspaceState = ({
       return;
     }
     const trimmed = (nextContent ?? contentDraft).trim();
-    const current = (lesson.content || "").trim();
+    const current = (lesson.summary || "").trim();
     if (trimmed === current) {
-      setContentDraft(lesson.content || "");
+      setContentDraft(lesson.summary || "");
       return;
     }
     setSavingContent(true);

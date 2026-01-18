@@ -8,6 +8,7 @@ from .health import register_health
 from .auth import register_auth_routes
 from .catalog import register_catalog_routes
 from .lessons import register_lesson_routes
+from .profile import register_profile_routes
 from .reports import register_report_routes
 from .sections import register_section_routes
 
@@ -20,4 +21,5 @@ def register_routes(
     register_catalog_routes(mcp, store, settings)
     register_lesson_routes(mcp, store, settings, events)
     register_section_routes(mcp, store, settings, events)
+    register_profile_routes(mcp, store, settings)
     register_report_routes(mcp, store, settings)

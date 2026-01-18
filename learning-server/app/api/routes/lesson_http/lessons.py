@@ -125,14 +125,16 @@ def register_lesson_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        email = get_request_email(request, payload, settings)
+        email = get_request_email(request, None, settings)
         if not email:
             return json_error("email is required", 400)
         title = str(payload.get("title", "")).strip()
         if not title:
             return json_error("title is required", 400)
         status = str(payload.get("status", "draft")).strip() or "draft"
-        content = payload.get("content")
+        summary = payload.get("summary")
+        if summary is None:
+            summary = payload.get("content")
         subject = payload.get("subject")
         level = payload.get("level")
         requires_login = payload.get("requires_login")
@@ -152,7 +154,7 @@ def register_lesson_routes(
                 email,
                 title=title,
                 status=status,
-                content=content,
+                summary=summary,
                 subject=subject,
                 level=level,
                 requires_login=requires_login,
@@ -178,12 +180,14 @@ def register_lesson_routes(
             return json_error("invalid JSON body", 400)
         if not payload:
             return json_error("update payload is required", 400)
-        email = get_request_email(request, payload, settings)
+        email = get_request_email(request, None, settings)
         if not email:
             return json_error("email is required", 400)
         title = payload.get("title")
         status = payload.get("status")
-        content = payload.get("content")
+        summary = payload.get("summary")
+        if summary is None:
+            summary = payload.get("content")
         subject = payload.get("subject")
         level = payload.get("level")
         requires_login = payload.get("requires_login")
@@ -204,7 +208,7 @@ def register_lesson_routes(
                 lesson_id,
                 title=title,
                 status=status,
-                content=content,
+                summary=summary,
                 subject=subject,
                 level=level,
                 requires_login=requires_login,

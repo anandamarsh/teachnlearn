@@ -6,7 +6,7 @@ export type Lesson = {
   level?: string | null;
   updated_at?: string;
   iconUrl?: string | null;
-  content?: string | null;
+  summary?: string | null;
   requiresLogin?: boolean | null;
   sections?: Record<string, string>;
   sectionsMeta?: Record<
@@ -53,10 +53,10 @@ export const normalizeLesson = (
   const updated_at =
     (item.updated_at as string) || (item.updatedAt as string) || undefined;
   const iconUrl = (item.iconUrl as string) || (item.icon as string) || null;
-  const content =
+  const summary =
+    (item.summary as string) ||
     (item.content as string) ||
     (item.description as string) ||
-    (item.summary as string) ||
     null;
   const requiresLogin =
     (item.requiresLogin as boolean | undefined) ??
@@ -90,7 +90,7 @@ export const normalizeLesson = (
     level,
     updated_at,
     iconUrl,
-    content,
+    summary,
     requiresLogin,
     sections,
     sectionsMeta,

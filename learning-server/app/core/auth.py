@@ -93,6 +93,15 @@ def get_request_email(request: Request, payload: dict | None, settings: Settings
         print(f"AUTH DEBUG: Authorized by CustomGPT API key, email: {email.strip()}")
         return email.strip()
 
+    query_email = request.query_params.get("email")
+    query_passcode = request.query_params.get("passcode")
+    if query_email and query_passcode:
+        if not verify_otp(query_email, query_passcode, settings):
+            print("AUTH DEBUG: Query passcode invalid or expired for email")
+            raise HTTPException(status_code=403, detail="Invalid or expired OTP")
+        print(f"AUTH DEBUG: Authorized by query OTP, email: {query_email.strip()}")
+        return query_email.strip()
+
     if token and settings.auth0_domain and settings.auth0_audience:
         print("AUTH DEBUG: Bearer token present, attempting Auth0 JWT validation")
         try:

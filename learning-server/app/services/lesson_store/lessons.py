@@ -61,7 +61,7 @@ class LessonStoreLessons:
                 if lesson_id:
                     full = self.get_sanitized(account, lesson_id)
                     if full:
-                        payload["content"] = full.get("content")
+                        payload["summary"] = full.get("summary") or full.get("content")
                         if "subject" in full:
                             payload["subject"] = full.get("subject")
                         if "level" in full:
@@ -84,7 +84,7 @@ class LessonStoreLessons:
         email: str,
         title: str,
         status: str,
-        content: str | None,
+        summary: str | None,
         subject: str | None = None,
         level: str | None = None,
         requires_login: bool | None = None,
@@ -113,7 +113,7 @@ class LessonStoreLessons:
                 subject=subject,
                 level=level,
                 requires_login=requires_login,
-                content=content,
+                summary=summary,
                 exercise_config=exercise_config,
                 created_at=now,
                 updated_at=now,
@@ -197,7 +197,7 @@ class LessonStoreLessons:
         lesson_id: str,
         title: str | None,
         status: str | None,
-        content: str | None,
+        summary: str | None,
         subject: str | None,
         level: str | None,
         requires_login: bool | None,
@@ -213,8 +213,9 @@ class LessonStoreLessons:
                 lesson["title"] = title
             if status is not None:
                 lesson["status"] = status
-            if content is not None:
-                lesson["content"] = content
+            if summary is not None:
+                lesson["summary"] = summary
+                lesson.pop("content", None)
             if subject is not None:
                 lesson["subject"] = subject
             if level is not None:
@@ -318,7 +319,7 @@ class LessonStoreLessons:
                 "id": new_id,
                 "title": title,
                 "status": "draft",
-                "content": lesson.get("content"),
+                "summary": lesson.get("summary") or lesson.get("content"),
                 "subject": subject,
                 "level": level,
                 "requires_login": requires_login,
