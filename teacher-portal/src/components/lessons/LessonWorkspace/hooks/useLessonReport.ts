@@ -111,6 +111,7 @@ export const useLessonReport = ({
         printSelections,
         includePrintScript: false,
         contentsByKey: previewMap,
+        useCardLayout: !isPublished,
       });
       if (!html) {
         return null;
@@ -123,6 +124,7 @@ export const useLessonReport = ({
       auth0Audience,
       contentDraft,
       getAccessTokenSilently,
+      isPublished,
       lesson,
       loadSection,
       printSelections,
@@ -150,6 +152,7 @@ export const useLessonReport = ({
         printSelections,
         includePrintScript: false,
         contentsByKey: previewMap,
+        useCardLayout: !isPublished,
       });
       if (!html) {
         setOpeningReport(false);

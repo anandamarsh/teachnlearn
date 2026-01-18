@@ -12,6 +12,7 @@ type BuildReportHtmlOptions = {
   printSelections: Record<string, boolean>;
   includePrintScript: boolean;
   contentsByKey?: Record<string, string>;
+  useCardLayout?: boolean;
 };
 
 const escapeHtml = (value: string) =>
@@ -30,13 +31,17 @@ export const buildReportHtml = ({
   printSelections,
   includePrintScript,
   contentsByKey,
+  useCardLayout,
 }: BuildReportHtmlOptions) => {
+  const shouldUseCardLayout = useCardLayout ?? true;
   const selectedSections = sections.filter(
     (section) => printSelections[section.key] ?? true
   );
   const summaryHtml = contentDraft
     ? `<p class="summary">${escapeHtml(contentDraft)}</p>`
     : "";
+  const logoSrc =
+    lesson.iconUrl?.trim() || `${window.location.origin}/logo.png`;
   const hasSections = selectedSections.length > 0;
   const footerHtml =
     "(C) TeachNLearn - Individualised Lessons for each child";
@@ -76,16 +81,17 @@ export const buildReportHtml = ({
           <title>${escapeHtml(titleDraft || lesson.title || "Lesson")}</title>
           <style>
             * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px; color: #1f2933; }
+            body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px 32px 72px; color: #1f2933; }
+            @page { margin: 24mm 18mm 18mm; }
             h1 { font-size: 24px; margin: 0 0 8px; }
             h2 { font-size: 18px; margin: 24px 0 8px; color: #1f63b5; }
             .summary { margin: 0; color: #4b5563; text-align: left; max-width: 720px; }
             .section-body {
               line-height: 1.6;
               border: none;
-              border-radius: 12px;
-              padding: 16px;
-              background: #fff;
+              border-radius: ${shouldUseCardLayout ? "12px" : "0"};
+              padding: ${shouldUseCardLayout ? "16px" : "0"};
+              background: ${shouldUseCardLayout ? "#fff" : "transparent"};
             }
             .section-block {
               position: relative;
@@ -134,20 +140,22 @@ export const buildReportHtml = ({
             .logo { max-width: 160px; margin: 0; }
             .page-footer {
               position: fixed;
-              bottom: 16px;
+              bottom: 0;
               left: 0;
               right: 0;
               text-align: center;
               font-size: 12px;
               color: #6b7280;
+              line-height: 1.2;
+              padding-bottom: 6px;
             }
           </style>
         </head>
         <body>
           <section class="cover-page">
-            <img class="logo cover-logo" src="${
-              window.location.origin
-            }/logo.png" alt="Logo" />
+            <img class="logo cover-logo" src="${escapeHtml(
+              logoSrc
+            )}" alt="Lesson icon" />
             <div class="cover-title-wrap">
               <h1 class="cover-title">${escapeHtml(
                 titleDraft || lesson.title || "Lesson"
