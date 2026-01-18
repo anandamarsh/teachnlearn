@@ -1,5 +1,7 @@
 import json
 from io import BytesIO
+import base64
+import binascii
 
 from botocore.exceptions import ClientError
 from PIL import Image
@@ -45,9 +47,11 @@ def register_lesson_routes(
     async def get_lesson(request: Request) -> JSONResponse:
         email = get_request_email(request, None, settings)
         if not email:
+            print("ICON UPLOAD: missing email")
             return json_error("email is required", 400)
         lesson_id = request.path_params.get("lesson_id", "").strip()
         if not lesson_id:
+            print("ICON UPLOAD: missing lesson_id")
             return json_error("lesson_id is required", 400)
         try:
             lesson = store.get(email, lesson_id)
@@ -233,27 +237,65 @@ def register_lesson_routes(
         lesson_id = request.path_params.get("lesson_id", "").strip()
         if not lesson_id:
             return json_error("lesson_id is required", 400)
-        form = await request.form()
-        upload = form.get("file")
-        if not isinstance(upload, UploadFile):
-            return json_error("file is required", 400)
-        payload = await upload.read()
+        payload: bytes | None = None
+        content_type: str | None = None
+        extension: str | None = None
+
+        if request.headers.get("content-type", "").startswith("application/json"):
+            try:
+                body = await request.json()
+            except json.JSONDecodeError:
+                print("ICON UPLOAD: invalid JSON body")
+                return json_error("invalid JSON body", 400)
+            if not isinstance(body, dict):
+                print("ICON UPLOAD: JSON body is not an object")
+                return json_error("invalid JSON body", 400)
+            file_base64 = str(body.get("fileBase64") or "").strip()
+            if not file_base64:
+                print("ICON UPLOAD: missing fileBase64")
+                return json_error("fileBase64 is required", 400)
+            if "," in file_base64 and file_base64.startswith("data:"):
+                header, b64_data = file_base64.split(",", 1)
+                if ";base64" in header:
+                    content_type = header[5:].split(";", 1)[0].strip() or None
+                file_base64 = b64_data
+            try:
+                payload = base64.b64decode(file_base64, validate=True)
+            except (binascii.Error, ValueError):
+                print("ICON UPLOAD: invalid base64 payload")
+                return json_error("fileBase64 must be valid base64", 400)
+        else:
+            form = await request.form()
+            upload = form.get("file")
+            if not isinstance(upload, UploadFile):
+                print("ICON UPLOAD: multipart missing file")
+                return json_error("file is required", 400)
+            payload = await upload.read()
+            content_type = upload.content_type or None
+
         if not payload:
+            print("ICON UPLOAD: empty file payload")
             return json_error("file is empty", 400)
+
         try:
             image = Image.open(BytesIO(payload))
             image.load()
         except OSError:
+            print("ICON UPLOAD: invalid image format")
             return json_error("icon must be a png, jpeg, or webp image", 400)
         if image.width != image.height:
+            print("ICON UPLOAD: image not square")
             return json_error("icon must be square", 400)
         if image.width < 64 or image.height < 64:
+            print("ICON UPLOAD: image too small")
             return json_error("icon must be at least 64x64", 400)
         format_name = (image.format or "").lower()
         if format_name not in {"png", "jpeg", "webp"}:
+            print("ICON UPLOAD: unsupported image format")
             return json_error("icon must be a png, jpeg, or webp image", 400)
         extension = "jpg" if format_name == "jpeg" else format_name
-        content_type = upload.content_type or f"image/{format_name}"
+        if not content_type:
+            content_type = f"image/{format_name}"
         try:
             key = store.put_icon(email, lesson_id, payload, content_type, extension)
             url = public_object_url(settings, key)

@@ -227,7 +227,7 @@ const LessonsList = ({
           {leftOpen ? <ChevronLeftRoundedIcon /> : <MenuRoundedIcon />}
         </IconButton>
       </Box>
-      <Box sx={{ flex: 1, overflowY: "auto", px: 0, pb: 0 }}>
+      <Box sx={{ flex: 1, overflowY: "auto", px: 0, pb: 8 }}>
         {loading ? (
           <Box display="flex" justifyContent="center" py={4}>
             <Box width="10rem">
