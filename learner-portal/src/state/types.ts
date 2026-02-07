@@ -28,7 +28,8 @@ export type ExerciseGeneratorMeta = {
 };
 
 export type ExerciseStep = {
-  step: string;
+  step_html: string;
+  step?: string;
   type: "fib" | "mcq";
   options?: string[];
   answer: string;
@@ -37,8 +38,11 @@ export type ExerciseStep = {
 export type ExerciseItem = {
   type: string;
   question_html: string;
+  original?: boolean;
+  diagram?: string;
   options?: string[];
   answer: string;
+  formula_html?: string;
   steps?: ExerciseStep[];
 };
 

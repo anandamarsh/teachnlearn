@@ -15,6 +15,22 @@ from .common import json_error
 def register_section_routes(
     mcp, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
 ) -> None:
+    def is_exercise_key(value: str) -> bool:
+        return "exercise" in value.lower()
+
+    def get_exercise_question_count(
+        email: str, lesson_id: str, section_key: str
+    ) -> int | None:
+        section = store.get_section(email, lesson_id, section_key)
+        if section is None:
+            return None
+        if store._section_base_key(section_key) != "exercises":
+            return 0
+        content = section.get("content")
+        if isinstance(content, list):
+            return len(content)
+        return 0
+
     @mcp.custom_route("/lesson/sections/list", methods=["GET"])
     async def list_configured_sections(request: Request) -> JSONResponse:
         email = get_request_email(request, None, settings)
@@ -54,6 +70,8 @@ def register_section_routes(
             return json_error("lesson_id is required", 400)
         if not section_key:
             return json_error("section_key is required", 400)
+        if is_exercise_key(section_key):
+            return json_error("exercise sections use /sections/exercises endpoints", 400)
         if not store.is_valid_section_key(section_key):
             return json_error("invalid section_key", 400)
         try:
@@ -75,6 +93,8 @@ def register_section_routes(
             return json_error("lesson_id is required", 400)
         if not section_key:
             return json_error("section_key is required", 400)
+        if is_exercise_key(section_key):
+            return json_error("exercise sections use /sections/exercises endpoints", 400)
         if not store.is_valid_section_key(section_key):
             return json_error("invalid section_key", 400)
         try:
@@ -84,87 +104,6 @@ def register_section_routes(
         if meta is None:
             return json_error("section meta not found", 404)
         return JSONResponse(meta)
-
-    @mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["PUT"])
-    async def update_section(request: Request) -> JSONResponse:
-        email = get_request_email(request, None, settings)
-        if not email:
-            return json_error("email is required", 400)
-        lesson_id = request.path_params.get("lesson_id", "").strip()
-        section_key = request.path_params.get("section_key", "").strip()
-        if not lesson_id:
-            return json_error("lesson_id is required", 400)
-        if not section_key:
-            return json_error("section_key is required", 400)
-        if not store.is_valid_section_key(section_key):
-            return json_error("invalid section_key", 400)
-        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
-            request, settings
-        ):
-            return json_error("lesson is protected", 403)
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError:
-            return json_error("invalid JSON body", 400)
-        if store._section_base_key(section_key) == "exercises":
-            content_type = str(payload.get("contentType") or payload.get("type") or "json")
-            if content_type.lower() in ("js", "javascript"):
-                code = payload.get("code")
-                if code is None:
-                    code = payload.get("content")
-                if code is None:
-                    code = payload.get("contentHtml")
-                if not code:
-                    return json_error("code is required", 400)
-                try:
-                    meta = store.put_exercise_generator(email, lesson_id, str(code))
-                except (RuntimeError, ClientError) as exc:
-                    return json_error(str(exc), 500)
-                if meta is None:
-                    return json_error("lesson not found", 404)
-                if events:
-                        events.publish(
-                            email,
-                            {
-                                "type": "exercise.generator.updated",
-                                "lessonId": lesson_id,
-                                "updatedAt": meta.get("updatedAt"),
-                            },
-                        )
-                return JSONResponse({"generator": meta})
-            content_json = payload.get("content")
-            if content_json is None:
-                content_json = payload.get("contentJson")
-            if content_json is None:
-                content_html = payload.get("contentHtml")
-                if content_html is None:
-                    return json_error("content is required for exercises", 400)
-            else:
-                if not isinstance(content_json, list):
-                    return json_error("content must be a JSON array", 400)
-                content_html = json.dumps(content_json, indent=2)
-        else:
-            content_html = payload.get("contentHtml")
-            if content_html is None:
-                return json_error("contentHtml is required", 400)
-        try:
-            section = store.put_section(
-                email, lesson_id, section_key, str(content_html), allow_create=False
-            )
-        except (RuntimeError, ClientError) as exc:
-            return json_error(str(exc), 500)
-        if section is None:
-            return json_error("section not found", 404)
-        if events:
-            events.publish(
-                email,
-                {
-                    "type": "section.updated",
-                    "lessonId": lesson_id,
-                    "sectionKey": section_key,
-                },
-            )
-        return JSONResponse(section)
 
     @mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["POST"])
     async def create_section(request: Request) -> JSONResponse:
@@ -187,59 +126,20 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        if store._section_base_key(section_key) == "exercises":
-            content_type = str(payload.get("contentType") or payload.get("type") or "json")
-            if content_type.lower() in ("js", "javascript"):
-                code = payload.get("code")
-                if code is None:
-                    code = payload.get("content")
-                if code is None:
-                    code = payload.get("contentHtml")
-                if not code:
-                    return json_error("code is required", 400)
-                try:
-                    meta = store.put_exercise_generator(email, lesson_id, str(code))
-                except (RuntimeError, ClientError) as exc:
-                    return json_error(str(exc), 500)
-                if meta is None:
-                    return json_error("lesson not found", 404)
-                if events:
-                        events.publish(
-                            email,
-                            {
-                                "type": "exercise.generator.updated",
-                                "lessonId": lesson_id,
-                                "updatedAt": meta.get("updatedAt"),
-                            },
-                        )
-                return JSONResponse({"generator": meta}, status_code=201)
-            content_json = payload.get("content")
-            if content_json is None:
-                content_json = payload.get("contentJson")
-            if content_json is not None:
-                if not isinstance(content_json, list):
-                    return json_error("content must be a JSON array", 400)
-                content_html = json.dumps(content_json, indent=2)
-            else:
-                content_html = payload.get("contentHtml") or "[]"
-        else:
-            content_html = payload.get("contentHtml")
-            if content_html is None:
-                content_html = ""
-        create_new = bool(payload.get("createNew"))
+        content_html = payload.get("contentHtml")
+        if content_html is None:
+            content_html = ""
         try:
-            if create_new:
-                base_key = store._section_base_key(section_key)
-                section = store.create_section_instance(
-                    email, lesson_id, base_key, str(content_html)
-                )
-            else:
-                section = store.put_section(
-                    email, lesson_id, section_key, str(content_html), allow_create=True
-                )
+            section = store.put_section(
+                email, lesson_id, section_key, str(content_html), allow_create=True
+            )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         if section is None:
+            return json_error("section not found", 404)
+        actual_key = section.get("key", section_key)
+        question_count = get_exercise_question_count(email, lesson_id, actual_key)
+        if question_count is None:
             return json_error("section not found", 404)
         if events:
             events.publish(
@@ -247,10 +147,12 @@ def register_section_routes(
                 {
                     "type": "section.created",
                     "lessonId": lesson_id,
-                    "sectionKey": section.get("key", section_key),
+                    "sectionKey": actual_key,
                 },
             )
-        return JSONResponse(section, status_code=201)
+        return JSONResponse(
+            {"sectionKey": actual_key, "noOfQuestions": question_count}, status_code=200
+        )
 
     @mcp.custom_route("/lesson/id/{lesson_id}/sections/{section_key}", methods=["DELETE"])
     async def delete_section(request: Request) -> JSONResponse:
@@ -286,12 +188,9 @@ def register_section_routes(
             )
         return JSONResponse({"deleted": True, "sectionKey": section_key})
 
-    @mcp.custom_route("/lesson/id/{lesson_id}/sections/exercises/append", methods=["POST"])
-    async def append_exercises(request: Request) -> JSONResponse:
-        """Append batch items to the exercises JSON section.
-
-        Body: {"items": [ ... ]}
-        """
+    @mcp.custom_route("/lesson/id/{lesson_id}/sections/exercises", methods=["POST"])
+    async def create_exercise_section(request: Request) -> JSONResponse:
+        """Create a new exercises section and store the provided items."""
         email = get_request_email(request, None, settings)
         if not email:
             return json_error("email is required", 400)
@@ -306,15 +205,23 @@ def register_section_routes(
             payload = await request.json()
         except json.JSONDecodeError:
             return json_error("invalid JSON body", 400)
-        items = payload.get("items")
+        items = payload
+        if isinstance(payload, dict):
+            items = payload.get("items")
         if not isinstance(items, list):
             return json_error("items must be a JSON array", 400)
-        section_key = payload.get("sectionKey") or "exercises"
         try:
-            result = store.append_exercises(email, lesson_id, items, section_key=section_key)
-        except (RuntimeError, ClientError, json.JSONDecodeError, ValueError) as exc:
+            content_html = json.dumps(items, indent=2)
+            section = store.create_section_instance(
+                email, lesson_id, "exercises", content_html
+            )
+        except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
-        if result is None:
+        if section is None:
+            return json_error("section not found", 404)
+        section_key = section.get("key", "exercises")
+        question_count = get_exercise_question_count(email, lesson_id, section_key)
+        if question_count is None:
             return json_error("section not found", 404)
         if events:
             events.publish(
@@ -325,4 +232,131 @@ def register_section_routes(
                     "sectionKey": section_key,
                 },
             )
-        return JSONResponse(result)
+        return JSONResponse({"sectionKey": section_key, "noOfQuestions": question_count})
+
+    def normalize_exercise_key(exercise_id: str) -> str:
+        candidate = exercise_id.strip()
+        lowered = candidate.lower()
+        if lowered.startswith("exercises"):
+            return candidate
+        if lowered.startswith("exercise-"):
+            suffix = candidate.split("-", 1)[1]
+            if suffix.isdigit():
+                index = int(suffix)
+                return "exercises" if index == 1 else f"exercises-{index}"
+        if lowered == "exercise":
+            return "exercises"
+        return candidate
+
+    @mcp.custom_route(
+        "/lesson/id/{lesson_id}/sections/exercises/{exercise_id}", methods=["GET"]
+    )
+    async def get_exercise_section(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        exercise_id = request.path_params.get("exercise_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        if not exercise_id:
+            return json_error("exercise_id is required", 400)
+        section_key = normalize_exercise_key(exercise_id)
+        if not store.is_valid_section_key(section_key):
+            return json_error("invalid exercise_id", 400)
+        try:
+            section = store.get_section(email, lesson_id, section_key)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if section is None:
+            return json_error("section not found", 404)
+        return JSONResponse(section)
+
+    @mcp.custom_route(
+        "/lesson/id/{lesson_id}/sections/exercises/{exercise_id}", methods=["POST"]
+    )
+    async def append_exercise_questions(request: Request) -> JSONResponse:
+        """Append items to an exercises section."""
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        exercise_id = request.path_params.get("exercise_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        if not exercise_id:
+            return json_error("exercise_id is required", 400)
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            return json_error("lesson is protected", 403)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            return json_error("invalid JSON body", 400)
+        items = payload
+        if isinstance(payload, dict):
+            items = payload.get("items")
+        if not isinstance(items, list):
+            return json_error("items must be a JSON array", 400)
+        section_key = normalize_exercise_key(exercise_id)
+        if not store.is_valid_section_key(section_key):
+            return json_error("invalid exercise_id", 400)
+        try:
+            result = store.append_exercises(
+                email, lesson_id, items, section_key=section_key
+            )
+        except (RuntimeError, ClientError, json.JSONDecodeError, ValueError) as exc:
+            return json_error(str(exc), 500)
+        if result is None:
+            return json_error("section not found", 404)
+        question_count = get_exercise_question_count(email, lesson_id, section_key)
+        if question_count is None:
+            return json_error("section not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.updated",
+                    "lessonId": lesson_id,
+                    "sectionKey": section_key,
+                },
+            )
+        return JSONResponse({"sectionKey": section_key, "noOfQuestions": question_count})
+
+    @mcp.custom_route(
+        "/lesson/id/{lesson_id}/sections/exercises/{exercise_id}", methods=["DELETE"]
+    )
+    async def delete_exercise_section(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        exercise_id = request.path_params.get("exercise_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        if not exercise_id:
+            return json_error("exercise_id is required", 400)
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            return json_error("lesson is protected", 403)
+        section_key = normalize_exercise_key(exercise_id)
+        if not store.is_valid_section_key(section_key):
+            return json_error("invalid exercise_id", 400)
+        try:
+            removed = store.delete_section(email, lesson_id, section_key)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if not removed:
+            return json_error("section not found", 404)
+        if events:
+            events.publish(
+                email,
+                {
+                    "type": "section.deleted",
+                    "lessonId": lesson_id,
+                    "sectionKey": section_key,
+                },
+            )
+        return JSONResponse({"deleted": True, "sectionKey": section_key})

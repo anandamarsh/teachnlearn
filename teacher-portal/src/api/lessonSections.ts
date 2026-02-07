@@ -63,7 +63,7 @@ export const saveSectionContent = async (
   }
 ) => {
   const response = await fetch(endpoint, {
-    method: "PUT",
+    method: "POST",
     headers,
     body: JSON.stringify(payload),
   });
@@ -82,7 +82,7 @@ export const saveSectionContent = async (
 export const createSectionContent = async (
   endpoint: string,
   headers: Record<string, string>,
-  payload: { contentHtml?: string; content?: unknown; createNew?: boolean }
+  payload: { contentHtml?: string; content?: unknown }
 ) => {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -93,7 +93,53 @@ export const createSectionContent = async (
   if (!response.ok) {
     throw new Error(extractError(data, "Failed to create section"));
   }
-  return data as { key: string; contentHtml?: string; content?: unknown };
+  return data as { key?: string; sectionKey?: string };
+};
+
+export const fetchExerciseSection = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, { headers });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to load exercise"));
+  }
+  return data as { key: string; content?: unknown };
+};
+
+export const createExerciseSection = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  items: unknown[]
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(items),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to create exercise"));
+  }
+  return data as { sectionKey: string; noOfQuestions: number };
+};
+
+export const appendExerciseQuestions = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  items: unknown[]
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(items),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to append exercises"));
+  }
+  return data as { sectionKey: string; noOfQuestions: number };
 };
 
 export const deleteSectionContent = async (
@@ -107,6 +153,21 @@ export const deleteSectionContent = async (
   const data = await parseJson(response);
   if (!response.ok) {
     throw new Error(extractError(data, "Failed to delete section"));
+  }
+  return data as { deleted?: boolean; sectionKey?: string };
+};
+
+export const deleteExerciseSection = async (
+  endpoint: string,
+  headers: Record<string, string>
+) => {
+  const response = await fetch(endpoint, {
+    method: "DELETE",
+    headers,
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to delete exercise"));
   }
   return data as { deleted?: boolean; sectionKey?: string };
 };

@@ -1,0 +1,583 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TeachnLearn Lesson API",
+    "description": "TeachnLearn HTTP endpoints for lessons, sections, reports, catalog, and teacher profiles.",
+    "version": "v1.0.0"
+  },
+  "servers": [
+    {
+      "x-url": "https://api.teacher.sitnstudy.com",
+      "url": "https://tunnel.sessionclarity.com"
+    }
+  ],
+  "paths": {
+    "/lesson": {
+      "get": {
+        "operationId": "LessonList",
+        "description": "List lessons for the authenticated user.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            }
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of lessons"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/lesson/{status}": {
+      "get": {
+        "operationId": "LessonListByStatus",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of lessons"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/lesson/id/{lesson_id}": {
+      "get": {
+        "operationId": "GetLesson",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lesson detail"
+          },
+          "404": {
+            "description": "Lesson not found"
+          }
+        }
+      }
+    },
+    "/lesson/sections/list": {
+      "get": {
+        "operationId": "ListLessonSections",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available sections"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          }
+        ]
+      }
+    },
+    "/lesson/id/{lesson_id}/sections/exercises": {
+      "post": {
+        "operationId": "CreateExerciseSection",
+        "description": "Create a new exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exercise section created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sectionKey": {
+                      "type": "string"
+                    },
+                    "noOfQuestions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sectionKey",
+                    "noOfQuestions"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/lesson/id/{lesson_id}/sections/exercises/{exercise_id}": {
+      "get": {
+        "operationId": "GetExerciseSection",
+        "description": "Get a specific exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exercise section detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "post": {
+        "operationId": "AppendExerciseQuestions",
+        "description": "Append questions to an exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exercises appended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sectionKey": {
+                      "type": "string"
+                    },
+                    "noOfQuestions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sectionKey",
+                    "noOfQuestions"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "DeleteExerciseSection",
+        "description": "Delete an exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exercise section deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "sectionKey": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "sectionKey"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/teacher/profile": {
+      "get": {
+        "operationId": "GetTeacherProfile",
+        "description": "Get the authenticated teacher profile.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email (required when using OTP/passcode auth)."
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode (OTP) for the teacher email."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teacher profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeacherProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Email is required"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TeacherProfile": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "school": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Send as: Authorization: Bearer <API_KEY> or Auth0 JWT"
+      }
+    }
+  }
+}

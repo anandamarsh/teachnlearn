@@ -82,7 +82,12 @@
                     "type": "string"
                   }
                 },
-                "required": ["title", "summary", "subject", "level"]
+                "required": [
+                  "title",
+                  "summary",
+                  "subject",
+                  "level"
+                ]
               }
             }
           }
@@ -159,7 +164,12 @@
                         "type": "object"
                       }
                     },
-                    "required": ["title", "summary", "subject", "level"]
+                    "required": [
+                      "title",
+                      "summary",
+                      "subject",
+                      "level"
+                    ]
                   },
                   "sections": {
                     "type": "object",
@@ -173,7 +183,9 @@
                             "minLength": 1
                           }
                         },
-                        "required": ["contentHtml"]
+                        "required": [
+                          "contentHtml"
+                        ]
                       },
                       "concepts": {
                         "type": "object",
@@ -183,7 +195,9 @@
                             "minLength": 1
                           }
                         },
-                        "required": ["contentHtml"]
+                        "required": [
+                          "contentHtml"
+                        ]
                       },
                       "background": {
                         "type": "object",
@@ -193,7 +207,9 @@
                             "minLength": 1
                           }
                         },
-                        "required": ["contentHtml"]
+                        "required": [
+                          "contentHtml"
+                        ]
                       },
                       "lesson": {
                         "type": "object",
@@ -203,7 +219,9 @@
                             "minLength": 1
                           }
                         },
-                        "required": ["contentHtml"]
+                        "required": [
+                          "contentHtml"
+                        ]
                       }
                     },
                     "required": [
@@ -217,7 +235,9 @@
                     "type": "object"
                   }
                 },
-                "required": ["lesson"]
+                "required": [
+                  "lesson"
+                ]
               }
             }
           }
@@ -764,91 +784,6 @@
           }
         }
       },
-      "put": {
-        "operationId": "UpdateSection",
-        "security": [
-          {
-            "apiKeyAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "lesson_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "section_key",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "email"
-            },
-            "description": "Teacher email"
-          },
-          {
-            "name": "passcode",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "One-time passcode from the Teacher Portal"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "contentHtml": {
-                    "type": "string"
-                  },
-                  "content": {},
-                  "contentJson": {
-                    "type": "array",
-                    "items": {}
-                  },
-                  "contentType": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string"
-                  },
-                  "createNew": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Section updated"
-          },
-          "404": {
-            "description": "Not found"
-          }
-        }
-      },
       "post": {
         "operationId": "CreateSection",
         "security": [
@@ -902,23 +837,6 @@
                 "properties": {
                   "contentHtml": {
                     "type": "string"
-                  },
-                  "content": {},
-                  "contentJson": {
-                    "type": "array",
-                    "items": {}
-                  },
-                  "contentType": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string"
-                  },
-                  "createNew": {
-                    "type": "boolean"
                   }
                 }
               }
@@ -926,8 +844,27 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Section created"
+          "200": {
+            "description": "Section created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sectionKey": {
+                      "type": "string"
+                    },
+                    "noOfQuestions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sectionKey",
+                    "noOfQuestions"
+                  ]
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found"
@@ -1043,75 +980,6 @@
         }
       }
     },
-    "/lesson/id/{lesson_id}/sections/exercises/append": {
-      "post": {
-        "operationId": "AppendExercises",
-        "security": [
-          {
-            "apiKeyAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "lesson_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "email"
-            },
-            "description": "Teacher email"
-          },
-          {
-            "name": "passcode",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "One-time passcode from the Teacher Portal"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "items": {
-                    "type": "array",
-                    "items": {
-                      "type": "object"
-                    }
-                  },
-                  "sectionKey": {
-                    "type": "string"
-                  }
-                },
-                "required": ["items"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Exercises appended"
-          },
-          "404": {
-            "description": "Not found"
-          }
-        }
-      }
-    },
     "/lesson/id/{lesson_id}/report": {
       "get": {
         "operationId": "GetLessonReport",
@@ -1205,7 +1073,9 @@
                     "type": "string"
                   }
                 },
-                "required": ["html"]
+                "required": [
+                  "html"
+                ]
               }
             }
           }
@@ -1270,6 +1140,341 @@
         "responses": {
           "200": {
             "description": "Service health"
+          }
+        }
+      }
+    },
+    "/lesson/id/{lesson_id}/sections/exercises": {
+      "post": {
+        "operationId": "CreateExerciseSection",
+        "description": "Create a new exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exercise section created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sectionKey": {
+                      "type": "string"
+                    },
+                    "noOfQuestions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sectionKey",
+                    "noOfQuestions"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/lesson/id/{lesson_id}/sections/exercises/{exercise_id}": {
+      "get": {
+        "operationId": "GetExerciseSection",
+        "description": "Get a specific exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exercise section detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "post": {
+        "operationId": "AppendExerciseQuestions",
+        "description": "Append questions to an exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exercises appended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sectionKey": {
+                      "type": "string"
+                    },
+                    "noOfQuestions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sectionKey",
+                    "noOfQuestions"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "DeleteExerciseSection",
+        "description": "Delete an exercises section.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Teacher email"
+          },
+          {
+            "name": "passcode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One-time passcode from the Teacher Portal"
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exercise section deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "sectionKey": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deleted",
+                    "sectionKey"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
           }
         }
       }

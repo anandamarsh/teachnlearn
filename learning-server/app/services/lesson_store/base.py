@@ -50,8 +50,10 @@ class LessonStoreBase:
 
     def _section_filename(self, section_key: str) -> str:
         base_key = self._section_base_key(section_key)
-        extension = "json" if base_key == "exercises" else "html"
-        return f"{section_key}.{extension}"
+        if base_key == "exercises":
+            normalized = section_key.replace("exercises", "exercise", 1)
+            return f"{normalized}.json"
+        return f"{section_key}.html"
 
     def _section_content_type(self, section_key: str) -> str:
         return (

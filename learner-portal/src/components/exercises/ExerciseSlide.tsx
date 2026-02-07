@@ -301,7 +301,7 @@ const ExerciseSlide = ({
           <span className={`step-tick ${tickState}`} aria-hidden="true" />
           <span
             className="exercise-step-question"
-            dangerouslySetInnerHTML={{ __html: step.step || "" }}
+            dangerouslySetInnerHTML={{ __html: step.step_html || step.step || "" }}
           />
           {showAnswer ? (
             <span className="exercise-step-answer-inline">{answerValue}</span>
@@ -470,10 +470,24 @@ const ExerciseSlide = ({
   return (
     <Box className="exercise-slide" data-slide-index={slideIndex}>
       <Box className="exercise-slide-content">
-        <Box
-          className={`exercise-question${isActive ? " on-screen" : ""}`}
-          dangerouslySetInnerHTML={{ __html: exercise.question_html || "" }}
-        />
+        <Box className="exercise-question-wrap">
+          {exercise.original ? (
+            <span className="exercise-original-badge" aria-label="Original">
+              ★ Original
+            </span>
+          ) : null}
+          <Box
+            className={`exercise-question${isActive ? " on-screen" : ""}`}
+            dangerouslySetInnerHTML={{ __html: exercise.question_html || "" }}
+          />
+        </Box>
+        {exercise.diagram ? (
+          <Box
+            className="exercise-diagram"
+            sx={{ mt: "0.75rem" }}
+            dangerouslySetInnerHTML={{ __html: exercise.diagram }}
+          />
+        ) : null}
         {showSteps ? (
           <Box className="exercise-steps">
             {!stepsComplete ? (
@@ -491,6 +505,19 @@ const ExerciseSlide = ({
                   idx === list.length - 1
                 )
               )}
+            {stepsComplete && !guide.completed && exercise.formula_html ? (
+              <Box className="exercise-step formula-step">
+                <Box className="exercise-step-line">
+                  <span className="step-tick correct" aria-hidden="true" />
+                  <span
+                    className="exercise-step-question"
+                    dangerouslySetInnerHTML={{
+                      __html: exercise.formula_html || "",
+                    }}
+                  />
+                </Box>
+              </Box>
+            ) : null}
           </Box>
         ) : null}
         {showMainInput ? (

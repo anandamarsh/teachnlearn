@@ -54,12 +54,17 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         const baseKey = getSectionBaseKey(key);
         return baseKey !== "references" && baseKey !== "samples";
       });
-      const baseKeys = getSectionsAfterBackground(filtered).filter(
-        (key) => getSectionBaseKey(key) !== "exercises"
-      );
+      const orderedAfterBackground = getSectionsAfterBackground(filtered);
+      const useGeneratorTabs =
+        lesson.exerciseMode === "generator" || Boolean(lesson.exerciseGenerator);
+      const baseKeys = useGeneratorTabs
+        ? orderedAfterBackground.filter(
+            (key) => getSectionBaseKey(key) !== "exercises"
+          )
+        : orderedAfterBackground;
       const exercisesCount = lesson.exerciseConfig?.exercisesCount ?? 0;
       const exerciseTabs =
-        exercisesCount > 0
+        useGeneratorTabs && exercisesCount > 0
           ? Array.from({ length: exercisesCount }, (_, idx) => `exercise-${idx + 1}`)
           : [];
       const lessonIndex = baseKeys.findIndex(
@@ -106,33 +111,19 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
       }
       setLoading((prev) => ({ ...prev, [sectionKey]: true }));
       try {
+        if (isExercisesSection(sectionKey)) {
+          const payload = await fetchWithAuth(
+            `/catalog/teacher/${lesson.teacher}/lesson/${lesson.id}/sections/exercises/${sectionKey}`
+          );
+          const items = Array.isArray(payload.content)
+            ? (payload.content as ExerciseItem[])
+            : [];
+          setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
+          return;
+        }
         const payload = await fetchWithAuth(
           `/catalog/teacher/${lesson.teacher}/lesson/${lesson.id}/sections/${sectionKey}`
         );
-        if (isExercisesSection(sectionKey)) {
-          if (Array.isArray(payload.content)) {
-            const items = payload.content as ExerciseItem[];
-            setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
-            return;
-          }
-          if (
-            payload.content &&
-            typeof payload.content === "object" &&
-            Array.isArray((payload.content as { content?: unknown }).content)
-          ) {
-            const items = (payload.content as { content: ExerciseItem[] }).content;
-            setExercisesBySection((prev) => ({ ...prev, [sectionKey]: items }));
-            return;
-          }
-          const rawExercises = payload.contentHtml || "[]";
-          const parsed = JSON.parse(rawExercises);
-          const items = Array.isArray(parsed) ? (parsed as ExerciseItem[]) : [];
-          setExercisesBySection((prev) => ({
-            ...prev,
-            [sectionKey]: items,
-          }));
-          return;
-        }
         setSectionHtml((prev) => ({ ...prev, [sectionKey]: payload.contentHtml || "" }));
       } finally {
         setLoading((prev) => ({ ...prev, [sectionKey]: false }));

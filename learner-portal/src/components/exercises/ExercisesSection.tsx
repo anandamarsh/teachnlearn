@@ -273,13 +273,10 @@ self.onmessage = async (event) => {
         generatorUpdatedAt && String(generatorUpdatedAt).trim()
           ? `?ts=${encodeURIComponent(String(generatorUpdatedAt))}`
           : "";
-      const payload = await fetchWithAuth(
-        `/catalog/teacher/${lessonTeacher}/lesson/${lessonId}/sections/exercises${cacheBust}`
+      const source = await fetchWithAuth(
+        `/catalog/teacher/${lessonTeacher}/lesson/${lessonId}/exercise/generator${cacheBust}`,
+        { responseType: "text" }
       );
-      const source =
-        payload && typeof payload.contentHtml === "string"
-          ? payload.contentHtml
-          : "";
       if (!source.trim()) {
         throw new Error("Exercise generator not available");
       }

@@ -222,7 +222,7 @@ const SectionsList = ({
                   {formatSectionLabel(section.key)}
                 </Typography>
               </Box>
-              {isExerciseSection ? (
+              {isExerciseSection && exerciseMode === "generator" ? (
                 <Box
                   sx={{
                     display: "flex",

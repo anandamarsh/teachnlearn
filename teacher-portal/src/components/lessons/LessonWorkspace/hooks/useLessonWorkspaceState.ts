@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Lesson } from "../../../../state/lessonTypes";
 import { buildAuthHeaders } from "../../../../auth/buildAuthHeaders";
 import { deleteLessonReport } from "../../../../api/lessons";
-import { fetchSectionContent } from "../../../../api/lessonSections";
 import { useLessonSections } from "../../../../hooks/useLessonSections";
 import type { GetAccessTokenSilently } from "../../../../auth/buildAuthHeaders";
 import { useLessonReport } from "./useLessonReport";
@@ -141,9 +140,13 @@ export const useLessonWorkspaceState = ({
 
   useEffect(() => {
     let cancelled = false;
-    if (!lesson || !apiBaseUrl || !isAuthenticated) {
+    const shouldLoadGenerator = Boolean(
+      lesson?.exerciseMode === "generator" && lesson?.exerciseGenerator
+    );
+    if (!lesson || !apiBaseUrl || !isAuthenticated || !shouldLoadGenerator) {
       setExerciseGeneratorLoaded(false);
       setExerciseGeneratorSource("");
+      setExerciseGeneratorLoading(false);
       return;
     }
     const load = async () => {
@@ -153,11 +156,20 @@ export const useLessonWorkspaceState = ({
           getAccessTokenSilently,
           auth0Audience
         );
-        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/sections/exercises`;
-        const data = await fetchSectionContent(endpoint, headers);
+        const endpoint = `${apiBaseUrl}/lesson/id/${lesson.id}/exercise/generator`;
+        const response = await fetch(endpoint, { headers });
+        if (response.status === 404) {
+          if (!cancelled) {
+            setExerciseGeneratorSource("");
+            setExerciseGeneratorLoaded(true);
+          }
+          return;
+        }
+        if (!response.ok) {
+          throw new Error("Failed to load generator");
+        }
+        const source = await response.text();
         if (!cancelled) {
-          const source =
-            typeof data.contentHtml === "string" ? data.contentHtml : "";
           setExerciseGeneratorSource(source);
           setExerciseGeneratorLoaded(true);
         }
@@ -167,12 +179,7 @@ export const useLessonWorkspaceState = ({
         }
         const message =
           err instanceof Error ? err.message : "Failed to load generator";
-        if (message.toLowerCase().includes("not found")) {
-          setExerciseGeneratorSource("");
-          setExerciseGeneratorLoaded(true);
-        } else {
-          onNotify(message, "error");
-        }
+        onNotify(message, "error");
       } finally {
         if (!cancelled) {
           setExerciseGeneratorLoading(false);

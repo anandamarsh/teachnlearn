@@ -7,6 +7,10 @@ import {
   createSectionContent,
   deleteSectionContent,
   saveSectionContent,
+  fetchExerciseSection,
+  createExerciseSection,
+  appendExerciseQuestions,
+  deleteExerciseSection,
 } from "../api/lessonSections";
 import { useLessonSectionsSocket } from "./useLessonSectionsSocket";
 
@@ -197,18 +201,18 @@ export const useLessonSections = ({
       setError("");
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-        const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        if (isExerciseSection(key) && typeof data.contentHtml === "string") {
+        if (isExerciseSection(key)) {
+          const data = await fetchExerciseSection(
+            `${baseEndpoint}/exercises/${key}`,
+            headers
+          );
+          const content = Array.isArray(data.content) ? data.content : [];
           setContents((prev) => ({
             ...prev,
-            [key]: "[]",
-          }));
-        } else if (isExerciseSection(key) && Array.isArray(data.content)) {
-          setContents((prev) => ({
-            ...prev,
-            [key]: JSON.stringify(data.content, null, 2),
+            [key]: JSON.stringify(content, null, 2),
           }));
         } else {
+          const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
           setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
         }
         loadedKeysRef.current.add(key);
@@ -236,18 +240,18 @@ export const useLessonSections = ({
       setError("");
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-        const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
-        if (isExerciseSection(key) && typeof data.contentHtml === "string") {
+        if (isExerciseSection(key)) {
+          const data = await fetchExerciseSection(
+            `${baseEndpoint}/exercises/${key}`,
+            headers
+          );
+          const content = Array.isArray(data.content) ? data.content : [];
           setContents((prev) => ({
             ...prev,
-            [key]: "[]",
-          }));
-        } else if (isExerciseSection(key) && Array.isArray(data.content)) {
-          setContents((prev) => ({
-            ...prev,
-            [key]: JSON.stringify(data.content, null, 2),
+            [key]: JSON.stringify(content, null, 2),
           }));
         } else {
+          const data = await fetchSectionContent(`${baseEndpoint}/${key}`, headers);
           setContents((prev) => ({ ...prev, [key]: data.contentHtml || "" }));
         }
       } catch (err) {
@@ -257,7 +261,7 @@ export const useLessonSections = ({
         setLoadingSection((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [auth0Audience, baseEndpoint, getAccessTokenSilently, isAuthenticated]
+    [auth0Audience, baseEndpoint, contents, getAccessTokenSilently, isAuthenticated]
   );
 
   const handleSectionUpdated = useCallback(
@@ -303,30 +307,59 @@ export const useLessonSections = ({
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
         let payload: { contentHtml?: string; content?: unknown; contentType?: string; code?: string };
         if (isExerciseSection(key) && options?.contentType === "js") {
-          payload = { contentType: "js", code: contentHtml };
+          if (!baseEndpoint) {
+            throw new Error("Missing section endpoint");
+          }
+          const generatorEndpoint = `${baseEndpoint.replace(/\/sections$/, "")}/exercise/generator`;
+          const response = await fetch(generatorEndpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ code: contentHtml }),
+          });
+          const data = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(
+              data && typeof data === "object" && "detail" in data
+                ? String((data as { detail?: string }).detail || "Failed to save generator")
+                : "Failed to save generator"
+            );
+          }
+          setContents((prev) => ({
+            ...prev,
+            [key]: "[]",
+          }));
         } else if (isExerciseSection(key)) {
+          let items: unknown[];
           try {
-            payload = { content: JSON.parse(contentHtml || "[]") };
+            const parsed = JSON.parse(contentHtml || "[]");
+            if (!Array.isArray(parsed)) {
+              throw new Error("Exercises payload must be a JSON array");
+            }
+            items = parsed;
           } catch (err) {
             const detail =
               err instanceof Error ? err.message : "Invalid JSON in exercises";
             throw new Error(detail);
           }
+          await appendExerciseQuestions(
+            `${baseEndpoint}/exercises/${key}`,
+            headers,
+            items
+          );
+          let existing: unknown = [];
+          try {
+            existing = contents[key] ? JSON.parse(contents[key]) : [];
+          } catch (err) {
+            existing = [];
+          }
+          const merged = Array.isArray(existing) ? existing.concat(items) : items;
+          setContents((prev) => ({
+            ...prev,
+            [key]: JSON.stringify(merged, null, 2),
+          }));
         } else {
           payload = { contentHtml };
-        }
-        const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, payload);
-        if (data.generator) {
-          setContents((prev) => ({
-            ...prev,
-            [key]: "[]",
-          }));
-        } else if (isExerciseSection(key) && Array.isArray(data.content)) {
-          setContents((prev) => ({
-            ...prev,
-            [key]: JSON.stringify(data.content, null, 2),
-          }));
-        } else {
+          const data = await saveSectionContent(`${baseEndpoint}/${key}`, headers, payload);
           setContents((prev) => ({ ...prev, [key]: data.contentHtml || contentHtml }));
         }
         recentlySavedRef.current = { ...recentlySavedRef.current, [key]: Date.now() };
@@ -362,15 +395,24 @@ export const useLessonSections = ({
       setError("");
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-        const contentPayload =
-          baseKey === "exercises" ? { content: [], createNew: true } : { contentHtml: "", createNew: true };
-        const section = await createSectionContent(
-          `${baseEndpoint}/${baseKey}`,
-          headers,
-          contentPayload
-        );
+        let sectionKey: string | undefined;
+        if (baseKey === "exercises") {
+          const result = await createExerciseSection(
+            `${baseEndpoint}/exercises`,
+            headers,
+            []
+          );
+          sectionKey = result.sectionKey;
+        } else {
+          const section = await createSectionContent(
+            `${baseEndpoint}/${baseKey}`,
+            headers,
+            { contentHtml: "" }
+          );
+          sectionKey = section.sectionKey || section.key;
+        }
         await loadIndex();
-        return section;
+        return sectionKey ? { key: sectionKey } : null;
       } catch (err) {
         const detail = err instanceof Error ? err.message : "Failed to create section";
         setError(detail);
@@ -384,7 +426,11 @@ export const useLessonSections = ({
       setError("");
       try {
         const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-        await deleteSectionContent(`${baseEndpoint}/${key}`, headers);
+        if (isExerciseSection(key)) {
+          await deleteExerciseSection(`${baseEndpoint}/exercises/${key}`, headers);
+        } else {
+          await deleteSectionContent(`${baseEndpoint}/${key}`, headers);
+        }
         setContents((prev) => {
           const next = { ...prev };
           delete next[key];
