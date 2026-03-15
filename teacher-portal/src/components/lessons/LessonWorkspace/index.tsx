@@ -1,35 +1,56 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import {
+  Alert,
+  Dialog,
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
+  Collapse,
+  CircularProgress,
+  Divider,
+  IconButton,
+  Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { Lesson } from "../../../state/lessonTypes";
-import type { GetAccessTokenSilently } from "../../../auth/buildAuthHeaders";
-import { useLessonWorkspaceState } from "./hooks/useLessonWorkspaceState";
-import EmptyState from "./components/EmptyState";
-import TitleHeader from "./components/TitleHeader";
-import SummaryEditor from "./components/SummaryEditor";
-import SectionsList from "./components/SectionsList";
-import WorkspaceDialogs from "./components/WorkspaceDialogs";
-import SectionPreviewCache from "./components/SectionPreviewCache";
-import PrintOnly from "./components/PrintOnly";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import FullscreenRoundedIcon from "@mui/icons-material/FullscreenRounded";
+import MemoryRoundedIcon from "@mui/icons-material/MemoryRounded";
+import OpenWithRoundedIcon from "@mui/icons-material/OpenWithRounded";
+import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
+import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
+import type { Lesson } from "../../../state/lessonTypes";
+import {
+  buildAuthHeaders,
+  type GetAccessTokenSilently,
+} from "../../../auth/buildAuthHeaders";
+import {
+  extractLessonPageQuestions,
+  previewLessonPageQuestions,
+  type LessonPageQuestionItem,
+  type LessonPageQuestionUsage,
+} from "../../../api/lessons";
+import { extractPageColumns } from "../../../lib/extractPageQuestions";
 
 type LessonWorkspaceProps = {
   lesson: Lesson | null;
   hasLessons: boolean;
   isAuthenticated: boolean;
+  onCreateLesson: () => void;
+  onDuplicateLesson: () => void;
+  onDeleteLesson: () => void;
+  showDelete: boolean;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
-  onUpdateContent: (
-    lessonId: string,
-    content: string
-  ) => Promise<Lesson | null>;
+  onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
+  getAccessTokenSilently?: GetAccessTokenSilently;
   onUpdateMeta: (
     lessonId: string,
     updates: {
@@ -43,384 +64,2256 @@ type LessonWorkspaceProps = {
     }
   ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
-  getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
 };
 
-const LessonWorkspace = ({
-  lesson,
-  hasLessons,
-  isAuthenticated,
-  onUpdateTitle,
-  onUpdateContent,
-  onUpdateStatus,
-  onUpdateMeta,
-  onNotify,
-  getAccessTokenSilently,
-  onPulse,
-}: LessonWorkspaceProps) => {
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [deletingSection, setDeletingSection] = useState(false);
-  const {
-    sections,
-    contents,
-    loadingIndex,
-    loadingSection,
-    savingSection,
-    exerciseGeneratorSource,
-    titleDraft,
-    setTitleDraft,
-    contentDraft,
-    setContentDraft,
-    savingTitle,
-    savingContent,
-    savingMeta,
-    editingTitle,
-    setEditingTitle,
-    editingSummary,
-    setEditingSummary,
-    publishOpen,
-    setPublishOpen,
-    unpublishOpen,
-    setUnpublishOpen,
-    printSelections,
-    setPrintSelections,
-    expandedKeys,
-    drafts,
-    setDrafts,
-    editingKey,
-    setEditingKey,
-    confirmClose,
-    setConfirmClose,
-    handleSaveTitle,
-    handleSaveContent,
-    handlePublish,
-    handleUnpublish,
-    handleOpenReport,
-    openingReport,
-    handleAccordionChange,
-    handleSaveSection,
-    handleCreateSection,
-    handleRequestDelete,
-    handleDeleteSection,
-    handleConfirmClose,
-    handleUpdateSubject,
-    handleUpdateLevel,
-    handleUpdateRequiresLogin,
-    isPublished,
-    canEdit,
-    statusLabel,
-    subjectDraft,
-    levelDraft,
-    requiresLoginDraft,
-    questionsPerExerciseDraft,
-    exercisesCountDraft,
-    creatingSection,
-    deleteMode,
-    setDeleteMode,
-    deleteTargetKey,
-    setDeleteTargetKey,
-    handleUpdateExerciseConfig,
-  } = useLessonWorkspaceState({
-    lesson,
-    hasLessons,
-    isAuthenticated,
-    onUpdateTitle,
-    onUpdateContent,
-    onUpdateStatus,
-    onUpdateMeta,
-    onNotify,
-    getAccessTokenSilently,
-    onPulse,
-  });
+type WorkflowState = "source" | "concepts" | "sections" | "review" | "published";
+type StepKey = "source" | "concepts" | "sections" | "review";
 
-  if (!lesson) {
-    return <EmptyState hasLessons={hasLessons} />;
+type SourceDocument = {
+  id: string;
+  name: string;
+  pages: number;
+  pageTexts: string[];
+  pageTextQuestions: string[][];
+  pageQuestions: string[];
+  pageQuestionDetails: Array<LessonPageQuestionItem[] | null>;
+  pageQuestionUsage: Array<PageQuestionUsageRecord | null>;
+  extractedText: string;
+  titleCandidates: string[];
+  headingCandidates: string[];
+  questionCandidates: string[];
+  uploadedAt: string;
+};
+
+type PreviewDocument = {
+  id: string;
+  name: string;
+  url: string;
+  file: File;
+};
+
+type ConceptDraft = {
+  id: string;
+  title: string;
+  synopsis: string;
+  approved: boolean;
+};
+
+type SectionDraft = {
+  id: string;
+  conceptId: string;
+  title: string;
+  synopsis: string;
+  teachingNotes: string;
+  questions: string[];
+};
+
+type BuilderDraft = {
+  workflowState: WorkflowState;
+  overview: string;
+  sourceDocuments: SourceDocument[];
+  concepts: ConceptDraft[];
+  sections: SectionDraft[];
+  lastSkillRunAt?: string | null;
+};
+
+type SkillRef = {
+  id: string;
+  label: string;
+  kind: "compute" | "ai_driven";
+};
+
+type PageQuestionUsageRecord = LessonPageQuestionUsage & {
+  pageNumber: number;
+  extractedAt: string;
+  requestId?: string | null;
+};
+
+type JsonNodeProps = {
+  data: unknown;
+  label?: string;
+  depth?: number;
+  expandAll: boolean;
+  showKeys: boolean;
+};
+
+const emptyDraft = (): BuilderDraft => ({
+  workflowState: "source",
+  overview: "",
+  sourceDocuments: [],
+  concepts: [],
+  sections: [],
+  lastSkillRunAt: null,
+});
+
+const getStorageKey = (lessonId: string) => `tp_teacher_lesson_builder_v2_${lessonId}`;
+const SOURCE_SPLIT_STORAGE_KEY = "tp_teacher_source_split_pct_v1";
+
+const createId = (prefix: string) =>
+  `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const loadStoredSourcePaneSplit = () => {
+  if (typeof window === "undefined") {
+    return 50;
+  }
+  const raw = window.localStorage.getItem(SOURCE_SPLIT_STORAGE_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return 50;
+  }
+  return Math.min(70, Math.max(30, parsed));
+};
+
+const cleanLine = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const uniqueValues = (values: string[]) => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+const deriveTitleCandidates = (lines: string[]) =>
+  uniqueValues(
+    lines
+      .filter((line) => line.length > 6 && line.length < 90)
+      .filter((line) => /^[A-Z0-9][A-Za-z0-9 ,:()'-]+$/.test(line))
+      .slice(0, 5)
+  );
+
+const deriveHeadingCandidates = (lines: string[]) =>
+  uniqueValues(
+    lines
+      .filter((line) => line.length > 4 && line.length < 80)
+      .filter(
+        (line) =>
+          /^[A-Z][A-Za-z0-9 ,:()'-]+$/.test(line) &&
+          line.split(" ").length <= 8 &&
+          !line.endsWith(".")
+      )
+      .slice(0, 12)
+  );
+
+const deriveQuestionCandidates = (lines: string[]) =>
+  uniqueValues(lines.filter((line) => line.includes("?")).slice(0, 12));
+
+const deriveQuestionCandidatesFromPages = (pageQuestions: string[]) =>
+  uniqueValues(
+    pageQuestions
+      .flatMap((pageQuestion) => pageQuestion.split(/\n+/))
+      .map(cleanLine)
+      .filter(Boolean)
+      .slice(0, 24)
+  );
+
+const deriveDocumentFields = (pageTexts: string[]) => {
+  const extractedText = pageTexts
+    .map((pageText) => cleanLine(pageText))
+    .filter(Boolean)
+    .join("\n\n");
+  const lines = extractedText.split(/\n+/).map(cleanLine).filter(Boolean);
+
+  return {
+    extractedText,
+    titleCandidates: deriveTitleCandidates(lines),
+    headingCandidates: deriveHeadingCandidates(lines),
+    questionCandidates: deriveQuestionCandidates(lines),
+  };
+};
+
+const sentenceSplit = (text: string) =>
+  text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => cleanLine(sentence))
+    .filter(Boolean);
+
+const formatCostCents = (value: number) => `${value.toFixed(value < 0.1 ? 3 : 2)}c`;
+
+const questionsToEditorText = (pageQuestionDetails: Array<LessonPageQuestionItem[] | null>) =>
+  pageQuestionDetails
+    .map((pageItems, index) => {
+      if (!pageItems?.length) {
+        return "";
+      }
+      const formatted = pageItems
+        .map((item) =>
+          [item.label ? `${item.label} ${item.question}` : item.question, ...item.answerOptions]
+            .map(cleanLine)
+            .filter(Boolean)
+            .join("\n")
+        )
+        .filter(Boolean)
+        .join("\n\n");
+      return formatted ? `Page ${index + 1}\n${formatted}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+const formatJsonScalar = (value: unknown) => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value === null) {
+    return "null";
+  }
+  return "";
+};
+
+const JsonValueNode = ({
+  data,
+  label,
+  depth = 0,
+  expandAll,
+  showKeys,
+}: JsonNodeProps) => {
+  const isArray = Array.isArray(data);
+  const isObject = Boolean(data) && typeof data === "object" && !isArray;
+  const expandable = isArray || isObject;
+  const [open, setOpen] = useState(expandAll);
+
+  useEffect(() => {
+    setOpen(expandAll);
+  }, [expandAll]);
+
+  if (!expandable) {
+    return (
+      <Box sx={{ pl: depth ? 2 : 0, py: 0.35 }}>
+        <Typography
+          component="div"
+          sx={{
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: "0.95rem",
+            whiteSpace: "pre-wrap",
+            color: "#1f1f1f",
+          }}
+        >
+          {showKeys && label ? `${label}: ` : ""}
+          {formatJsonScalar(data)}
+        </Typography>
+      </Box>
+    );
   }
 
-  const addButtonsDisabled = !canEdit || creatingSection || deleteMode;
+  const entries = isArray
+    ? (data as unknown[]).map((value, index) => [String(index), value] as const)
+    : Object.entries(data as Record<string, unknown>);
 
   return (
-    <>
+    <Box sx={{ pl: depth ? 2 : 0, py: 0.25 }}>
+      <Button
+        variant="text"
+        size="small"
+        onClick={() => setOpen((current) => !current)}
+        sx={{
+          minWidth: 0,
+          px: 0,
+          py: 0.25,
+          textTransform: "none",
+          justifyContent: "flex-start",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          color: "#1f1f1f",
+          fontWeight: 700,
+        }}
+      >
+        {open ? "[-]" : "[+]"} {showKeys && label ? label : isArray ? `[${entries.length}]` : "{...}"}
+      </Button>
+      {open ? (
+        <Box sx={{ mt: 0.25 }}>
+          {entries.map(([key, value]) => (
+            <JsonValueNode
+              key={`${label || "root"}_${key}`}
+              data={value}
+              label={isArray ? undefined : key}
+              depth={depth + 1}
+              expandAll={expandAll}
+              showKeys={showKeys}
+            />
+          ))}
+        </Box>
+      ) : null}
+    </Box>
+  );
+};
+
+const QuestionsJsonViewer = ({
+  data,
+}: {
+  data: Array<{ pageNumber: number; questions: string[] }>;
+}) => {
+  const [expandAll, setExpandAll] = useState(true);
+  const [showKeys, setShowKeys] = useState(false);
+
+  return (
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <Box
         sx={{
           display: "flex",
-          flexDirection: "column",
-          alignItems: "stretch",
-          gap: 0,
-          width: "100%",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 1,
+          px: 1.5,
+          py: 1,
+          borderBottom: "1px solid rgba(0,0,0,0.08)",
         }}
       >
-        <TitleHeader
-          titleDraft={titleDraft}
-          editingTitle={editingTitle}
-          savingTitle={savingTitle}
-          isAuthenticated={isAuthenticated}
-          canEdit={canEdit}
-          statusLabel={statusLabel}
-          isPublished={isPublished}
-          lessonId={lesson.id}
-          subjectValue={subjectDraft}
-          levelValue={levelDraft}
-          requiresLogin={requiresLoginDraft}
-          savingMeta={savingMeta}
-          onSubjectChange={handleUpdateSubject}
-          onLevelChange={handleUpdateLevel}
-          onRequiresLoginChange={handleUpdateRequiresLogin}
-          onEditTitle={() => setEditingTitle(true)}
-          onTitleChange={setTitleDraft}
-          onFinishTitle={() => {
-            handleSaveTitle();
-            setEditingTitle(false);
-          }}
-          onPublishClick={() => setPublishOpen(true)}
-          onUnpublishClick={() => setUnpublishOpen(true)}
-          onOpenReport={handleOpenReport}
-          openingReport={openingReport}
-          deleteMode={deleteMode}
-        />
-        <SummaryEditor
-          contentDraft={contentDraft}
-          editingSummary={editingSummary}
-          savingContent={savingContent}
-          isAuthenticated={isAuthenticated}
-          canEdit={canEdit}
-          onEditSummary={() => setEditingSummary(true)}
-          onSummaryChange={setContentDraft}
-          onFinishSummary={(value) => {
-            handleSaveContent(value);
-            setEditingSummary(false);
-          }}
-        />
+        <Stack direction="row" spacing={1}>
+          <Button size="small" variant="outlined" onClick={() => setExpandAll(true)}>
+            Expand all
+          </Button>
+          <Button size="small" variant="outlined" onClick={() => setExpandAll(false)}>
+            Collapse all
+          </Button>
+        </Stack>
+        <Button size="small" variant="outlined" onClick={() => setShowKeys((current) => !current)}>
+          {showKeys ? "Hide keys" : "View keys"}
+        </Button>
       </Box>
-      {!isPublished ? (
+      <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1.5, py: 1 }}>
+        {data.length ? (
+          <JsonValueNode data={data} expandAll={expandAll} showKeys={showKeys} />
+        ) : (
+          <Typography color="text.secondary" sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+            No extracted questions yet.
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+const buildConceptsFromDocs = (documents: SourceDocument[]): ConceptDraft[] => {
+  const headings = uniqueValues(documents.flatMap((document) => document.headingCandidates));
+  const concepts = (headings.length
+    ? headings
+    : documents.flatMap((document) => document.titleCandidates)
+  )
+    .slice(0, 6)
+    .map((title) => ({
+      id: createId("concept"),
+      title,
+      synopsis: `Focus on ${title.toLowerCase()} and confirm the scope before drafting sections.`,
+      approved: true,
+    }));
+  if (concepts.length) {
+    return concepts;
+  }
+  return [
+    {
+      id: createId("concept"),
+      title: "Core Idea 1",
+      synopsis: "Replace this with the first agreed teaching concept.",
+      approved: true,
+    },
+  ];
+};
+
+const buildSectionsFromConcepts = (
+  concepts: ConceptDraft[],
+  documents: SourceDocument[]
+): SectionDraft[] => {
+  const sourceText = documents.map((document) => document.extractedText).join("\n\n");
+  const sentences = sentenceSplit(sourceText);
+  const fallbackQuestions = uniqueValues(
+    documents.flatMap((document) => document.questionCandidates)
+  );
+
+  return concepts
+    .filter((concept) => concept.approved)
+    .map((concept, index) => {
+      const conceptWord = concept.title.toLowerCase().split(" ")[0] || "";
+      const synopsisSentence =
+        sentences.find((sentence) => sentence.toLowerCase().includes(conceptWord)) ||
+        sentences[index] ||
+        concept.synopsis;
+      const relatedQuestions = fallbackQuestions
+        .filter((question) => question.toLowerCase().includes(conceptWord))
+        .slice(0, 3);
+
+      return {
+        id: createId("section"),
+        conceptId: concept.id,
+        title: concept.title,
+        synopsis: synopsisSentence,
+        teachingNotes:
+          relatedQuestions.length > 0
+            ? `Start with the source material, then use these prompts to guide discussion about ${concept.title.toLowerCase()}.`
+            : `Use the source text to introduce ${concept.title.toLowerCase()}, then add examples and checks for understanding.`,
+        questions:
+          relatedQuestions.length > 0
+            ? relatedQuestions
+            : [
+                `What is the main idea behind ${concept.title}?`,
+                `How would you explain ${concept.title} in your own words?`,
+              ],
+      };
+    });
+};
+
+const loadDraft = (lessonId: string): BuilderDraft => {
+  try {
+    const raw = window.localStorage.getItem(getStorageKey(lessonId));
+    if (!raw) {
+      return emptyDraft();
+    }
+    const parsed = JSON.parse(raw) as BuilderDraft;
+    return {
+      ...emptyDraft(),
+      ...parsed,
+      sourceDocuments: Array.isArray(parsed.sourceDocuments)
+        ? parsed.sourceDocuments.map((document) => {
+            const typed = document as SourceDocument;
+            const pageTexts = Array.isArray(typed.pageTexts)
+              ? typed.pageTexts
+              : typeof typed.extractedText === "string"
+              ? typed.extractedText.split(/\n\n+/).filter(Boolean)
+              : [];
+            const pageCount = pageTexts.length || typed.pages || 0;
+            const pageTextQuestions = Array.isArray((typed as SourceDocument).pageTextQuestions)
+              ? (typed as SourceDocument).pageTextQuestions.map((entry) =>
+                  Array.isArray(entry) ? entry.map((value) => String(value).trim()).filter(Boolean) : []
+                )
+              : Array.from({ length: pageCount }, () => []);
+            const pageQuestions = Array.isArray(typed.pageQuestions)
+              ? typed.pageQuestions
+              : Array.from({ length: pageCount }, () => "");
+            const pageQuestionDetails = Array.isArray(typed.pageQuestionDetails)
+              ? typed.pageQuestionDetails.map((entry) =>
+                  Array.isArray(entry)
+                    ? entry
+                        .filter((item) => item && typeof item === "object")
+                        .map((item) => {
+                          const typedItem = item as LessonPageQuestionItem;
+                          return {
+                            label: String(typedItem.label ?? "").trim(),
+                            question: String(typedItem.question ?? "").trim(),
+                            answerOptions: Array.isArray(typedItem.answerOptions)
+                              ? typedItem.answerOptions.map((value) => String(value).trim()).filter(Boolean)
+                              : [],
+                          };
+                        })
+                    : null
+                )
+              : Array.from({ length: pageCount }, () => null);
+            const pageQuestionUsage = Array.isArray(typed.pageQuestionUsage)
+              ? typed.pageQuestionUsage.map((entry) =>
+                  entry && typeof entry === "object"
+                    ? (entry as PageQuestionUsageRecord)
+                    : null
+                )
+              : Array.from({ length: pageCount }, () => null);
+            return {
+              ...typed,
+              pageTexts,
+              pageTextQuestions: Array.from(
+                { length: pageCount },
+                (_, index) => pageTextQuestions[index] || []
+              ),
+              pageQuestions: Array.from({ length: pageCount }, (_, index) => pageQuestions[index] || ""),
+              pageQuestionDetails: Array.from(
+                { length: pageCount },
+                (_, index) => pageQuestionDetails[index] || null
+              ),
+              pageQuestionUsage: Array.from(
+                { length: pageCount },
+                (_, index) => pageQuestionUsage[index] || null
+              ),
+            };
+          })
+        : [],
+      concepts: Array.isArray(parsed.concepts) ? parsed.concepts : [],
+      sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+    };
+  } catch {
+    return emptyDraft();
+  }
+};
+
+const stepSkills: Record<StepKey, SkillRef[]> = {
+  source: [
+    { id: "upload_source_document", label: "Upload Source Document", kind: "compute" },
+    {
+      id: "extract_document_structure",
+      label: "Extract Document Structure",
+      kind: "compute",
+    },
+    {
+      id: "extract_page_questions_ai",
+      label: "Extract Page Questions AI",
+      kind: "ai_driven",
+    },
+  ],
+  concepts: [{ id: "extract_concepts", label: "Extract Concepts", kind: "ai_driven" }],
+  sections: [{ id: "build_section_drafts", label: "Build Section Drafts", kind: "ai_driven" }],
+  review: [{ id: "publish_lesson", label: "Publish Lesson", kind: "compute" }],
+};
+
+const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
+  <Box
+    sx={{
+      minHeight: "65vh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 1,
+      color: "text.secondary",
+    }}
+  >
+    <Typography variant="h4" fontWeight={700}>
+      {hasLessons ? "Select a lesson template" : "Create your first lesson template"}
+    </Typography>
+    <Typography>
+      The new teacher workflow starts from source material, concepts, and section drafts.
+    </Typography>
+  </Box>
+);
+
+const SkillLinks = ({ skills }: { skills: SkillRef[] }) => (
+  <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+    {skills.map((skill) => (
+      <Box
+        key={skill.id}
+        component="a"
+        href={`/skill?skill=${skill.id}`}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 0.5,
+          borderRadius: "999px",
+          border: "1px solid rgba(0,0,0,0.12)",
+          px: 1,
+          py: 0.35,
+          fontSize: "0.75rem",
+          fontWeight: 700,
+          color: "text.secondary",
+          textDecoration: "none",
+          backgroundColor: "transparent",
+        }}
+      >
+        {skill.kind === "ai_driven" ? (
+          <PsychologyRoundedIcon sx={{ fontSize: 14 }} />
+        ) : (
+          <MemoryRoundedIcon sx={{ fontSize: 14 }} />
+        )}
+        <span>{skill.label}</span>
+      </Box>
+    ))}
+  </Stack>
+);
+
+const StepShell = ({
+  stepNumber,
+  label,
+  expanded,
+  complete,
+  enabled,
+  showConnector,
+  onToggle,
+  onRerun,
+  skills,
+  children,
+}: {
+  stepNumber: number;
+  label: string;
+  expanded: boolean;
+  complete: boolean;
+  enabled: boolean;
+  showConnector: boolean;
+  onToggle: () => void;
+  onRerun: () => void;
+  skills: SkillRef[];
+  children: ReactNode;
+}) => {
+  const circleColor = complete ? "#2e7d32" : enabled ? "#ef6c00" : "#bdbdbd";
+
+  return (
+    <Box sx={{ display: "flex", alignItems: "stretch" }}>
+      <Box sx={{ width: 42, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <Box
+          sx={{
+            width: 34,
+            height: 34,
+            borderRadius: "999px",
+            bgcolor: circleColor,
+            color: "common.white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 800,
+            fontSize: "1.15rem",
+            mt: 0.5,
+          }}
+        >
+          {stepNumber}
+        </Box>
+        {showConnector ? (
+          <Box
+            sx={{
+              width: 3,
+              flex: 1,
+              minHeight: 40,
+              bgcolor: enabled ? "#ef6c00" : "rgba(0,0,0,0.12)",
+              mt: 0,
+              mb: "-1.8rem",
+            }}
+          />
+        ) : null}
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0, pb: 1, pl: "1rem" }}>
         <Box
           sx={{
             display: "flex",
-            justifyContent: "flex-end",
-            gap: "0.75rem",
-            mb: "0.5rem",
-            mr: "0.5rem",
+            alignItems: "center",
+            gap: 1,
+            minHeight: 34,
           }}
         >
           <Box
             role="button"
             onClick={() => {
-              if (addButtonsDisabled) {
-                return;
+              if (enabled) {
+                onToggle();
               }
-              handleCreateSection("lesson");
             }}
             sx={{
-              display: "inline-flex",
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
               alignItems: "center",
-              px: 2,
-              py: 0.75,
-              borderRadius: "5rem",
-              backgroundColor: "info.main",
-              color: "common.white",
-              fontSize: "0.85rem",
-              fontWeight: 700,
-              textTransform: "capitalize",
-              cursor: "pointer",
-              opacity: addButtonsDisabled ? 0.6 : 1,
+              gap: 1.5,
+              cursor: enabled ? "pointer" : "default",
+              color: enabled ? "text.primary" : "text.disabled",
               userSelect: "none",
-              "&:hover": {
-                backgroundColor: addButtonsDisabled ? "info.main" : "info.dark",
-              },
-              "&:active": {
-                backgroundColor: addButtonsDisabled ? "info.main" : "info.dark",
-              },
             }}
           >
-            Add Lesson
+            <Typography fontWeight={800} sx={{ fontSize: "1.35rem", lineHeight: 1.1 }}>
+              {label}
+            </Typography>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <SkillLinks skills={skills} />
+            </Box>
+            <ExpandMoreRoundedIcon
+              sx={{
+                transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.18s ease",
+                color: enabled ? "text.primary" : "text.disabled",
+              }}
+            />
           </Box>
-          <Box
-            role="button"
-            onClick={() => {
-              if (addButtonsDisabled) {
-                return;
-              }
-              handleCreateSection("exercises");
-            }}
-            sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              px: 2,
-              py: 0.75,
-              borderRadius: "5rem",
-              backgroundColor: "secondary.main",
-              color: "common.white",
-              fontSize: "0.85rem",
-              fontWeight: 700,
-              textTransform: "capitalize",
-              cursor: "pointer",
-              opacity: addButtonsDisabled ? 0.6 : 1,
-              userSelect: "none",
-              "&:hover": {
-                backgroundColor:
-                  addButtonsDisabled ? "secondary.main" : "secondary.dark",
-              },
-              "&:active": {
-                backgroundColor:
-                  addButtonsDisabled ? "secondary.main" : "secondary.dark",
-              },
-            }}
+          <IconButton
+            onClick={onRerun}
+            disabled={!enabled}
+            sx={{ color: enabled ? "text.secondary" : "text.disabled" }}
           >
-            Add Exercise
-          </Box>
-        <Box
-          role="button"
-          onClick={() => {
-            if (!canEdit) {
-              return;
-            }
-            setDeleteMode((prev) => !prev);
-            setDeleteTargetKey(null);
-            setDeleteConfirmText("");
-          }}
-          sx={{
-            display: "inline-flex",
-            alignItems: "center",
-            px: 2,
-            py: 0.75,
-            borderRadius: "5rem",
-            backgroundColor: deleteMode ? "success.main" : "error.main",
-            color: "common.white",
-            fontSize: "0.85rem",
-            fontWeight: 700,
-            textTransform: "capitalize",
-            cursor: "pointer",
-            opacity: !canEdit ? 0.6 : 1,
-            width: 92,
-            justifyContent: "center",
-            userSelect: "none",
-            "&:hover": {
-              backgroundColor: !canEdit
-                ? deleteMode
-                  ? "success.main"
-                    : "error.main"
-                  : deleteMode
-                  ? "success.dark"
-                  : "error.dark",
-              },
-              "&:active": {
-                backgroundColor: !canEdit
-                  ? deleteMode
-                    ? "success.main"
-                    : "error.main"
-                  : deleteMode
-                  ? "success.dark"
-                  : "error.dark",
-              },
-            }}
-          >
-            {deleteMode ? "Done" : "Delete"}
-          </Box>
+            <RefreshRoundedIcon />
+          </IconButton>
         </Box>
-      ) : null}
-      <SectionsList
-        sections={sections}
-        expandedKeys={expandedKeys}
-        loadingIndex={loadingIndex}
-        loadingSection={loadingSection}
-        savingSection={savingSection}
-        exerciseGeneratorSource={exerciseGeneratorSource}
-        exerciseMode={lesson.exerciseMode}
-        questionsPerExercise={questionsPerExerciseDraft}
-        exercisesCount={exercisesCountDraft}
-        onExerciseConfigChange={handleUpdateExerciseConfig}
-        printSelections={printSelections}
-        setPrintSelections={setPrintSelections}
-        isPublished={isPublished}
-        canEdit={canEdit}
-        contents={contents}
-        drafts={drafts}
-        sectionsMeta={lesson.sectionsMeta}
-        setDrafts={setDrafts}
-        editingKey={editingKey}
-        setEditingKey={setEditingKey}
-        handleAccordionChange={handleAccordionChange}
-        handleSaveSection={handleSaveSection}
-        onDirtyClose={(key) => setConfirmClose(key)}
-        deleteMode={deleteMode}
-        onRequestDelete={(key) => {
-          setDeleteConfirmText("");
-          handleRequestDelete(key);
-        }}
-      />
-      <Dialog
-        open={Boolean(deleteTargetKey)}
-        onClose={() => {
-          if (deletingSection) {
-            return;
-          }
-          setDeleteTargetKey(null);
-          setDeleteConfirmText("");
+        <Collapse in={expanded} timeout={320} unmountOnExit>
+          <Box sx={{ pt: 2.5 }}>
+            <Box sx={{ pt: 0.5 }}>{children}</Box>
+          </Box>
+        </Collapse>
+        <Divider sx={{ mt: 2.5, mb: 2.5 }} />
+      </Box>
+    </Box>
+  );
+};
+
+const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const renderTaskRef = useRef<{ cancel: () => void; promise: Promise<unknown> } | null>(null);
+  const pdfPageRef = useRef<any>(null);
+  const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const lastFitZoomRef = useRef(1);
+  const dragStateRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [zoom, setZoom] = useState(1);
+  const [fitZoom, setFitZoom] = useState(1);
+  const [manualZoom, setManualZoom] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    setManualZoom(false);
+    lastContainerSizeRef.current = null;
+    lastFitZoomRef.current = 1;
+    pdfPageRef.current = null;
+    setPageSize(null);
+  }, [url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPdfPage = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const pdfWorker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
+        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker.default;
+        const pdf = await pdfjs.getDocument({ url }).promise;
+        const page = await pdf.getPage(1);
+        const baseViewport = page.getViewport({ scale: 1 });
+        if (cancelled) {
+          return;
+        }
+        pdfPageRef.current = page;
+        setPageSize({
+          width: baseViewport.width,
+          height: baseViewport.height,
+        });
+      } catch (loadError) {
+        console.error("PDF preview load failed", loadError);
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Could not load PDF preview");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadPdfPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !pageSize) {
+      return;
+    }
+
+    const computeFitZoom = () => {
+      const nextWidth = container.clientWidth;
+      const nextHeight = container.clientHeight;
+      const lastSize = lastContainerSizeRef.current;
+      if (
+        lastSize &&
+        Math.abs(lastSize.width - nextWidth) < 2 &&
+        Math.abs(lastSize.height - nextHeight) < 2
+      ) {
+        return;
+      }
+      lastContainerSizeRef.current = { width: nextWidth, height: nextHeight };
+      const horizontalPadding = 32;
+      const verticalPadding = 32;
+      const widthScale = Math.max(0.2, (nextWidth - horizontalPadding) / pageSize.width);
+      const heightScale = Math.max(0.2, (nextHeight - verticalPadding) / pageSize.height);
+      const nextFitZoom = Number(Math.min(widthScale, heightScale).toFixed(2));
+      if (Math.abs(lastFitZoomRef.current - nextFitZoom) < 0.02) {
+        return;
+      }
+      lastFitZoomRef.current = nextFitZoom;
+      setFitZoom(nextFitZoom);
+      setZoom((current) =>
+        manualZoom || Math.abs(current - nextFitZoom) < 0.02 ? current : nextFitZoom
+      );
+    };
+
+    computeFitZoom();
+    const resizeObserver = new ResizeObserver(computeFitZoom);
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [pageSize, manualZoom]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const renderPreview = async () => {
+      const page = pdfPageRef.current;
+      if (!page) {
+        return;
+      }
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        try {
+          await renderTaskRef.current.promise;
+        } catch {
+          // Ignore cancellation while preparing the next render.
+        }
+        renderTaskRef.current = null;
+      }
+      setError("");
+      try {
+        const viewport = page.getViewport({ scale: zoom });
+        const canvas = canvasRef.current;
+        if (!canvas || cancelled) {
+          return;
+        }
+        const context = canvas.getContext("2d");
+        if (!context) {
+          return;
+        }
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const renderTask = page.render({ canvas, canvasContext: context, viewport });
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+        if (renderTaskRef.current === renderTask) {
+          renderTaskRef.current = null;
+        }
+      } catch (renderError) {
+        const errorName =
+          renderError && typeof renderError === "object" && "name" in renderError
+            ? String(renderError.name)
+            : "";
+        if (errorName === "RenderingCancelledException") {
+          return;
+        }
+        console.error("PDF preview render failed", renderError);
+        if (!cancelled) {
+          setError(renderError instanceof Error ? renderError.message : "Could not render PDF preview");
+        }
+      }
+    };
+
+    void renderPreview();
+
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+    };
+  }, [url, zoom, pageSize]);
+
+  const adjustZoom = (delta: number) => {
+    setManualZoom(true);
+    setZoom((current) => Math.min(3, Math.max(0.2, Number((current + delta).toFixed(2)))));
+  };
+
+  const resetZoom = () => {
+    setManualZoom(false);
+    setZoom(fitZoom);
+    const container = containerRef.current;
+    if (container) {
+      container.scrollTo({ left: 0, top: 0 });
+    }
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (loading || error || !containerRef.current) {
+      return;
+    }
+    event.preventDefault();
+    containerRef.current.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: containerRef.current.scrollLeft,
+      scrollTop: containerRef.current.scrollTop,
+    };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    const container = containerRef.current;
+    if (!dragState?.active || !container) {
+      return;
+    }
+    event.preventDefault();
+    container.scrollLeft = dragState.scrollLeft - (event.clientX - dragState.startX);
+    container.scrollTop = dragState.scrollTop - (event.clientY - dragState.startY);
+  };
+
+  const handlePointerUp = (event?: React.PointerEvent<HTMLDivElement>) => {
+    if (event && containerRef.current?.hasPointerCapture(event.pointerId)) {
+      containerRef.current.releasePointerCapture(event.pointerId);
+    }
+    dragStateRef.current = null;
+    setIsDragging(false);
+  };
+
+  return (
+    <Box
+      ref={containerRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      sx={{
+        width: "100%",
+        height: 640,
+        minHeight: 640,
+        maxHeight: 640,
+        borderRadius: "1.5rem",
+        backgroundColor: "#2a2a2a",
+        overflow: "auto",
+        position: "relative",
+        cursor: loading || error ? "default" : isDragging ? "grabbing" : "grab",
+        touchAction: "none",
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={0.5}
+        onPointerDown={(event) => event.stopPropagation()}
+        sx={{
+          position: "sticky",
+          top: 12,
+          left: 12,
+          zIndex: 2,
+          width: "fit-content",
+          m: 1.5,
+          p: 0.5,
+          borderRadius: "999px",
+          backgroundColor: "rgba(17,17,17,0.78)",
+          border: "1px solid rgba(255,255,255,0.14)",
+          backdropFilter: "blur(10px)",
         }}
       >
-        <DialogTitle>Delete section?</DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Typography>
-            Type <strong>Delete</strong> to permanently remove this section.
+        <IconButton
+          size="small"
+          onClick={() => adjustZoom(-0.15)}
+          disabled={loading || Boolean(error)}
+        >
+          <ZoomOutRoundedIcon sx={{ color: "#fff", fontSize: 18 }} />
+        </IconButton>
+        <Button
+          size="small"
+          variant="text"
+          onClick={resetZoom}
+          disabled={loading || Boolean(error)}
+          sx={{ minWidth: 70, color: "#fff", fontWeight: 700 }}
+        >
+          {Math.round(zoom * 100)}%
+        </Button>
+        <IconButton size="small" onClick={() => adjustZoom(0.15)} disabled={loading || Boolean(error)}>
+          <ZoomInRoundedIcon sx={{ color: "#fff", fontSize: 18 }} />
+        </IconButton>
+        <Box sx={{ width: 1, backgroundColor: "rgba(255,255,255,0.14)", mx: 0.25 }} />
+        <Button
+          size="small"
+          variant="text"
+          disabled
+          startIcon={<OpenWithRoundedIcon sx={{ color: "#fff", fontSize: 16 }} />}
+          sx={{ color: "rgba(255,255,255,0.9)", fontWeight: 700 }}
+        >
+          Drag
+        </Button>
+      </Stack>
+      {loading ? (
+        <Stack
+          spacing={1}
+          alignItems="center"
+          sx={{
+            color: "rgba(255,255,255,0.72)",
+            minHeight: 640,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            position: "absolute",
+            inset: 0,
+            zIndex: 1,
+            backgroundColor: "rgba(42,42,42,0.72)",
+          }}
+        >
+          <CircularProgress size={22} color="inherit" />
+          <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>Rendering PDF…</Typography>
+        </Stack>
+      ) : null}
+      {!loading && error ? (
+        <Stack
+          spacing={1}
+          alignItems="center"
+          sx={{
+            color: "rgba(255,255,255,0.72)",
+            px: 3,
+            minHeight: 640,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Typography sx={{ fontSize: "0.98rem", fontWeight: 800, color: "#fff" }}>
+            Preview unavailable
           </Typography>
-          <TextField
-            autoFocus
-            label="Type Delete to confirm"
-            value={deleteConfirmText}
-            onChange={(event) => setDeleteConfirmText(event.target.value)}
+          <Typography sx={{ fontSize: "0.9rem", textAlign: "center" }}>{error}</Typography>
+        </Stack>
+      ) : null}
+      <Box
+        component="canvas"
+        ref={canvasRef}
+        title={title}
+        sx={{
+          display: error ? "none" : "block",
+          m: "0 auto 1rem",
+          borderRadius: "0.75rem",
+          backgroundColor: "#fff",
+        }}
+      />
+    </Box>
+  );
+};
+
+const LessonWorkspace = ({
+  lesson,
+  hasLessons,
+  onCreateLesson,
+  onDuplicateLesson,
+  onDeleteLesson,
+  showDelete,
+  onUpdateTitle,
+  onUpdateContent,
+  onUpdateStatus,
+  getAccessTokenSilently,
+  onNotify,
+}: LessonWorkspaceProps) => {
+  const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
+  const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
+  const previewUrlsRef = useRef<string[]>([]);
+  const sourcePaneRef = useRef<HTMLDivElement | null>(null);
+  const [draft, setDraft] = useState<BuilderDraft>(emptyDraft);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [previewDocuments, setPreviewDocuments] = useState<PreviewDocument[]>([]);
+  const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
+  const [analyzingDocument, setAnalyzingDocument] = useState(false);
+  const [localOcringDocument, setLocalOcringDocument] = useState(false);
+  const [remoteOcringDocument, setRemoteOcringDocument] = useState(false);
+  const [sourcePaneSplit, setSourcePaneSplit] = useState(loadStoredSourcePaneSplit);
+  const [resizingSourcePane, setResizingSourcePane] = useState(false);
+  const [sourceFullscreenOpen, setSourceFullscreenOpen] = useState(false);
+  const [usageDialogOpen, setUsageDialogOpen] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [expandedStep, setExpandedStep] = useState<StepKey | null>(null);
+  const [rerunNotice, setRerunNotice] = useState("");
+
+  useEffect(() => {
+    if (!lesson) {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current = [];
+      setDraft(emptyDraft());
+      setTitleDraft("");
+      setSummaryDraft("");
+      setPreviewDocuments([]);
+      setActivePreviewId(null);
+      setUsageDialogOpen(false);
+      setExpandedStep(null);
+      setRerunNotice("");
+      return;
+    }
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current = [];
+    setDraft(loadDraft(lesson.id));
+    setTitleDraft(lesson.title || "");
+    setSummaryDraft(lesson.summary || "");
+    setPreviewDocuments([]);
+    setActivePreviewId(null);
+    setUsageDialogOpen(false);
+    setExpandedStep(null);
+    setRerunNotice("");
+  }, [lesson]);
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!resizingSourcePane) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const container = sourcePaneRef.current;
+      if (!container) {
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      if (!rect.width) {
+        return;
+      }
+      const nextSplit = ((event.clientX - rect.left) / rect.width) * 100;
+      setSourcePaneSplit(Math.min(70, Math.max(30, nextSplit)));
+    };
+
+    const stopResizing = () => {
+      setResizingSourcePane(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResizing);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+    };
+  }, [resizingSourcePane]);
+
+  useEffect(() => {
+    if (!lesson) {
+      return;
+    }
+    window.localStorage.setItem(getStorageKey(lesson.id), JSON.stringify(draft));
+  }, [draft, lesson]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SOURCE_SPLIT_STORAGE_KEY, String(sourcePaneSplit));
+  }, [sourcePaneSplit]);
+
+  const approvedConcepts = useMemo(
+    () => draft.concepts.filter((concept) => concept.approved),
+    [draft.concepts]
+  );
+
+  const activePreview =
+    previewDocuments.find((document) => document.id === activePreviewId) ||
+    previewDocuments[0] ||
+    null;
+  const activeSourceDocument =
+    draft.sourceDocuments.find((document) => document.id === activePreview?.id) || null;
+  const activeQuestionUsage =
+    activeSourceDocument?.pageQuestionUsage.find((entry) => Boolean(entry)) || null;
+  const activeExtractedTextPreview = activeSourceDocument
+    ? activeSourceDocument.pageTexts
+        .map((pageText, index) => {
+          const cleaned = String(pageText || "").trim();
+          return cleaned ? `Page ${index + 1}\n${cleaned}` : "";
+        })
+        .filter(Boolean)
+        .join("\n\n")
+    : "";
+  const activeExtractedQuestionsText = activeSourceDocument
+    ? questionsToEditorText(activeSourceDocument.pageQuestionDetails)
+    : "";
+  const canAnalyzeSource = Boolean(activePreview?.file && activeSourceDocument);
+
+  if (!lesson) {
+    return <EmptyState hasLessons={hasLessons} />;
+  }
+
+  const sourceComplete = draft.sourceDocuments.length > 0;
+  const conceptsComplete = approvedConcepts.length > 0;
+  const sectionsComplete = draft.sections.length > 0;
+  const reviewComplete = sectionsComplete && draft.overview.trim().length > 0;
+
+  const updateDraft = (updater: (current: BuilderDraft) => BuilderDraft) => {
+    setDraft((current) => updater(current));
+  };
+
+  const stepEnabled: Record<StepKey, boolean> = {
+    source: true,
+    concepts: sourceComplete,
+    sections: conceptsComplete,
+    review: sectionsComplete,
+  };
+
+  const saveTitle = async () => {
+    const nextTitle = titleDraft.trim();
+    if (!nextTitle || nextTitle === lesson.title) {
+      return;
+    }
+    setSavingTitle(true);
+    const updated = await onUpdateTitle(lesson.id, nextTitle);
+    setSavingTitle(false);
+    if (updated) {
+      onNotify("Lesson title updated", "success");
+    }
+  };
+
+  const handleOverviewSave = async (value: string) => {
+    updateDraft((current) => ({ ...current, overview: value }));
+    await onUpdateContent(lesson.id, value);
+  };
+
+  const saveSummary = async () => {
+    if (summaryDraft === (lesson.summary || "")) {
+      return;
+    }
+    await onUpdateContent(lesson.id, summaryDraft);
+  };
+
+  const inspectPdfDocument = async (file: File): Promise<SourceDocument> => {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const pdfWorker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker.default;
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+
+    return {
+      id: createId("source"),
+      name: file.name,
+      pages: pdf.numPages,
+      pageTexts: Array.from({ length: pdf.numPages }, () => ""),
+      pageTextQuestions: Array.from({ length: pdf.numPages }, () => []),
+      pageQuestions: Array.from({ length: pdf.numPages }, () => ""),
+      pageQuestionDetails: Array.from({ length: pdf.numPages }, () => null),
+      pageQuestionUsage: Array.from({ length: pdf.numPages }, () => null),
+      extractedText: "",
+      titleCandidates: [],
+      headingCandidates: [],
+      questionCandidates: [],
+      uploadedAt: new Date().toISOString(),
+    };
+  };
+
+  const buildConceptStep = () => {
+    const concepts = buildConceptsFromDocs(draft.sourceDocuments);
+    updateDraft((current) => ({
+      ...current,
+      workflowState: "concepts",
+      concepts,
+      lastSkillRunAt: new Date().toISOString(),
+    }));
+    if (!titleDraft.trim()) {
+      const suggestedTitle =
+        draft.sourceDocuments.flatMap((document) => document.titleCandidates)[0] || "";
+      if (suggestedTitle) {
+        setTitleDraft(suggestedTitle);
+      }
+    }
+  };
+
+  const buildSectionsStep = () => {
+    const sections = buildSectionsFromConcepts(draft.concepts, draft.sourceDocuments);
+    updateDraft((current) => ({
+      ...current,
+      workflowState: "sections",
+      sections,
+      lastSkillRunAt: new Date().toISOString(),
+    }));
+  };
+
+  const rerunStep = (step: StepKey) => {
+    if (!stepEnabled[step]) {
+      return;
+    }
+    if (step === "source") {
+      updateDraft((current) => ({
+        ...current,
+        concepts: [],
+        sections: [],
+        overview: "",
+        workflowState: current.sourceDocuments.length ? "source" : "source",
+        lastSkillRunAt: new Date().toISOString(),
+      }));
+      setExpandedStep("source");
+      setRerunNotice("Source was reopened. Concepts, sections, and review after it were cleared.");
+      return;
+    }
+    if (step === "concepts") {
+      buildConceptStep();
+      updateDraft((current) => ({
+        ...current,
+        sections: [],
+        overview: "",
+        workflowState: "concepts",
+        lastSkillRunAt: new Date().toISOString(),
+      }));
+      setExpandedStep("concepts");
+      setRerunNotice("Concepts were rerun. Section drafts and review after them were cleared.");
+      return;
+    }
+    if (step === "sections") {
+      buildSectionsStep();
+      updateDraft((current) => ({
+        ...current,
+        overview: "",
+        workflowState: "sections",
+        lastSkillRunAt: new Date().toISOString(),
+      }));
+      setExpandedStep("sections");
+      setRerunNotice("Sections were rerun. Review content after them was cleared.");
+      return;
+    }
+    updateDraft((current) => ({
+      ...current,
+      workflowState: "review",
+      lastSkillRunAt: new Date().toISOString(),
+    }));
+    setExpandedStep("review");
+    setRerunNotice("Review was reopened from the latest lesson state.");
+  };
+
+  const handleFilesUploaded = async (files: FileList | null) => {
+    if (!files?.length) {
+      return;
+    }
+    setExtracting(true);
+    try {
+      const uploaded: SourceDocument[] = [];
+      const previews: PreviewDocument[] = [];
+      for (const file of Array.from(files)) {
+        const extracted = await inspectPdfDocument(file);
+        uploaded.push(extracted);
+        previews.push({
+          id: extracted.id,
+          name: file.name,
+          url: URL.createObjectURL(file),
+          file,
+        });
+      }
+      updateDraft((current) => ({
+        ...current,
+        workflowState: "source",
+        sourceDocuments: [...current.sourceDocuments, ...uploaded],
+        lastSkillRunAt: new Date().toISOString(),
+      }));
+      previewUrlsRef.current.push(...previews.map((preview) => preview.url));
+      setPreviewDocuments((current) => [...current, ...previews]);
+      setActivePreviewId((current) => current || previews[0]?.id || null);
+      setRerunNotice("");
+      onNotify("Source material uploaded", "success");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Failed to read PDF";
+      onNotify(detail, "error");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const removeCurrentSourceDocument = () => {
+    if (!activePreview) {
+      return;
+    }
+
+    URL.revokeObjectURL(activePreview.url);
+    previewUrlsRef.current = previewUrlsRef.current.filter((url) => url !== activePreview.url);
+
+    const remainingPreviewDocuments = previewDocuments.filter((document) => document.id !== activePreview.id);
+    const nextActivePreviewId = remainingPreviewDocuments[0]?.id || null;
+
+    setPreviewDocuments(remainingPreviewDocuments);
+    setActivePreviewId(nextActivePreviewId);
+    updateDraft((current) => ({
+      ...current,
+      sourceDocuments: current.sourceDocuments.filter((document) => document.id !== activePreview.id),
+      workflowState: remainingPreviewDocuments.length ? current.workflowState : "source",
+    }));
+    onNotify("Source document removed", "success");
+  };
+
+  const updateDocumentPageTexts = (documentId: string, nextPageTexts: string[]) => {
+    updateDraft((current) => ({
+      ...current,
+      sourceDocuments: current.sourceDocuments.map((document) => {
+        if (document.id !== documentId) {
+          return document;
+        }
+        const normalizedPageTexts = Array.from(
+          { length: document.pages },
+          (_, index) => nextPageTexts[index] || ""
+        );
+        console.debug("[LessonWorkspace] OCR parse update", {
+          documentId,
+          documentName: document.name,
+          pages: normalizedPageTexts.map((pageText, index) => ({
+            pageNumber: index + 1,
+            textPreview: String(pageText || "").slice(0, 800),
+            parsedQuestionCount: (document.pageTextQuestions[index] || []).length,
+            parsedQuestions: document.pageTextQuestions[index] || [],
+          })),
+        });
+        const derivedFields = deriveDocumentFields(normalizedPageTexts);
+        return {
+          ...document,
+          pageTexts: normalizedPageTexts,
+          ...derivedFields,
+        };
+      }),
+    }));
+  };
+
+  const runLocalOcrOnCurrentDocument = async () => {
+    if (!activeSourceDocument || !activePreview?.file) {
+      return;
+    }
+    setLocalOcringDocument(true);
+    try {
+      const pageTexts: string[] = [];
+      for (let pageNumber = 1; pageNumber <= activeSourceDocument.pages; pageNumber += 1) {
+        const extracted = await extractPageColumns(activePreview.file, pageNumber);
+        pageTexts.push((extracted.questionsSection || extracted.combined || "").trim());
+      }
+      updateDocumentPageTexts(activeSourceDocument.id, pageTexts);
+      onNotify("Local OCR prepared with questions only.", "success");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Could not run local OCR in the browser";
+      console.error("Local document OCR failed", error);
+      onNotify(detail, "error");
+    } finally {
+      setLocalOcringDocument(false);
+    }
+  };
+
+  const runRemoteOcrOnCurrentDocument = async () => {
+    if (!lesson || !activeSourceDocument || !activePreview?.file) {
+      return;
+    }
+    if (!getAccessTokenSilently || !apiBaseUrl || !auth0Audience) {
+      onNotify("OCR extraction is not configured in the teacher portal", "error");
+      return;
+    }
+    setRemoteOcringDocument(true);
+    try {
+      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      const preview = await previewLessonPageQuestions(
+        `${apiBaseUrl}/lesson/id/${lesson.id}/question-extraction/preview`,
+        headers,
+        {
+          file: activePreview.file,
+          pageCount: activeSourceDocument.pages,
+        }
+      );
+      updateDocumentPageTexts(activeSourceDocument.id, preview.pageTexts);
+      onNotify("Remote OCR prepared. Parsed questions are ready in the results panel.", "success");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Could not preview extracted text";
+      console.error("Document text preview failed", error);
+      onNotify(detail, "error");
+    } finally {
+      setRemoteOcringDocument(false);
+    }
+  };
+
+  const runLlmOnCurrentDocument = async () => {
+    if (!lesson || !activeSourceDocument || !activePreview?.file) {
+      return;
+    }
+    if (!getAccessTokenSilently || !apiBaseUrl || !auth0Audience) {
+      onNotify("OCR extraction is not configured in the teacher portal", "error");
+      return;
+    }
+    setAnalyzingDocument(true);
+    try {
+      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      const extraction = await extractLessonPageQuestions(
+        `${apiBaseUrl}/lesson/id/${lesson.id}/question-extraction`,
+        headers,
+        {
+          file: activePreview.file,
+          pageCount: activeSourceDocument.pages,
+        }
+      );
+      const usage: PageQuestionUsageRecord = {
+        ...extraction.usage,
+        pageNumber: 1,
+        extractedAt: extraction.extractedAt,
+        requestId: extraction.requestId ?? null,
+      };
+
+      updateDraft((current) => ({
+        ...current,
+        sourceDocuments: current.sourceDocuments.map((document) => {
+          if (document.id !== activeSourceDocument.id) {
+            return document;
+          }
+          const nextPageQuestions = Array.from(
+            { length: document.pages },
+            (_, index) => extraction.pageQuestions[index] || ""
+          );
+          const nextPageQuestionDetails = Array.from(
+            { length: document.pages },
+            (_, index) => extraction.pageQuestionDetails[index] || null
+          );
+          const nextPageQuestionUsage = Array.from({ length: document.pages }, (_, index) =>
+            index === 0 ? usage : null
+          );
+          return {
+            ...document,
+            pageQuestions: nextPageQuestions,
+            pageQuestionDetails: nextPageQuestionDetails,
+            pageQuestionUsage: nextPageQuestionUsage,
+            questionCandidates: deriveQuestionCandidatesFromPages(nextPageQuestions),
+          };
+        }),
+      }));
+      const extractedPageCount = extraction.pageQuestions.filter((page) => page.trim()).length;
+      if (!extractedPageCount) {
+        onNotify(
+          `OCR completed. No questions detected. Cost ${formatCostCents(usage.costCents)}.`,
+          "error"
+        );
+        return;
+      }
+      onNotify(
+        `OCR completed for ${extractedPageCount} page${extractedPageCount === 1 ? "" : "s"}. Cost ${formatCostCents(
+          usage.costCents
+        )}.`,
+        "success"
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Could not extract questions from PDF";
+      console.error("Document question extraction failed", error);
+      onNotify(detail, "error");
+    } finally {
+      setAnalyzingDocument(false);
+    }
+  };
+
+  const handleConceptGeneration = () => {
+    buildConceptStep();
+    setRerunNotice("");
+    onNotify("Concepts prepared for teacher review", "success");
+  };
+
+  const handleSectionDraftGeneration = () => {
+    buildSectionsStep();
+    setRerunNotice("");
+    onNotify("Concept sections drafted", "success");
+  };
+
+  const handlePublish = async () => {
+    setPublishing(true);
+    const nextStatus = draft.workflowState === "published" ? "Draft" : "Published";
+    const updated = await onUpdateStatus(lesson.id, nextStatus);
+    setPublishing(false);
+    if (!updated) {
+      onNotify("Could not update lesson status", "error");
+      return;
+    }
+    updateDraft((current) => ({
+      ...current,
+      workflowState: nextStatus === "Published" ? "published" : "review",
+    }));
+    onNotify(nextStatus === "Published" ? "Lesson published" : "Lesson moved back to draft", "success");
+  };
+
+  const renderSourceWorkspace = (fullscreen = false) => (
+    <Stack spacing={2}>
+      <Box
+        ref={sourcePaneRef}
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", lg: "row" },
+          gap: { xs: 2, lg: 0 },
+          alignItems: "stretch",
+          minHeight: { lg: fullscreen ? "calc(100vh - 190px)" : 760 },
+        }}
+      >
+        <Box
+          component={activePreview ? "div" : "label"}
+          onDragOver={(event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
+            if (activePreview) {
+              return;
+            }
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={(event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
+            if (activePreview) {
+              return;
+            }
+            event.preventDefault();
+            setDragActive(false);
+            void handleFilesUploaded(event.dataTransfer.files);
+          }}
+          sx={{
+            display: "block",
+            width: { xs: "100%", lg: `calc(${sourcePaneSplit}% - 6px)` },
+            flexShrink: 0,
+            borderRadius: "2rem",
+            border: "1px solid rgba(255,255,255,0.14)",
+            backgroundColor: "#1f1f1f",
+            color: "common.white",
+            overflow: "hidden",
+            cursor: activePreview ? "default" : "pointer",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+            outline: dragActive ? "3px solid rgba(76,175,80,0.55)" : "none",
+            position: "relative",
+          }}
+        >
+          <input
+            hidden
+            multiple
+            accept="application/pdf"
+            type="file"
+            onChange={(event) => void handleFilesUploaded(event.target.files)}
           />
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              if (deletingSection) {
-                return;
-              }
-              setDeleteTargetKey(null);
-              setDeleteConfirmText("");
+          {activePreview ? (
+            <>
+              <IconButton
+                onClick={() => setSourceFullscreenOpen(true)}
+                sx={{
+                  position: "absolute",
+                  bottom: 12,
+                  left: 12,
+                  zIndex: 2,
+                  color: "#fff",
+                  backgroundColor: "rgba(0,0,0,0.42)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                }}
+              >
+                <FullscreenRoundedIcon />
+              </IconButton>
+              <IconButton
+                onClick={removeCurrentSourceDocument}
+                sx={{
+                  position: "absolute",
+                  bottom: 12,
+                  right: 12,
+                  zIndex: 2,
+                  color: "#fff",
+                  backgroundColor: "rgba(0,0,0,0.42)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  "&:hover": {
+                    backgroundColor: "rgba(183,28,28,0.82)",
+                  },
+                }}
+              >
+                <DeleteRoundedIcon />
+              </IconButton>
+            </>
+          ) : null}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: 3,
+              py: 2,
             }}
           >
-            Cancel
-          </Button>
+            {activeQuestionUsage ? (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setUsageDialogOpen(true)}
+                sx={{
+                  color: "#fff",
+                  borderColor: "rgba(255,255,255,0.28)",
+                }}
+              >
+                {formatCostCents(activeQuestionUsage.costCents)}
+              </Button>
+            ) : (
+              <Box />
+            )}
+            <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 800 }}>
+              {activeSourceDocument ? `${activeSourceDocument.pages} pages` : ""}
+            </Typography>
+          </Box>
+          <Box sx={{ px: 3, pb: 3 }}>
+            {activePreview ? (
+              <Stack spacing={0.5}>
+                <PdfPreviewCanvas url={activePreview.url} title={activePreview.name} />
+                <Typography
+                  fontWeight={800}
+                  sx={{
+                    fontSize: "1.05rem",
+                    color: "#fff",
+                    textAlign: "center",
+                    mt: "auto",
+                    pt: 0.5,
+                    pb: 0.5,
+                  }}
+                >
+                  {activePreview.name}
+                </Typography>
+              </Stack>
+            ) : (
+              <Box
+                sx={{
+                  width: "100%",
+                  minHeight: 390,
+                  borderRadius: "1.5rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 1.5,
+                  color: "rgba(255,255,255,0.72)",
+                  backgroundColor: dragActive ? "rgba(255,255,255,0.06)" : "transparent",
+                  textAlign: "center",
+                }}
+              >
+                <Typography fontWeight={800} sx={{ fontSize: "1.15rem", color: "#fff" }}>
+                  {titleDraft || "Upload Source Material"}
+                </Typography>
+                <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                  Drag and drop PDF or click to upload
+                </Typography>
+                <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                  No stored PDF found. Upload one to continue.
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Box>
+        <Box
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={() => setResizingSourcePane(true)}
+          sx={{
+            display: { xs: "none", lg: "flex" },
+            width: 12,
+            cursor: "col-resize",
+            alignItems: "center",
+            justifyContent: "center",
+            userSelect: "none",
+            touchAction: "none",
+          }}
+        >
+          <Box
+            sx={{
+              width: 4,
+              height: "100%",
+              borderRadius: "999px",
+              backgroundColor: resizingSourcePane ? "rgba(239,108,0,0.72)" : "rgba(0,0,0,0.12)",
+              transition: "background-color 0.18s ease",
+            }}
+          />
+        </Box>
+        <Box
+          sx={{
+            width: { xs: "100%", lg: `calc(${100 - sourcePaneSplit}% - 6px)` },
+            flexShrink: 0,
+            height: { lg: fullscreen ? "calc(100vh - 190px)" : 760 },
+            maxHeight: { lg: fullscreen ? "calc(100vh - 190px)" : 760 },
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: "1.5rem",
+            border: "1px solid rgba(0,0,0,0.08)",
+            backgroundColor: "#fff",
+            overflow: "hidden",
+          }}
+        >
+          <TextField
+            value={activeExtractedTextPreview}
+            fullWidth
+            multiline
+            placeholder="Extracted text will appear here after Local OCR or Remote OCR runs."
+            InputProps={{
+              readOnly: true,
+              sx: {
+                height: "100%",
+                alignItems: "stretch",
+                borderRadius: 0,
+              },
+            }}
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              maxHeight: "100%",
+              "& .MuiInputBase-root": {
+                height: "100%",
+                maxHeight: "100%",
+              },
+              "& .MuiInputBase-inputMultiline": {
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                whiteSpace: "pre-wrap",
+                height: "100% !important",
+                maxHeight: "100% !important",
+                overflowY: "auto !important",
+                overflowX: "hidden !important",
+                boxSizing: "border-box",
+                padding: "16.5px 14px",
+              },
+            }}
+          />
+        </Box>
+      </Box>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+        <Button
+          variant="outlined"
+          onClick={() => void runLocalOcrOnCurrentDocument()}
+          disabled={!canAnalyzeSource || localOcringDocument}
+        >
+          {localOcringDocument ? "Running Local OCR…" : "Local OCR"}
+        </Button>
+        <Button
+          variant="outlined"
+          onClick={() => void runRemoteOcrOnCurrentDocument()}
+          disabled={!canAnalyzeSource || remoteOcringDocument}
+        >
+          {remoteOcringDocument ? "Running Remote OCR…" : "Remote OCR"}
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => void runLlmOnCurrentDocument()}
+          disabled={!canAnalyzeSource || analyzingDocument}
+        >
+          {analyzingDocument ? "Running LLM…" : "Do LLM"}
+        </Button>
+        <Button variant="outlined" onClick={handleConceptGeneration} disabled={!sourceComplete}>
+          Continue
+        </Button>
+        {extracting ? (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CircularProgress size={18} />
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              Loading PDF…
+            </Typography>
+          </Stack>
+        ) : null}
+      </Stack>
+    </Stack>
+  );
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+        <Box sx={{ minWidth: 280, flex: 1 }}>
+          <TextField
+            value={titleDraft}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={saveTitle}
+            fullWidth
+            variant="standard"
+            placeholder="New lesson template"
+            InputProps={{
+              disableUnderline: true,
+              sx: {
+                fontSize: "2.25rem",
+                fontWeight: 800,
+                lineHeight: 1.1,
+                px: 0,
+                py: 0,
+              },
+            }}
+          />
+          <TextField
+            value={summaryDraft}
+            onChange={(event) => setSummaryDraft(event.target.value)}
+            onBlur={saveSummary}
+            fullWidth
+            variant="standard"
+            multiline
+            minRows={2}
+            placeholder="Add a short report summary."
+            InputProps={{
+              disableUnderline: true,
+              sx: {
+                mt: 1,
+                fontSize: "1rem",
+                fontWeight: 700,
+                color: "text.secondary",
+                px: 0,
+                py: 0,
+              },
+            }}
+          />
+        </Box>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Stack direction="row" spacing={0.25} alignItems="center">
+            <IconButton onClick={onCreateLesson} sx={{ color: "primary.main" }}>
+              <AddRoundedIcon />
+            </IconButton>
+            <IconButton onClick={onDuplicateLesson} sx={{ color: "primary.main" }}>
+              <ContentCopyRoundedIcon />
+            </IconButton>
+            {showDelete ? (
+              <IconButton onClick={onDeleteLesson} sx={{ color: "error.main" }}>
+                <DeleteRoundedIcon />
+              </IconButton>
+            ) : null}
+          </Stack>
+          <Box
+            sx={{
+              minWidth: 78,
+              height: 38,
+              px: 1.5,
+              borderRadius: "999px",
+              backgroundColor: "#ef6c00",
+              color: "common.white",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "0.9rem",
+              fontWeight: 700,
+              textTransform: "lowercase",
+            }}
+          >
+            {draft.workflowState === "published" ||
+            String(lesson.status || "").toLowerCase().includes("publish")
+              ? "public"
+              : "draft"}
+          </Box>
           <Button
-            color="error"
             variant="contained"
-            disabled={deleteConfirmText.trim() !== "Delete" || deletingSection}
-            onClick={async () => {
-              setDeletingSection(true);
-              const success = await handleDeleteSection();
-              setDeletingSection(false);
-              if (success) {
-                setDeleteConfirmText("");
-              }
+            onClick={handlePublish}
+            disabled={publishing || !reviewComplete}
+            sx={{
+              height: 38,
+              minWidth: 140,
+              borderRadius: "999px",
+              textTransform: "none",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              px: 2,
             }}
           >
-            Delete
+            Publish
           </Button>
-        </DialogActions>
+        </Stack>
+      </Box>
+
+      {rerunNotice ? <Alert severity="warning">{rerunNotice}</Alert> : null}
+
+      <Divider />
+
+      <Box sx={{ mt: "2.5rem" }}>
+        <StepShell
+        stepNumber={1}
+        label="Upload Source Material"
+        expanded={expandedStep === "source"}
+        complete={sourceComplete}
+        enabled
+        showConnector
+        onToggle={() => setExpandedStep((current) => (current === "source" ? null : "source"))}
+        onRerun={() => rerunStep("source")}
+        skills={stepSkills.source}
+      >
+        {renderSourceWorkspace()}
+        {activeSourceDocument ? (
+          <Typography variant="body2" color="text.secondary">
+            {activeSourceDocument.pageQuestions.filter((page) => page.trim()).length
+              ? `${activeSourceDocument.pageQuestions.filter((page) => page.trim()).length} page${
+                  activeSourceDocument.pageQuestions.filter((page) => page.trim()).length === 1 ? "" : "s"
+                } with extracted questions.`
+              : "No extracted questions stored yet."}
+          </Typography>
+        ) : null}
+      </StepShell>
+      </Box>
+      <Dialog open={usageDialogOpen} onClose={() => setUsageDialogOpen(false)} maxWidth="xs" fullWidth>
+        <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography fontWeight={800} sx={{ fontSize: "1.1rem" }}>
+              AI Extraction Cost
+            </Typography>
+            <IconButton onClick={() => setUsageDialogOpen(false)}>
+              <CloseRoundedIcon />
+            </IconButton>
+          </Stack>
+          {activeQuestionUsage ? (
+            <>
+              <Typography>
+                {formatCostCents(activeQuestionUsage.costCents)} for this document
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Model: {activeQuestionUsage.model}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Input tokens: {activeQuestionUsage.inputTokens}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Output tokens: {activeQuestionUsage.outputTokens}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Total tokens: {activeQuestionUsage.totalTokens}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Cached input tokens: {activeQuestionUsage.cachedInputTokens}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Extracted at: {new Date(activeQuestionUsage.extractedAt).toLocaleString()}
+              </Typography>
+              {activeQuestionUsage.requestId ? (
+                <Typography variant="body2" color="text.secondary">
+                  Request ID: {activeQuestionUsage.requestId}
+                </Typography>
+              ) : null}
+            </>
+          ) : (
+            <Typography color="text.secondary">No AI extraction usage is available for this document yet.</Typography>
+          )}
+          <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 1 }}>
+            <Button variant="contained" onClick={() => setUsageDialogOpen(false)}>
+              Close
+            </Button>
+          </Box>
+        </Box>
       </Dialog>
-      <WorkspaceDialogs
-        confirmClose={confirmClose}
-        onCancelClose={() => setConfirmClose(null)}
-        onConfirmClose={handleConfirmClose}
-        publishOpen={publishOpen}
-        onCancelPublish={() => setPublishOpen(false)}
-        onConfirmPublish={handlePublish}
-        unpublishOpen={unpublishOpen}
-        onCancelUnpublish={() => setUnpublishOpen(false)}
-        onConfirmUnpublish={handleUnpublish}
-      />
-      <SectionPreviewCache sections={sections} contents={contents} />
-      <PrintOnly
-        lesson={lesson}
-        titleDraft={titleDraft}
-        contentDraft={contentDraft}
-        sections={sections}
-        printSelections={printSelections}
-        contents={contents}
-      />
-    </>
+      <Dialog open={sourceFullscreenOpen} onClose={() => setSourceFullscreenOpen(false)} fullScreen>
+        <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 2, minHeight: "100vh" }}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+            <IconButton onClick={() => setSourceFullscreenOpen(false)}>
+              <CloseRoundedIcon />
+            </IconButton>
+          </Box>
+          {renderSourceWorkspace(true)}
+        </Box>
+      </Dialog>
+
+      <StepShell
+        stepNumber={2}
+        label="Confirm Concepts"
+        expanded={expandedStep === "concepts"}
+        complete={conceptsComplete}
+        enabled={stepEnabled.concepts}
+        showConnector
+        onToggle={() =>
+          setExpandedStep((current) => (current === "concepts" ? null : "concepts"))
+        }
+        onRerun={() => rerunStep("concepts")}
+        skills={stepSkills.concepts}
+      >
+        <Stack spacing={2}>
+          {draft.concepts.length === 0 ? (
+            <Alert severity="info">Upload PDFs first, then prepare concepts.</Alert>
+          ) : (
+            <Stack spacing={1.5}>
+              {draft.concepts.map((concept) => (
+                <Box key={concept.id}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                    <TextField
+                      label="Concept"
+                      value={concept.title}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          concepts: current.concepts.map((item) =>
+                            item.id === concept.id ? { ...item, title: event.target.value } : item
+                          ),
+                        }))
+                      }
+                      fullWidth
+                    />
+                    <Button
+                      variant={concept.approved ? "contained" : "outlined"}
+                      onClick={() =>
+                        updateDraft((current) => ({
+                          ...current,
+                          concepts: current.concepts.map((item) =>
+                            item.id === concept.id
+                              ? { ...item, approved: !item.approved }
+                              : item
+                          ),
+                        }))
+                      }
+                    >
+                      {concept.approved ? "Approved" : "Keep Out"}
+                    </Button>
+                  </Stack>
+                  <TextField
+                    label="Teacher note"
+                    value={concept.synopsis}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        concepts: current.concepts.map((item) =>
+                          item.id === concept.id
+                            ? { ...item, synopsis: event.target.value }
+                            : item
+                        ),
+                      }))
+                    }
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    sx={{ mt: 1.5 }}
+                  />
+                  <Divider sx={{ mt: 2 }} />
+                </Box>
+              ))}
+            </Stack>
+          )}
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <Button
+              variant="outlined"
+              onClick={() =>
+                updateDraft((current) => ({
+                  ...current,
+                  concepts: [
+                    ...current.concepts,
+                    {
+                      id: createId("concept"),
+                      title: `New Concept ${current.concepts.length + 1}`,
+                      synopsis: "Add the concept scope here.",
+                      approved: true,
+                    },
+                  ],
+                }))
+              }
+            >
+              Add Concept
+            </Button>
+            <Button variant="contained" onClick={handleSectionDraftGeneration} disabled={!conceptsComplete}>
+              Continue
+            </Button>
+          </Stack>
+        </Stack>
+      </StepShell>
+
+      <StepShell
+        stepNumber={3}
+        label="Draft Sections"
+        expanded={expandedStep === "sections"}
+        complete={sectionsComplete}
+        enabled={stepEnabled.sections}
+        showConnector
+        onToggle={() =>
+          setExpandedStep((current) => (current === "sections" ? null : "sections"))
+        }
+        onRerun={() => rerunStep("sections")}
+        skills={stepSkills.sections}
+      >
+        <Stack spacing={1.5}>
+          {draft.sections.length === 0 ? (
+            <Alert severity="info">Approve concepts, then create section drafts.</Alert>
+          ) : (
+            draft.sections.map((section) => (
+              <Box key={section.id}>
+                <Typography fontWeight={700} sx={{ mb: 1.5 }}>
+                  {section.title}
+                </Typography>
+                <Stack spacing={1.5}>
+                  <TextField
+                    label="Synopsis"
+                    value={section.synopsis}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        workflowState: "review",
+                        sections: current.sections.map((item) =>
+                          item.id === section.id ? { ...item, synopsis: event.target.value } : item
+                        ),
+                      }))
+                    }
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                  <TextField
+                    label="Teaching Notes"
+                    value={section.teachingNotes}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        workflowState: "review",
+                        sections: current.sections.map((item) =>
+                          item.id === section.id
+                            ? { ...item, teachingNotes: event.target.value }
+                            : item
+                        ),
+                      }))
+                    }
+                    fullWidth
+                    multiline
+                    minRows={4}
+                  />
+                  <TextField
+                    label="Questions"
+                    value={section.questions.join("\n")}
+                    onChange={(event) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        workflowState: "review",
+                        sections: current.sections.map((item) =>
+                          item.id === section.id
+                            ? {
+                                ...item,
+                                questions: event.target.value
+                                  .split("\n")
+                                  .map(cleanLine)
+                                  .filter(Boolean),
+                              }
+                            : item
+                        ),
+                      }))
+                    }
+                    fullWidth
+                    multiline
+                    minRows={4}
+                    helperText="One question per line"
+                    FormHelperTextProps={{ sx: { fontWeight: 700 } }}
+                  />
+                </Stack>
+                <Divider sx={{ mt: 2 }} />
+              </Box>
+            ))
+          )}
+          <Button variant="contained" disabled={!sectionsComplete}>
+            Continue
+          </Button>
+        </Stack>
+      </StepShell>
+
+      <StepShell
+        stepNumber={4}
+        label="Review Lesson"
+        expanded={expandedStep === "review"}
+        complete={reviewComplete}
+        enabled={stepEnabled.review}
+        showConnector={false}
+        onToggle={() => setExpandedStep((current) => (current === "review" ? null : "review"))}
+        onRerun={() => rerunStep("review")}
+        skills={stepSkills.review}
+      >
+        <Stack spacing={2}>
+          <TextField
+            label="Lesson Overview"
+            value={draft.overview}
+            onChange={(event) =>
+              updateDraft((current) => ({ ...current, overview: event.target.value }))
+            }
+            onBlur={(event) => void handleOverviewSave(event.target.value)}
+            fullWidth
+            multiline
+            minRows={3}
+            placeholder="Add a short teacher-facing summary of this lesson."
+          />
+          <Box display="grid" gridTemplateColumns={{ xs: "1fr", md: "1fr 1fr 1fr" }} gap={1.5}>
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Source Documents
+              </Typography>
+              <Typography variant="h5" fontWeight={800}>
+                {draft.sourceDocuments.length}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Approved Concepts
+              </Typography>
+              <Typography variant="h5" fontWeight={800}>
+                {approvedConcepts.length}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Draft Sections
+              </Typography>
+              <Typography variant="h5" fontWeight={800}>
+                {draft.sections.length}
+              </Typography>
+            </Box>
+          </Box>
+          {draft.lastSkillRunAt ? (
+            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+              Last skill run {new Date(draft.lastSkillRunAt).toLocaleString()}
+            </Typography>
+          ) : null}
+        </Stack>
+      </StepShell>
+    </Box>
   );
 };
 
