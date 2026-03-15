@@ -20,16 +20,27 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import DocumentScannerRoundedIcon from "@mui/icons-material/DocumentScannerRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
+import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
+import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
+import FormatListNumberedRoundedIcon from "@mui/icons-material/FormatListNumberedRounded";
 import FullscreenRoundedIcon from "@mui/icons-material/FullscreenRounded";
+import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
+import FormatQuoteRoundedIcon from "@mui/icons-material/FormatQuoteRounded";
+import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import MemoryRoundedIcon from "@mui/icons-material/MemoryRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
 import type { Lesson } from "../../../state/lessonTypes";
@@ -74,6 +85,7 @@ type LessonWorkspaceProps = {
 
 type WorkflowState = "source" | "concepts" | "sections" | "review" | "published";
 type StepKey = "source" | "concepts" | "sections" | "review";
+type QuestionReviewState = "untouched" | "accepted" | "rejected";
 
 type SourceDocument = {
   id: string;
@@ -82,6 +94,7 @@ type SourceDocument = {
   pageNumbers: Array<number | null>;
   pageTexts: string[];
   pageTextQuestions: string[][];
+  pageTextQuestionStates: QuestionReviewState[][];
   pageQuestions: string[];
   pageQuestionDetails: Array<LessonPageQuestionItem[] | null>;
   pageQuestionUsage: Array<PageQuestionUsageRecord | null>;
@@ -297,26 +310,113 @@ const splitPageTextIntoQuestions = (pageText: string) => {
 
 const summarizeQuestion = (question: string) => {
   const singleLine = cleanLine(stripQuestionPrefix(question));
-  if (singleLine.length <= 120) {
+  if (singleLine.length <= 80) {
     return singleLine;
   }
-  return `${singleLine.slice(0, 117).trim()}...`;
+  return `${singleLine.slice(0, 77).trim()}...`;
 };
 
 const QuestionsAccordionList = ({
   page,
   fullscreen = false,
+  onUpdateQuestion,
+  onUpdateQuestionState,
 }: {
-  page: { pageNumber: number; detectedPageNumber?: number | null; questions: string[] } | null;
+  page: { pageNumber: number; detectedPageNumber?: number | null; questions: string[]; states: QuestionReviewState[] } | null;
   fullscreen?: boolean;
+  onUpdateQuestion?: (pageNumber: number, questionIndex: number, nextValue: string) => void;
+  onUpdateQuestionState?: (pageNumber: number, questionIndex: number, nextState: QuestionReviewState) => void;
 }) => {
   const hasQuestions = Boolean(page?.questions.length);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const editorRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+  const runEditorCommand = (key: string, command: "undo" | "redo") => {
+    const editor = editorRefs.current[key];
+    if (!editor) {
+      return;
+    }
+    editor.focus();
+    document.execCommand(command);
+  };
+
+  const wrapSelection = (
+    key: string,
+    prefix: string,
+    suffix = prefix,
+    placeholder = "text"
+  ) => {
+    const editor = editorRefs.current[key];
+    if (!editor || !page) {
+      return;
+    }
+    const selectionStart = editor.selectionStart ?? 0;
+    const selectionEnd = editor.selectionEnd ?? 0;
+    const currentValue = editor.value;
+    const selectedText = currentValue.slice(selectionStart, selectionEnd) || placeholder;
+    const nextValue =
+      currentValue.slice(0, selectionStart) +
+      prefix +
+      selectedText +
+      suffix +
+      currentValue.slice(selectionEnd);
+    const [pageNumberText, questionIndexText] = key.split("_");
+    onUpdateQuestion?.(Number(pageNumberText), Number(questionIndexText), nextValue);
+    queueMicrotask(() => {
+      const nextEditor = editorRefs.current[key];
+      if (!nextEditor) {
+        return;
+      }
+      nextEditor.focus();
+      const cursorStart = selectionStart + prefix.length;
+      const cursorEnd = cursorStart + selectedText.length;
+      nextEditor.setSelectionRange(cursorStart, cursorEnd);
+    });
+  };
+
+  const prefixSelectionLines = (key: string, prefix: string) => {
+    const editor = editorRefs.current[key];
+    if (!editor || !page) {
+      return;
+    }
+    const selectionStart = editor.selectionStart ?? 0;
+    const selectionEnd = editor.selectionEnd ?? 0;
+    const currentValue = editor.value;
+    const start = currentValue.lastIndexOf("\n", selectionStart - 1) + 1;
+    const endBreak = currentValue.indexOf("\n", selectionEnd);
+    const end = endBreak === -1 ? currentValue.length : endBreak;
+    const block = currentValue.slice(start, end);
+    const nextBlock = block
+      .split("\n")
+      .map((line) => `${prefix}${line}`)
+      .join("\n");
+    const nextValue = currentValue.slice(0, start) + nextBlock + currentValue.slice(end);
+    const [pageNumberText, questionIndexText] = key.split("_");
+    onUpdateQuestion?.(Number(pageNumberText), Number(questionIndexText), nextValue);
+    queueMicrotask(() => {
+      const nextEditor = editorRefs.current[key];
+      nextEditor?.focus();
+    });
+  };
 
   return (
-    <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", p: 1.5, pt: fullscreen ? 4 : 1.5 }}>
-      <Stack spacing={1.25}>
+    <Box
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        minWidth: 0,
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        overflowY: "auto",
+        overflowX: "hidden",
+        p: 1.5,
+        pt: fullscreen ? 4 : 1.5,
+      }}
+    >
+      <Stack spacing={1.25} sx={{ minWidth: 0, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
         {page ? (
-        <Stack spacing={1}>
+        <Stack spacing={1} sx={{ minWidth: 0, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
           {!fullscreen ? (
             <Typography sx={{ fontSize: "0.82rem", fontWeight: 800, color: "text.secondary", px: 0.5 }}>
               Page {page.pageNumber}
@@ -324,15 +424,24 @@ const QuestionsAccordionList = ({
           ) : null}
           {hasQuestions ? page.questions.map((question, index) => {
             const questionNumber = getQuestionNumber(question) ?? index + 1;
+            const questionKey = `${page.pageNumber}_${index}`;
+            const isEditing = editingKey === questionKey;
+            const reviewState = page.states[index] || "untouched";
+            const badgeColor =
+              reviewState === "accepted" ? "#2e7d32" : reviewState === "rejected" ? "#bdbdbd" : "#1976d2";
+            const titleColor = reviewState === "rejected" ? "rgba(0,0,0,0.45)" : "inherit";
             return (
             <Accordion
-              key={`${page.pageNumber}_${index}`}
+              key={questionKey}
               disableGutters
               elevation={0}
               sx={{
                 borderRadius: 0,
                 overflow: "hidden",
                 width: "100%",
+                maxWidth: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
                 boxShadow: "none",
                 backgroundColor: "transparent",
                 "&:before": { display: "none" },
@@ -345,19 +454,32 @@ const QuestionsAccordionList = ({
                 expandIcon={<ExpandMoreRoundedIcon />}
                 sx={{
                   width: "100%",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  pr: 6,
+                  position: "relative",
+                  borderRadius: 0,
+                  backgroundColor: "transparent",
                   "& .MuiAccordionSummary-content": {
                     minWidth: 0,
                     my: 1.25,
+                    overflow: "hidden",
+                  },
+                  "& .MuiAccordionSummary-expandIconWrapper": {
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
                   },
                 }}
               >
-                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0, width: "100%" }}>
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, width: "100%", overflow: "hidden" }}>
                   <Box
                     sx={{
-                      width: 28,
-                      height: 28,
+                      width: 26,
+                      height: 26,
                       borderRadius: "999px",
-                      bgcolor: "#1976d2",
+                      bgcolor: badgeColor,
                       color: "#fff",
                       display: "flex",
                       alignItems: "center",
@@ -370,29 +492,143 @@ const QuestionsAccordionList = ({
                     {questionNumber}
                   </Box>
                   <Typography
+                    component="div"
                     sx={{
                       fontWeight: 700,
                       minWidth: 0,
                       flex: 1,
-                      overflowWrap: "anywhere",
-                      wordBreak: "break-word",
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: titleColor,
                     }}
                   >
                     {summarizeQuestion(question)}
                   </Typography>
+                  <Stack
+                    direction="row"
+                    spacing={0}
+                    alignItems="center"
+                    sx={{
+                      position: "absolute",
+                      right: 36,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      zIndex: 1,
+                    }}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onUpdateQuestionState?.(
+                          page.pageNumber,
+                          index,
+                          reviewState === "accepted" ? "untouched" : "accepted"
+                        );
+                      }}
+                      sx={{ color: reviewState === "accepted" ? "#2e7d32" : "rgba(46,125,50,0.45)", p: 0.35 }}
+                    >
+                      <CheckRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onUpdateQuestionState?.(
+                          page.pageNumber,
+                          index,
+                          reviewState === "rejected" ? "untouched" : "rejected"
+                        );
+                      }}
+                      sx={{ color: reviewState === "rejected" ? "#c62828" : "rgba(198,40,40,0.45)", p: 0.35 }}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEditingKey((current) => (current === questionKey ? null : questionKey));
+                      }}
+                      disabled={isEditing}
+                      sx={{ color: isEditing ? "action.disabled" : "text.secondary", p: 0.35 }}
+                    >
+                      <EditRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
                 </Stack>
               </AccordionSummary>
               <AccordionDetails>
-                <Typography
-                  sx={{
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.6,
-                    overflowWrap: "anywhere",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {stripQuestionPrefix(question)}
-                </Typography>
+                  <Stack spacing={1.25}>
+                  {isEditing ? (
+                    <Box sx={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: "10px", overflow: "hidden" }}>
+                      <Stack
+                        direction="row"
+                        spacing={0.25}
+                        alignItems="center"
+                        justifyContent="space-between"
+                        sx={{
+                          px: 1,
+                          py: 0.75,
+                          borderBottom: "1px solid rgba(0,0,0,0.1)",
+                          backgroundColor: "#f8fafc",
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.25} alignItems="center">
+                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "**")}><FormatBoldRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "_")}><FormatItalicRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => prefixSelectionLines(questionKey, "> ")}><FormatQuoteRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "`")}><CodeRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "[", "](https://example.com)", "link text")}><LinkRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => prefixSelectionLines(questionKey, "- ")}><FormatListBulletedRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => prefixSelectionLines(questionKey, "1. ")}><FormatListNumberedRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => runEditorCommand(questionKey, "undo")}><UndoRoundedIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => runEditorCommand(questionKey, "redo")}><RedoRoundedIcon fontSize="small" /></IconButton>
+                        </Stack>
+                        <IconButton size="small" onClick={() => setEditingKey(null)}>
+                          <CloseRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                      <TextField
+                        multiline
+                        fullWidth
+                        minRows={8}
+                        value={question}
+                        onChange={(event) =>
+                          onUpdateQuestion?.(page.pageNumber, index, event.target.value)
+                        }
+                        inputRef={(element) => {
+                          editorRefs.current[questionKey] = element;
+                        }}
+                        spellCheck={false}
+                        variant="standard"
+                        InputProps={{
+                          disableUnderline: true,
+                          sx: {
+                            px: 1.5,
+                            py: 1.25,
+                            fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+                            fontSize: "0.95rem",
+                            alignItems: "flex-start",
+                          },
+                        }}
+                      />
+                    </Box>
+                  ) : (
+                    <Typography
+                      sx={{
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.6,
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {stripQuestionPrefix(question)}
+                    </Typography>
+                  )}
+                </Stack>
               </AccordionDetails>
             </Accordion>
           )}) : null}
@@ -656,6 +892,15 @@ const loadDraft = (lessonId: string): BuilderDraft => {
                   Array.isArray(entry) ? entry.map((value) => String(value).trim()).filter(Boolean) : []
                 )
               : Array.from({ length: pageCount }, () => []);
+            const pageTextQuestionStates = Array.isArray((typed as SourceDocument).pageTextQuestionStates)
+              ? (typed as SourceDocument).pageTextQuestionStates.map((entry) =>
+                  Array.isArray(entry)
+                    ? entry.map((value) =>
+                        value === "accepted" || value === "rejected" ? value : "untouched"
+                      )
+                    : []
+                )
+              : Array.from({ length: pageCount }, () => []);
             const pageNumbers = Array.isArray((typed as SourceDocument).pageNumbers)
               ? (typed as SourceDocument).pageNumbers.map((entry) =>
                   typeof entry === "number" && Number.isFinite(entry) ? entry : null
@@ -696,6 +941,10 @@ const loadDraft = (lessonId: string): BuilderDraft => {
               pageTextQuestions: Array.from(
                 { length: pageCount },
                 (_, index) => pageTextQuestions[index] || []
+              ),
+              pageTextQuestionStates: Array.from(
+                { length: pageCount },
+                (_, index) => pageTextQuestionStates[index] || []
               ),
               pageQuestions: Array.from({ length: pageCount }, (_, index) => pageQuestions[index] || ""),
               pageQuestionDetails: Array.from(
@@ -1451,6 +1700,7 @@ const LessonWorkspace = ({
           pageNumber: index + 1,
           detectedPageNumber: activeSourceDocument.pageNumbers[index] ?? null,
           questions,
+          states: activeSourceDocument.pageTextQuestionStates[index] || [],
         }))
         .find((page) => page.pageNumber === activePreviewPage) || null
     : null;
@@ -1519,6 +1769,7 @@ const LessonWorkspace = ({
       pageNumbers: Array.from({ length: pdf.numPages }, () => null),
       pageTexts: Array.from({ length: pdf.numPages }, () => ""),
       pageTextQuestions: Array.from({ length: pdf.numPages }, () => []),
+      pageTextQuestionStates: Array.from({ length: pdf.numPages }, () => []),
       pageQuestions: Array.from({ length: pdf.numPages }, () => ""),
       pageQuestionDetails: Array.from({ length: pdf.numPages }, () => null),
       pageQuestionUsage: Array.from({ length: pdf.numPages }, () => null),
@@ -1688,6 +1939,9 @@ const LessonWorkspace = ({
         const normalizedPageTextQuestions = normalizedPageTexts.map((pageText) =>
           splitPageTextIntoQuestions(pageText)
         );
+        const normalizedPageTextQuestionStates = normalizedPageTextQuestions.map((questions, pageIndex) =>
+          questions.map((_, questionIndex) => document.pageTextQuestionStates[pageIndex]?.[questionIndex] || "untouched")
+        );
         console.debug("[LessonWorkspace] OCR parse update", {
           documentId,
           documentName: document.name,
@@ -1704,7 +1958,65 @@ const LessonWorkspace = ({
             pageNumbers: normalizedPageNumbers,
             pageTexts: normalizedPageTexts,
             pageTextQuestions: normalizedPageTextQuestions,
+            pageTextQuestionStates: normalizedPageTextQuestionStates,
             ...derivedFields,
+          };
+      }),
+    }));
+  };
+
+  const updateDocumentPageQuestion = (
+    documentId: string,
+    pageNumber: number,
+    questionIndex: number,
+    nextQuestion: string
+  ) => {
+    updateDraft((current) => ({
+      ...current,
+      sourceDocuments: current.sourceDocuments.map((document) => {
+        if (document.id !== documentId) {
+          return document;
+        }
+        const nextPageTextQuestions = document.pageTextQuestions.map((questions, index) =>
+          index === pageNumber - 1
+            ? questions.map((question, innerIndex) =>
+                innerIndex === questionIndex ? nextQuestion : question
+              )
+            : questions
+        );
+        const nextPageTexts = document.pageTexts.map((pageText, index) =>
+          index === pageNumber - 1 ? nextPageTextQuestions[index].join("\n") : pageText
+        );
+        const derivedFields = deriveDocumentFields(nextPageTexts);
+        return {
+          ...document,
+          pageTexts: nextPageTexts,
+          pageTextQuestions: nextPageTextQuestions,
+          ...derivedFields,
+        };
+      }),
+    }));
+  };
+
+  const updateDocumentQuestionState = (
+    documentId: string,
+    pageNumber: number,
+    questionIndex: number,
+    nextState: QuestionReviewState
+  ) => {
+    updateDraft((current) => ({
+      ...current,
+      sourceDocuments: current.sourceDocuments.map((document) => {
+        if (document.id !== documentId) {
+          return document;
+        }
+        return {
+          ...document,
+          pageTextQuestionStates: document.pageTextQuestionStates.map((states, index) =>
+            index === pageNumber - 1
+              ? states.map((state, innerIndex) => (innerIndex === questionIndex ? nextState : state))
+              : states
+          ),
         };
       }),
     }));
@@ -2045,7 +2357,22 @@ const LessonWorkspace = ({
             overflow: "hidden",
           }}
         >
-          <QuestionsAccordionList page={activeExtractedTextPreview} fullscreen={fullscreen} />
+          <QuestionsAccordionList
+            page={activeExtractedTextPreview}
+            fullscreen={fullscreen}
+            onUpdateQuestion={(pageNumber, questionIndex, nextValue) => {
+              if (!activeSourceDocument) {
+                return;
+              }
+              updateDocumentPageQuestion(activeSourceDocument.id, pageNumber, questionIndex, nextValue);
+            }}
+            onUpdateQuestionState={(pageNumber, questionIndex, nextState) => {
+              if (!activeSourceDocument) {
+                return;
+              }
+              updateDocumentQuestionState(activeSourceDocument.id, pageNumber, questionIndex, nextState);
+            }}
+          />
           {localOcringDocument && localOcrProgress.total > 0 ? (
             <Box
               sx={{
