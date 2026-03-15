@@ -79,6 +79,7 @@ type SourceDocument = {
   id: string;
   name: string;
   pages: number;
+  pageNumbers: Array<number | null>;
   pageTexts: string[];
   pageTextQuestions: string[][];
   pageQuestions: string[];
@@ -306,7 +307,7 @@ const QuestionsAccordionList = ({
   page,
   fullscreen = false,
 }: {
-  page: { pageNumber: number; questions: string[] } | null;
+  page: { pageNumber: number; detectedPageNumber?: number | null; questions: string[] } | null;
   fullscreen?: boolean;
 }) => {
   const hasQuestions = Boolean(page?.questions.length);
@@ -400,6 +401,27 @@ const QuestionsAccordionList = ({
         {!hasQuestions ? (
           <Box sx={{ minHeight: 220, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Typography color="text.secondary">No questions for this page.</Typography>
+          </Box>
+        ) : null}
+        {page?.detectedPageNumber ? (
+          <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 0.5 }}>
+            <Box
+              sx={{
+                minWidth: 42,
+                height: 42,
+                px: 1,
+                bgcolor: "#4fa3e3",
+                color: "#fff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: "1rem",
+                lineHeight: 1,
+              }}
+            >
+              {page.detectedPageNumber}
+            </Box>
           </Box>
         ) : null}
       </Stack>
@@ -634,6 +656,11 @@ const loadDraft = (lessonId: string): BuilderDraft => {
                   Array.isArray(entry) ? entry.map((value) => String(value).trim()).filter(Boolean) : []
                 )
               : Array.from({ length: pageCount }, () => []);
+            const pageNumbers = Array.isArray((typed as SourceDocument).pageNumbers)
+              ? (typed as SourceDocument).pageNumbers.map((entry) =>
+                  typeof entry === "number" && Number.isFinite(entry) ? entry : null
+                )
+              : Array.from({ length: pageCount }, () => null);
             const pageQuestions = Array.isArray(typed.pageQuestions)
               ? typed.pageQuestions
               : Array.from({ length: pageCount }, () => "");
@@ -664,6 +691,7 @@ const loadDraft = (lessonId: string): BuilderDraft => {
               : Array.from({ length: pageCount }, () => null);
             return {
               ...typed,
+              pageNumbers: Array.from({ length: pageCount }, (_, index) => pageNumbers[index] ?? null),
               pageTexts,
               pageTextQuestions: Array.from(
                 { length: pageCount },
@@ -1421,6 +1449,7 @@ const LessonWorkspace = ({
     ? activeSourceDocument.pageTextQuestions
         .map((questions, index) => ({
           pageNumber: index + 1,
+          detectedPageNumber: activeSourceDocument.pageNumbers[index] ?? null,
           questions,
         }))
         .find((page) => page.pageNumber === activePreviewPage) || null
@@ -1487,6 +1516,7 @@ const LessonWorkspace = ({
       id: createId("source"),
       name: file.name,
       pages: pdf.numPages,
+      pageNumbers: Array.from({ length: pdf.numPages }, () => null),
       pageTexts: Array.from({ length: pdf.numPages }, () => ""),
       pageTextQuestions: Array.from({ length: pdf.numPages }, () => []),
       pageQuestions: Array.from({ length: pdf.numPages }, () => ""),
@@ -1636,7 +1666,11 @@ const LessonWorkspace = ({
     onNotify("Source document removed", "success");
   };
 
-  const updateDocumentPageTexts = (documentId: string, nextPageTexts: string[]) => {
+  const updateDocumentPageTexts = (
+    documentId: string,
+    nextPageTexts: string[],
+    nextPageNumbers?: Array<number | null>
+  ) => {
     updateDraft((current) => ({
       ...current,
       sourceDocuments: current.sourceDocuments.map((document) => {
@@ -1646,6 +1680,10 @@ const LessonWorkspace = ({
         const normalizedPageTexts = Array.from(
           { length: document.pages },
           (_, index) => nextPageTexts[index] || ""
+        );
+        const normalizedPageNumbers = Array.from(
+          { length: document.pages },
+          (_, index) => nextPageNumbers?.[index] ?? document.pageNumbers[index] ?? null
         );
         const normalizedPageTextQuestions = normalizedPageTexts.map((pageText) =>
           splitPageTextIntoQuestions(pageText)
@@ -1661,11 +1699,12 @@ const LessonWorkspace = ({
           })),
         });
         const derivedFields = deriveDocumentFields(normalizedPageTexts);
-        return {
-          ...document,
-          pageTexts: normalizedPageTexts,
-          pageTextQuestions: normalizedPageTextQuestions,
-          ...derivedFields,
+          return {
+            ...document,
+            pageNumbers: normalizedPageNumbers,
+            pageTexts: normalizedPageTexts,
+            pageTextQuestions: normalizedPageTextQuestions,
+            ...derivedFields,
         };
       }),
     }));
@@ -1679,10 +1718,12 @@ const LessonWorkspace = ({
     setLocalOcrProgress({ current: 0, total: activeSourceDocument.pages });
     try {
       const pageTexts: string[] = [];
+      const pageNumbers: Array<number | null> = [];
       for (let pageNumber = 1; pageNumber <= activeSourceDocument.pages; pageNumber += 1) {
         const extracted = await extractPageColumns(activePreview.file, pageNumber);
+        pageNumbers.push(extracted.pageNumber ?? null);
         pageTexts.push((extracted.questionsSection || extracted.combined || "").trim());
-        updateDocumentPageTexts(activeSourceDocument.id, pageTexts);
+        updateDocumentPageTexts(activeSourceDocument.id, pageTexts, pageNumbers);
         setLocalOcrProgress({ current: pageNumber, total: activeSourceDocument.pages });
       }
       onNotify("Local OCR prepared with questions only.", "success");

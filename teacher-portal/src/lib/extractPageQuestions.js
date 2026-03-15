@@ -1,8 +1,14 @@
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import Tesseract from "tesseract.js";
+import { preprocessOcrQuestionText } from "./preprocessOcrQuestions";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+const OCR_OPTIONS = {
+  tessedit_pageseg_mode: 6,
+  preserve_interword_spaces: 1,
+};
 
 function normalizeOcrText(text) {
   return String(text || "")
@@ -84,6 +90,59 @@ function extractQuestionsSectionFromColumns(leftText, rightText) {
   return trimQuestionLines([...leftLines, ...rightLines]);
 }
 
+async function extractPageNumberFromCanvas(canvas) {
+  const width = canvas.width;
+  const height = canvas.height;
+
+  const cropWidth = width * 0.14;
+  const cropHeight = height * 0.12;
+  const cropX = width - cropWidth;
+  const cropY = height - cropHeight;
+
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width = cropWidth;
+  cropCanvas.height = cropHeight;
+  const cropContext = cropCanvas.getContext("2d");
+
+  cropContext.drawImage(
+      canvas,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      cropWidth,
+      cropHeight,
+    );
+
+  const imageData = cropContext.getImageData(0, 0, cropWidth, cropHeight);
+  const pixels = imageData.data;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const luminance = red * 0.299 + green * 0.587 + blue * 0.114;
+    const nextValue = luminance > 170 ? 255 : 0;
+    pixels[index] = nextValue;
+    pixels[index + 1] = nextValue;
+    pixels[index + 2] = nextValue;
+  }
+
+  cropContext.putImageData(imageData, 0, 0);
+
+  const result = await Tesseract.recognize(cropCanvas, "eng", {
+    tessedit_pageseg_mode: 7,
+    tessedit_char_whitelist: "0123456789",
+  });
+
+  const text = String(result.data.text || "");
+  const match = text.match(/\d{1,3}/);
+
+  return match ? parseInt(match[0], 10) : null;
+}
+
 export async function extractPageColumns(file, pageNumber = 1) {
   const objectUrl = URL.createObjectURL(file);
 
@@ -99,6 +158,7 @@ export async function extractPageColumns(file, pageNumber = 1) {
     canvas.height = viewport.height;
 
     await page.render({ canvasContext: ctx, viewport }).promise;
+    const pageNumberDetected = await extractPageNumberFromCanvas(canvas);
 
     const mid = canvas.width / 2;
 
@@ -119,15 +179,19 @@ export async function extractPageColumns(file, pageNumber = 1) {
       .getContext("2d")
       .drawImage(canvas, mid, 0, mid, canvas.height, 0, 0, mid, canvas.height);
 
-    const left = await Tesseract.recognize(leftCanvas, "eng");
-    const right = await Tesseract.recognize(rightCanvas, "eng");
+    const [left, right] = await Promise.all([
+      Tesseract.recognize(leftCanvas, "eng", OCR_OPTIONS),
+      Tesseract.recognize(rightCanvas, "eng", OCR_OPTIONS),
+    ]);
 
-    const questionsSection = extractQuestionsSectionFromColumns(
+    const rawQuestionsSection = extractQuestionsSectionFromColumns(
       left.data.text,
       right.data.text,
     );
+    const questionsSection = preprocessOcrQuestionText(rawQuestionsSection);
 
     return {
+      pageNumber: pageNumberDetected,
       left: left.data.text,
       right: right.data.text,
       combined: left.data.text + "\n\n" + right.data.text,
