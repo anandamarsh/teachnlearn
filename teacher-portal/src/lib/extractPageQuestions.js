@@ -68,6 +68,7 @@ function extractQuestionsSectionFromColumns(leftText, rightText) {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
+
   const rightLines = normalizeOcrText(rightText)
     .split("\n")
     .map((l) => l.trim())
@@ -90,6 +91,142 @@ function extractQuestionsSectionFromColumns(leftText, rightText) {
   return trimQuestionLines([...leftLines, ...rightLines]);
 }
 
+function thresholdCanvas(canvas, threshold = 170) {
+  const context = canvas.getContext("2d");
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const luminance = red * 0.299 + green * 0.587 + blue * 0.114;
+    const nextValue = luminance > threshold ? 255 : 0;
+    pixels[index] = nextValue;
+    pixels[index + 1] = nextValue;
+    pixels[index + 2] = nextValue;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function cropCanvas(sourceCanvas, x, y, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.floor(width));
+  canvas.height = Math.max(1, Math.floor(height));
+
+  canvas
+    .getContext("2d")
+    .drawImage(
+      sourceCanvas,
+      x,
+      y,
+      width,
+      height,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+
+  return canvas;
+}
+
+function cleanExtractedTitle(text) {
+  const lines = String(text || "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) =>
+      String(line || "")
+        .replace(/[|]/g, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    )
+    .filter(Boolean);
+
+  for (const rawLine of lines) {
+    let value = rawLine
+      .replace(/^[^\dA-Za-z]+/, "")
+      .replace(/[^\w)\]]+$/, "")
+      .trim();
+
+    value = value.replace(/\bS0\b/g, "50");
+    value = value.replace(/\bS1\b/g, "51");
+    value = value.replace(/\bO\b(?=\s+[A-Z][a-z])/, "0");
+
+    if (!/^\d{1,3}\s+\S+/.test(value)) {
+      continue;
+    }
+
+    value = value.replace(
+      /\s+[A-Z][A-Za-z'’.-]*\s+(is|are|was|were|has|have|had|can|could|will|would|should|does|do|did)\b[\s\S]*$/,
+      ""
+    );
+
+    value = value.trim();
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+async function extractTitleFromCanvas(canvas) {
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // top-left crop where the orange chapter heading appears
+  const cropX = width * 0.04;
+  const cropY = height * 0.03;
+  const cropWidth = width * 0.48;
+  const cropHeight = height * 0.12;
+
+  const rawCropCanvas = cropCanvas(canvas, cropX, cropY, cropWidth, cropHeight);
+
+  // scale up a bit for better OCR
+  const scaledCanvas = document.createElement("canvas");
+  scaledCanvas.width = rawCropCanvas.width * 2;
+  scaledCanvas.height = rawCropCanvas.height * 2;
+
+  scaledCanvas
+    .getContext("2d")
+    .drawImage(
+      rawCropCanvas,
+      0,
+      0,
+      rawCropCanvas.width,
+      rawCropCanvas.height,
+      0,
+      0,
+      scaledCanvas.width,
+      scaledCanvas.height,
+    );
+
+  thresholdCanvas(scaledCanvas, 185);
+
+  const result = await Tesseract.recognize(scaledCanvas, "eng", {
+    tessedit_pageseg_mode: 7,
+    preserve_interword_spaces: 1,
+  });
+
+  const title = cleanExtractedTitle(result.data.text);
+
+  if (title) {
+    return title;
+  }
+
+  // fallback: try multi-line mode in case OCR split the heading
+  const fallbackResult = await Tesseract.recognize(rawCropCanvas, "eng", {
+    tessedit_pageseg_mode: 6,
+    preserve_interword_spaces: 1,
+  });
+
+  return cleanExtractedTitle(fallbackResult.data.text);
+}
+
 async function extractPageNumberFromCanvas(canvas) {
   const width = canvas.width;
   const height = canvas.height;
@@ -99,40 +236,10 @@ async function extractPageNumberFromCanvas(canvas) {
   const cropX = width - cropWidth;
   const cropY = height - cropHeight;
 
-  const cropCanvas = document.createElement("canvas");
-  cropCanvas.width = cropWidth;
-  cropCanvas.height = cropHeight;
-  const cropContext = cropCanvas.getContext("2d");
+  const cropCanvasEl = cropCanvas(canvas, cropX, cropY, cropWidth, cropHeight);
+  thresholdCanvas(cropCanvasEl, 170);
 
-  cropContext.drawImage(
-      canvas,
-      cropX,
-      cropY,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      cropWidth,
-      cropHeight,
-    );
-
-  const imageData = cropContext.getImageData(0, 0, cropWidth, cropHeight);
-  const pixels = imageData.data;
-
-  for (let index = 0; index < pixels.length; index += 4) {
-    const red = pixels[index];
-    const green = pixels[index + 1];
-    const blue = pixels[index + 2];
-    const luminance = red * 0.299 + green * 0.587 + blue * 0.114;
-    const nextValue = luminance > 170 ? 255 : 0;
-    pixels[index] = nextValue;
-    pixels[index + 1] = nextValue;
-    pixels[index + 2] = nextValue;
-  }
-
-  cropContext.putImageData(imageData, 0, 0);
-
-  const result = await Tesseract.recognize(cropCanvas, "eng", {
+  const result = await Tesseract.recognize(cropCanvasEl, "eng", {
     tessedit_pageseg_mode: 7,
     tessedit_char_whitelist: "0123456789",
   });
@@ -158,7 +265,11 @@ export async function extractPageColumns(file, pageNumber = 1) {
     canvas.height = viewport.height;
 
     await page.render({ canvasContext: ctx, viewport }).promise;
-    const pageNumberDetected = await extractPageNumberFromCanvas(canvas);
+
+    const [title, pageNumberDetected] = await Promise.all([
+      extractTitleFromCanvas(canvas),
+      extractPageNumberFromCanvas(canvas),
+    ]);
 
     const mid = canvas.width / 2;
 
@@ -191,6 +302,7 @@ export async function extractPageColumns(file, pageNumber = 1) {
     const questionsSection = preprocessOcrQuestionText(rawQuestionsSection);
 
     return {
+      title,
       pageNumber: pageNumberDetected,
       left: left.data.text,
       right: right.data.text,

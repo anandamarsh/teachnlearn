@@ -91,6 +91,7 @@ type SourceDocument = {
   id: string;
   name: string;
   pages: number;
+  pageTitles: Array<string | null>;
   pageNumbers: Array<number | null>;
   pageTexts: string[];
   pageTextQuestions: string[][];
@@ -321,15 +322,36 @@ const QuestionsAccordionList = ({
   fullscreen = false,
   onUpdateQuestion,
   onUpdateQuestionState,
+  onUpdatePageTitle,
+  onUpdatePageNumber,
 }: {
-  page: { pageNumber: number; detectedPageNumber?: number | null; questions: string[]; states: QuestionReviewState[] } | null;
+  page: {
+    pageNumber: number;
+    title?: string | null;
+    detectedPageNumber?: number | null;
+    questions: string[];
+    states: QuestionReviewState[];
+  } | null;
   fullscreen?: boolean;
   onUpdateQuestion?: (pageNumber: number, questionIndex: number, nextValue: string) => void;
   onUpdateQuestionState?: (pageNumber: number, questionIndex: number, nextState: QuestionReviewState) => void;
+  onUpdatePageTitle?: (pageNumber: number, nextTitle: string) => void;
+  onUpdatePageNumber?: (pageNumber: number, nextValue: string) => void;
 }) => {
   const hasQuestions = Boolean(page?.questions.length);
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isEditingPageNumber, setIsEditingPageNumber] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [pageNumberDraft, setPageNumberDraft] = useState("");
   const editorRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+  useEffect(() => {
+    setTitleDraft(page?.title || "");
+    setPageNumberDraft(page?.detectedPageNumber != null ? String(page.detectedPageNumber) : "");
+    setIsEditingTitle(false);
+    setIsEditingPageNumber(false);
+  }, [page?.pageNumber, page?.title, page?.detectedPageNumber]);
 
   const runEditorCommand = (key: string, command: "undo" | "redo") => {
     const editor = editorRefs.current[key];
@@ -411,17 +433,84 @@ const QuestionsAccordionList = ({
         overflowY: "auto",
         overflowX: "hidden",
         p: 1.5,
-        pt: fullscreen ? 4 : 1.5,
+        pt: fullscreen ? 4 : 2.5,
       }}
     >
       <Stack spacing={1.25} sx={{ minWidth: 0, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
         {page ? (
         <Stack spacing={1} sx={{ minWidth: 0, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-          {!fullscreen ? (
-            <Typography sx={{ fontSize: "0.82rem", fontWeight: 800, color: "text.secondary", px: 0.5 }}>
-              Page {page.pageNumber}
-            </Typography>
-          ) : null}
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: 0.5 }}>
+            {isEditingTitle ? (
+              <TextField
+                fullWidth
+                autoFocus
+                variant="standard"
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={() => {
+                  onUpdatePageTitle?.(page.pageNumber, titleDraft);
+                  setIsEditingTitle(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    onUpdatePageTitle?.(page.pageNumber, titleDraft);
+                    setIsEditingTitle(false);
+                  }
+                  if (event.key === "Escape") {
+                    setTitleDraft(page.title || "");
+                    setIsEditingTitle(false);
+                  }
+                }}
+                placeholder="Page title"
+                InputProps={{
+                  disableUnderline: true,
+                  sx: {
+                    px: 1.25,
+                    py: 0.75,
+                    fontSize: fullscreen ? "1.05rem" : "0.92rem",
+                    fontWeight: 800,
+                    color: "text.primary",
+                    backgroundColor: "rgba(0,0,0,0.03)",
+                    borderRadius: "999px",
+                  },
+                }}
+                inputProps={{ sx: { p: 0 } }}
+              />
+            ) : (
+              <Box
+                sx={{
+                  minWidth: 0,
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                  px: 1.25,
+                  py: 0.75,
+                  backgroundColor: "rgba(0,0,0,0.03)",
+                  borderRadius: "999px",
+                }}
+              >
+                <Typography
+                  sx={{
+                    minWidth: 0,
+                    flex: 1,
+                    fontSize: fullscreen ? "1.05rem" : "0.92rem",
+                    fontWeight: 800,
+                    color: "text.primary",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {page.title || "-"}
+                </Typography>
+                <IconButton size="small" onClick={() => setIsEditingTitle(true)} sx={{ p: 0.35 }}>
+                  <EditRoundedIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            )}
+          </Box>
           {hasQuestions ? page.questions.map((question, index) => {
             const questionNumber = getQuestionNumber(question) ?? index + 1;
             const questionKey = `${page.pageNumber}_${index}`;
@@ -639,25 +728,74 @@ const QuestionsAccordionList = ({
             <Typography color="text.secondary">No questions for this page.</Typography>
           </Box>
         ) : null}
-        {page?.detectedPageNumber ? (
+        {page ? (
           <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 0.5 }}>
-            <Box
-              sx={{
-                minWidth: 42,
-                height: 42,
-                px: 1,
-                bgcolor: "#4fa3e3",
-                color: "#fff",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 800,
-                fontSize: "1rem",
-                lineHeight: 1,
-              }}
-            >
-              {page.detectedPageNumber}
-            </Box>
+            {isEditingPageNumber ? (
+              <TextField
+                autoFocus
+                variant="standard"
+                value={pageNumberDraft}
+                onChange={(event) => setPageNumberDraft(event.target.value.replace(/[^\d]/g, "").slice(0, 3))}
+                onBlur={() => {
+                  onUpdatePageNumber?.(page.pageNumber, pageNumberDraft);
+                  setIsEditingPageNumber(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    onUpdatePageNumber?.(page.pageNumber, pageNumberDraft);
+                    setIsEditingPageNumber(false);
+                  }
+                  if (event.key === "Escape") {
+                    setPageNumberDraft(page.detectedPageNumber != null ? String(page.detectedPageNumber) : "");
+                    setIsEditingPageNumber(false);
+                  }
+                }}
+                InputProps={{
+                  disableUnderline: true,
+                  sx: {
+                    minWidth: 62,
+                    height: 42,
+                    px: 1,
+                    bgcolor: "#4fa3e3",
+                    color: "#fff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: "1rem",
+                    lineHeight: 1,
+                    "& input": {
+                      p: 0,
+                      textAlign: "center",
+                      color: "#fff",
+                      fontWeight: 800,
+                    },
+                  },
+                }}
+              />
+            ) : (
+              <Box
+                sx={{
+                  minWidth: 62,
+                  height: 42,
+                  px: 1,
+                  bgcolor: "#4fa3e3",
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 0.35,
+                }}
+              >
+                <Typography sx={{ fontWeight: 800, fontSize: "1rem", lineHeight: 1 }}>
+                  {page.detectedPageNumber != null ? page.detectedPageNumber : "-"}
+                </Typography>
+                <IconButton size="small" onClick={() => setIsEditingPageNumber(true)} sx={{ color: "#fff", p: 0.2 }}>
+                  <EditRoundedIcon sx={{ fontSize: "0.95rem" }} />
+                </IconButton>
+              </Box>
+            )}
           </Box>
         ) : null}
       </Stack>
@@ -901,6 +1039,11 @@ const loadDraft = (lessonId: string): BuilderDraft => {
                     : []
                 )
               : Array.from({ length: pageCount }, () => []);
+            const pageTitles = Array.isArray((typed as SourceDocument).pageTitles)
+              ? (typed as SourceDocument).pageTitles.map((entry) =>
+                  typeof entry === "string" && entry.trim() ? entry : null
+                )
+              : Array.from({ length: pageCount }, () => null);
             const pageNumbers = Array.isArray((typed as SourceDocument).pageNumbers)
               ? (typed as SourceDocument).pageNumbers.map((entry) =>
                   typeof entry === "number" && Number.isFinite(entry) ? entry : null
@@ -936,6 +1079,7 @@ const loadDraft = (lessonId: string): BuilderDraft => {
               : Array.from({ length: pageCount }, () => null);
             return {
               ...typed,
+              pageTitles: Array.from({ length: pageCount }, (_, index) => pageTitles[index] ?? null),
               pageNumbers: Array.from({ length: pageCount }, (_, index) => pageNumbers[index] ?? null),
               pageTexts,
               pageTextQuestions: Array.from(
@@ -1698,6 +1842,7 @@ const LessonWorkspace = ({
     ? activeSourceDocument.pageTextQuestions
         .map((questions, index) => ({
           pageNumber: index + 1,
+          title: activeSourceDocument.pageTitles[index] ?? null,
           detectedPageNumber: activeSourceDocument.pageNumbers[index] ?? null,
           questions,
           states: activeSourceDocument.pageTextQuestionStates[index] || [],
@@ -1766,6 +1911,7 @@ const LessonWorkspace = ({
       id: createId("source"),
       name: file.name,
       pages: pdf.numPages,
+      pageTitles: Array.from({ length: pdf.numPages }, () => null),
       pageNumbers: Array.from({ length: pdf.numPages }, () => null),
       pageTexts: Array.from({ length: pdf.numPages }, () => ""),
       pageTextQuestions: Array.from({ length: pdf.numPages }, () => []),
@@ -1920,7 +2066,8 @@ const LessonWorkspace = ({
   const updateDocumentPageTexts = (
     documentId: string,
     nextPageTexts: string[],
-    nextPageNumbers?: Array<number | null>
+    nextPageNumbers?: Array<number | null>,
+    nextPageTitles?: Array<string | null>
   ) => {
     updateDraft((current) => ({
       ...current,
@@ -1935,6 +2082,10 @@ const LessonWorkspace = ({
         const normalizedPageNumbers = Array.from(
           { length: document.pages },
           (_, index) => nextPageNumbers?.[index] ?? document.pageNumbers[index] ?? null
+        );
+        const normalizedPageTitles = Array.from(
+          { length: document.pages },
+          (_, index) => nextPageTitles?.[index] ?? document.pageTitles[index] ?? null
         );
         const normalizedPageTextQuestions = normalizedPageTexts.map((pageText) =>
           splitPageTextIntoQuestions(pageText)
@@ -1955,6 +2106,7 @@ const LessonWorkspace = ({
         const derivedFields = deriveDocumentFields(normalizedPageTexts);
           return {
             ...document,
+            pageTitles: normalizedPageTitles,
             pageNumbers: normalizedPageNumbers,
             pageTexts: normalizedPageTexts,
             pageTextQuestions: normalizedPageTextQuestions,
@@ -2022,6 +2174,50 @@ const LessonWorkspace = ({
     }));
   };
 
+  const updateDocumentPageTitle = (
+    documentId: string,
+    pageNumber: number,
+    nextTitle: string
+  ) => {
+    updateDraft((current) => ({
+      ...current,
+      sourceDocuments: current.sourceDocuments.map((document) => {
+        if (document.id !== documentId) {
+          return document;
+        }
+        return {
+          ...document,
+          pageTitles: document.pageTitles.map((title, index) =>
+            index === pageNumber - 1 ? (nextTitle.trim() ? nextTitle : null) : title
+          ),
+        };
+      }),
+    }));
+  };
+
+  const updateDocumentPageNumber = (
+    documentId: string,
+    pageNumber: number,
+    nextValue: string
+  ) => {
+    const trimmed = nextValue.trim();
+    const normalized = trimmed === "" ? null : /^[0-9]{1,3}$/.test(trimmed) ? Number(trimmed) : null;
+    updateDraft((current) => ({
+      ...current,
+      sourceDocuments: current.sourceDocuments.map((document) => {
+        if (document.id !== documentId) {
+          return document;
+        }
+        return {
+          ...document,
+          pageNumbers: document.pageNumbers.map((value, index) =>
+            index === pageNumber - 1 ? normalized : value
+          ),
+        };
+      }),
+    }));
+  };
+
   const runLocalOcrOnCurrentDocument = async () => {
     if (!activeSourceDocument || !activePreview?.file) {
       return;
@@ -2030,12 +2226,14 @@ const LessonWorkspace = ({
     setLocalOcrProgress({ current: 0, total: activeSourceDocument.pages });
     try {
       const pageTexts: string[] = [];
+      const pageTitles: Array<string | null> = [];
       const pageNumbers: Array<number | null> = [];
       for (let pageNumber = 1; pageNumber <= activeSourceDocument.pages; pageNumber += 1) {
         const extracted = await extractPageColumns(activePreview.file, pageNumber);
+        pageTitles.push(extracted.title ?? null);
         pageNumbers.push(extracted.pageNumber ?? null);
         pageTexts.push((extracted.questionsSection || extracted.combined || "").trim());
-        updateDocumentPageTexts(activeSourceDocument.id, pageTexts, pageNumbers);
+        updateDocumentPageTexts(activeSourceDocument.id, pageTexts, pageNumbers, pageTitles);
         setLocalOcrProgress({ current: pageNumber, total: activeSourceDocument.pages });
       }
       onNotify("Local OCR prepared with questions only.", "success");
@@ -2360,6 +2558,18 @@ const LessonWorkspace = ({
           <QuestionsAccordionList
             page={activeExtractedTextPreview}
             fullscreen={fullscreen}
+            onUpdatePageTitle={(pageNumber, nextTitle) => {
+              if (!activeSourceDocument) {
+                return;
+              }
+              updateDocumentPageTitle(activeSourceDocument.id, pageNumber, nextTitle);
+            }}
+            onUpdatePageNumber={(pageNumber, nextValue) => {
+              if (!activeSourceDocument) {
+                return;
+              }
+              updateDocumentPageNumber(activeSourceDocument.id, pageNumber, nextValue);
+            }}
             onUpdateQuestion={(pageNumber, questionIndex, nextValue) => {
               if (!activeSourceDocument) {
                 return;
