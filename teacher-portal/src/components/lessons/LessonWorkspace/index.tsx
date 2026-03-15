@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -64,7 +72,10 @@ type LessonWorkspaceProps = {
   onDeleteLesson: () => void;
   showDelete: boolean;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
-  onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
+  onUpdateContent: (
+    lessonId: string,
+    content: string,
+  ) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
   getAccessTokenSilently?: GetAccessTokenSilently;
   onUpdateMeta: (
@@ -77,13 +88,18 @@ type LessonWorkspaceProps = {
         questionsPerExercise?: number | null;
         exercisesCount?: number | null;
       } | null;
-    }
+    },
   ) => Promise<Lesson | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   onPulse?: (color: "success" | "error") => void;
 };
 
-type WorkflowState = "source" | "concepts" | "sections" | "review" | "published";
+type WorkflowState =
+  | "source"
+  | "concepts"
+  | "sections"
+  | "review"
+  | "published";
 type StepKey = "source" | "concepts" | "sections" | "review";
 type QuestionReviewState = "untouched" | "accepted" | "rejected";
 
@@ -138,6 +154,16 @@ type BuilderDraft = {
   lastSkillRunAt?: string | null;
 };
 
+type ApprovedQuestionPage = {
+  sourceDocumentId: string;
+  pageNumber: number;
+  title: string | null;
+  detectedPageNumber: number | null;
+  questions: string[];
+  questionIndexes: number[];
+  states: QuestionReviewState[];
+};
+
 type SkillRef = {
   id: string;
   label: string;
@@ -167,7 +193,8 @@ const emptyDraft = (): BuilderDraft => ({
   lastSkillRunAt: null,
 });
 
-const getStorageKey = (lessonId: string) => `tp_teacher_lesson_builder_v2_${lessonId}`;
+const getStorageKey = (lessonId: string) =>
+  `tp_teacher_lesson_builder_v2_${lessonId}`;
 const SOURCE_SPLIT_STORAGE_KEY = "tp_teacher_source_split_pct_v1";
 
 const createId = (prefix: string) =>
@@ -204,7 +231,7 @@ const deriveTitleCandidates = (lines: string[]) =>
     lines
       .filter((line) => line.length > 6 && line.length < 90)
       .filter((line) => /^[A-Z0-9][A-Za-z0-9 ,:()'-]+$/.test(line))
-      .slice(0, 5)
+      .slice(0, 5),
   );
 
 const deriveHeadingCandidates = (lines: string[]) =>
@@ -215,9 +242,9 @@ const deriveHeadingCandidates = (lines: string[]) =>
         (line) =>
           /^[A-Z][A-Za-z0-9 ,:()'-]+$/.test(line) &&
           line.split(" ").length <= 8 &&
-          !line.endsWith(".")
+          !line.endsWith("."),
       )
-      .slice(0, 12)
+      .slice(0, 12),
   );
 
 const deriveQuestionCandidates = (lines: string[]) =>
@@ -229,7 +256,7 @@ const deriveQuestionCandidatesFromPages = (pageQuestions: string[]) =>
       .flatMap((pageQuestion) => pageQuestion.split(/\n+/))
       .map(cleanLine)
       .filter(Boolean)
-      .slice(0, 24)
+      .slice(0, 24),
   );
 
 const deriveDocumentFields = (pageTexts: string[]) => {
@@ -253,9 +280,12 @@ const sentenceSplit = (text: string) =>
     .map((sentence) => cleanLine(sentence))
     .filter(Boolean);
 
-const formatCostCents = (value: number) => `${value.toFixed(value < 0.1 ? 3 : 2)}c`;
+const formatCostCents = (value: number) =>
+  `${value.toFixed(value < 0.1 ? 3 : 2)}c`;
 
-const questionsToEditorText = (pageQuestionDetails: Array<LessonPageQuestionItem[] | null>) =>
+const questionsToEditorText = (
+  pageQuestionDetails: Array<LessonPageQuestionItem[] | null>,
+) =>
   pageQuestionDetails
     .map((pageItems, index) => {
       if (!pageItems?.length) {
@@ -263,10 +293,13 @@ const questionsToEditorText = (pageQuestionDetails: Array<LessonPageQuestionItem
       }
       const formatted = pageItems
         .map((item) =>
-          [item.label ? `${item.label} ${item.question}` : item.question, ...item.answerOptions]
+          [
+            item.label ? `${item.label} ${item.question}` : item.question,
+            ...item.answerOptions,
+          ]
             .map(cleanLine)
             .filter(Boolean)
-            .join("\n")
+            .join("\n"),
         )
         .filter(Boolean)
         .join("\n\n");
@@ -309,13 +342,42 @@ const splitPageTextIntoQuestions = (pageText: string) => {
     .filter((chunk) => Boolean(chunk) && /^\s*(?:\d+|[Il])\.\s+/.test(chunk));
 };
 
-const summarizeQuestion = (question: string) => {
+const summarizeQuestion = (question: string, maxChars = 80) => {
   const singleLine = cleanLine(stripQuestionPrefix(question));
-  if (singleLine.length <= 80) {
+  if (singleLine.length <= maxChars) {
     return singleLine;
   }
-  return `${singleLine.slice(0, 77).trim()}...`;
+  return `${singleLine.slice(0, Math.max(1, maxChars - 3)).trim()}...`;
 };
+
+const buildApprovedQuestionPages = (
+  documents: SourceDocument[],
+): ApprovedQuestionPage[] =>
+  documents.flatMap((document) =>
+    document.pageTextQuestions.flatMap((questions, pageIndex) => {
+      const states = document.pageTextQuestionStates[pageIndex] || [];
+      const approvedPairs = questions
+        .map((question, questionIndex) => ({ question, questionIndex }))
+        .filter(({ questionIndex }) => states[questionIndex] === "accepted");
+      const approvedQuestions = approvedPairs.map(({ question }) => question);
+      if (approvedQuestions.length === 0) {
+        return [];
+      }
+      return [
+        {
+          sourceDocumentId: document.id,
+          pageNumber: pageIndex + 1,
+          title: document.pageTitles[pageIndex] ?? null,
+          detectedPageNumber: document.pageNumbers[pageIndex] ?? null,
+          questions: approvedQuestions,
+          questionIndexes: approvedPairs.map(
+            ({ questionIndex }) => questionIndex,
+          ),
+          states: approvedQuestions.map(() => "accepted" as const),
+        },
+      ];
+    }),
+  );
 
 const QuestionsAccordionList = ({
   page,
@@ -324,19 +386,30 @@ const QuestionsAccordionList = ({
   onUpdateQuestionState,
   onUpdatePageTitle,
   onUpdatePageNumber,
+  summaryMaxChars = 80,
 }: {
   page: {
     pageNumber: number;
     title?: string | null;
     detectedPageNumber?: number | null;
     questions: string[];
+    questionIndexes?: number[];
     states: QuestionReviewState[];
   } | null;
   fullscreen?: boolean;
-  onUpdateQuestion?: (pageNumber: number, questionIndex: number, nextValue: string) => void;
-  onUpdateQuestionState?: (pageNumber: number, questionIndex: number, nextState: QuestionReviewState) => void;
+  onUpdateQuestion?: (
+    pageNumber: number,
+    questionIndex: number,
+    nextValue: string,
+  ) => void;
+  onUpdateQuestionState?: (
+    pageNumber: number,
+    questionIndex: number,
+    nextState: QuestionReviewState,
+  ) => void;
   onUpdatePageTitle?: (pageNumber: number, nextTitle: string) => void;
   onUpdatePageNumber?: (pageNumber: number, nextValue: string) => void;
+  summaryMaxChars?: number;
 }) => {
   const hasQuestions = Boolean(page?.questions.length);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -348,7 +421,9 @@ const QuestionsAccordionList = ({
 
   useEffect(() => {
     setTitleDraft(page?.title || "");
-    setPageNumberDraft(page?.detectedPageNumber != null ? String(page.detectedPageNumber) : "");
+    setPageNumberDraft(
+      page?.detectedPageNumber != null ? String(page.detectedPageNumber) : "",
+    );
     setIsEditingTitle(false);
     setIsEditingPageNumber(false);
   }, [page?.pageNumber, page?.title, page?.detectedPageNumber]);
@@ -366,7 +441,7 @@ const QuestionsAccordionList = ({
     key: string,
     prefix: string,
     suffix = prefix,
-    placeholder = "text"
+    placeholder = "text",
   ) => {
     const editor = editorRefs.current[key];
     if (!editor || !page) {
@@ -375,7 +450,8 @@ const QuestionsAccordionList = ({
     const selectionStart = editor.selectionStart ?? 0;
     const selectionEnd = editor.selectionEnd ?? 0;
     const currentValue = editor.value;
-    const selectedText = currentValue.slice(selectionStart, selectionEnd) || placeholder;
+    const selectedText =
+      currentValue.slice(selectionStart, selectionEnd) || placeholder;
     const nextValue =
       currentValue.slice(0, selectionStart) +
       prefix +
@@ -383,7 +459,11 @@ const QuestionsAccordionList = ({
       suffix +
       currentValue.slice(selectionEnd);
     const [pageNumberText, questionIndexText] = key.split("_");
-    onUpdateQuestion?.(Number(pageNumberText), Number(questionIndexText), nextValue);
+    onUpdateQuestion?.(
+      Number(pageNumberText),
+      Number(questionIndexText),
+      nextValue,
+    );
     queueMicrotask(() => {
       const nextEditor = editorRefs.current[key];
       if (!nextEditor) {
@@ -412,9 +492,14 @@ const QuestionsAccordionList = ({
       .split("\n")
       .map((line) => `${prefix}${line}`)
       .join("\n");
-    const nextValue = currentValue.slice(0, start) + nextBlock + currentValue.slice(end);
+    const nextValue =
+      currentValue.slice(0, start) + nextBlock + currentValue.slice(end);
     const [pageNumberText, questionIndexText] = key.split("_");
-    onUpdateQuestion?.(Number(pageNumberText), Number(questionIndexText), nextValue);
+    onUpdateQuestion?.(
+      Number(pageNumberText),
+      Number(questionIndexText),
+      nextValue,
+    );
     queueMicrotask(() => {
       const nextEditor = editorRefs.current[key];
       nextEditor?.focus();
@@ -436,296 +521,436 @@ const QuestionsAccordionList = ({
         pt: fullscreen ? 4 : 2.5,
       }}
     >
-      <Stack spacing={1.25} sx={{ minWidth: 0, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+      <Stack
+        spacing={1.25}
+        sx={{
+          minWidth: 0,
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+        }}
+      >
         {page ? (
-        <Stack spacing={1} sx={{ minWidth: 0, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: 0.5 }}>
-            {isEditingTitle ? (
-              <TextField
-                fullWidth
-                autoFocus
-                variant="standard"
-                value={titleDraft}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                onBlur={() => {
-                  onUpdatePageTitle?.(page.pageNumber, titleDraft);
-                  setIsEditingTitle(false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+          <Stack
+            spacing={1}
+            sx={{
+              minWidth: 0,
+              width: "100%",
+              maxWidth: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 1,
+                px: 0.5,
+              }}
+            >
+              {isEditingTitle ? (
+                <TextField
+                  fullWidth
+                  autoFocus
+                  variant="standard"
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onBlur={() => {
                     onUpdatePageTitle?.(page.pageNumber, titleDraft);
                     setIsEditingTitle(false);
-                  }
-                  if (event.key === "Escape") {
-                    setTitleDraft(page.title || "");
-                    setIsEditingTitle(false);
-                  }
-                }}
-                placeholder="Page title"
-                InputProps={{
-                  disableUnderline: true,
-                  sx: {
-                    px: 1.25,
-                    py: 0.75,
-                    fontSize: fullscreen ? "1.05rem" : "0.92rem",
-                    fontWeight: 800,
-                    color: "text.primary",
-                    backgroundColor: "rgba(0,0,0,0.03)",
-                    borderRadius: "999px",
-                  },
-                }}
-                inputProps={{ sx: { p: 0 } }}
-              />
-            ) : (
-              <Box
-                sx={{
-                  minWidth: 0,
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.5,
-                  px: 1.25,
-                  py: 0.75,
-                  backgroundColor: "rgba(0,0,0,0.03)",
-                  borderRadius: "999px",
-                }}
-              >
-                <Typography
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      onUpdatePageTitle?.(page.pageNumber, titleDraft);
+                      setIsEditingTitle(false);
+                    }
+                    if (event.key === "Escape") {
+                      setTitleDraft(page.title || "");
+                      setIsEditingTitle(false);
+                    }
+                  }}
+                  placeholder="Page title"
+                  InputProps={{
+                    disableUnderline: true,
+                    sx: {
+                      px: 1.25,
+                      py: 0.75,
+                      fontSize: fullscreen ? "1.05rem" : "0.92rem",
+                      fontWeight: 800,
+                      color: "text.primary",
+                      backgroundColor: "rgba(0,0,0,0.03)",
+                      borderRadius: "999px",
+                    },
+                  }}
+                  inputProps={{ sx: { p: 0 } }}
+                />
+              ) : (
+                <Box
                   sx={{
                     minWidth: 0,
                     flex: 1,
-                    fontSize: fullscreen ? "1.05rem" : "0.92rem",
-                    fontWeight: 800,
-                    color: "text.primary",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    px: 1.25,
+                    py: 0.75,
+                    backgroundColor: "rgba(0,0,0,0.03)",
+                    borderRadius: "999px",
                   }}
                 >
-                  {page.title || "-"}
-                </Typography>
-                <IconButton size="small" onClick={() => setIsEditingTitle(true)} sx={{ p: 0.35 }}>
-                  <EditRoundedIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            )}
-          </Box>
-          {hasQuestions ? page.questions.map((question, index) => {
-            const questionNumber = getQuestionNumber(question) ?? index + 1;
-            const questionKey = `${page.pageNumber}_${index}`;
-            const isEditing = editingKey === questionKey;
-            const reviewState = page.states[index] || "untouched";
-            const badgeColor =
-              reviewState === "accepted" ? "#2e7d32" : reviewState === "rejected" ? "#bdbdbd" : "#1976d2";
-            const titleColor = reviewState === "rejected" ? "rgba(0,0,0,0.45)" : "inherit";
-            return (
-            <Accordion
-              key={questionKey}
-              disableGutters
-              elevation={0}
-              sx={{
-                borderRadius: 0,
-                overflow: "hidden",
-                width: "100%",
-                maxWidth: "100%",
-                minWidth: 0,
-                boxSizing: "border-box",
-                boxShadow: "none",
-                backgroundColor: "transparent",
-                "&:before": { display: "none" },
-                "&:not(:last-of-type)": {
-                  borderBottom: "1px solid rgba(0,0,0,0.08)",
-                },
-              }}
-            >
-              <AccordionSummary
-                expandIcon={<ExpandMoreRoundedIcon />}
-                sx={{
-                  width: "100%",
-                  minWidth: 0,
-                  overflow: "hidden",
-                  pr: 6,
-                  position: "relative",
-                  borderRadius: 0,
-                  backgroundColor: "transparent",
-                  "& .MuiAccordionSummary-content": {
-                    minWidth: 0,
-                    my: 1.25,
-                    overflow: "hidden",
-                  },
-                  "& .MuiAccordionSummary-expandIconWrapper": {
-                    position: "absolute",
-                    right: 8,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                  },
-                }}
-              >
-                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, width: "100%", overflow: "hidden" }}>
-                  <Box
-                    sx={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: "999px",
-                      bgcolor: badgeColor,
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.82rem",
-                      fontWeight: 800,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {questionNumber}
-                  </Box>
                   <Typography
-                    component="div"
                     sx={{
-                      fontWeight: 700,
                       minWidth: 0,
                       flex: 1,
-                      display: "block",
+                      fontSize: fullscreen ? "1.05rem" : "0.92rem",
+                      fontWeight: 800,
+                      color: "text.primary",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
-                      color: titleColor,
                     }}
                   >
-                    {summarizeQuestion(question)}
+                    {page.title || "-"}
                   </Typography>
-                  <Stack
-                    direction="row"
-                    spacing={0}
-                    alignItems="center"
-                    sx={{
-                      position: "absolute",
-                      right: 36,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      zIndex: 1,
-                    }}
+                  <IconButton
+                    size="small"
+                    onClick={() => setIsEditingTitle(true)}
+                    sx={{ p: 0.35 }}
                   >
-                    <IconButton
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUpdateQuestionState?.(
-                          page.pageNumber,
-                          index,
-                          reviewState === "accepted" ? "untouched" : "accepted"
-                        );
+                    <EditRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              )}
+            </Box>
+            {hasQuestions
+              ? page.questions.map((question, index) => {
+                  const questionNumber =
+                    getQuestionNumber(question) ?? index + 1;
+                  const sourceQuestionIndex =
+                    page.questionIndexes?.[index] ?? index;
+                  const questionKey = `${page.pageNumber}_${sourceQuestionIndex}`;
+                  const isEditing = editingKey === questionKey;
+                  const reviewState = page.states[index] || "untouched";
+                  const badgeColor =
+                    reviewState === "accepted" ? "#2e7d32" : "#9e9e9e";
+                  const titleColor =
+                    reviewState === "accepted" ? "inherit" : "rgba(0,0,0,0.42)";
+                  return (
+                    <Accordion
+                      key={questionKey}
+                      disableGutters
+                      elevation={0}
+                      sx={{
+                        borderRadius: 0,
+                        overflow: "hidden",
+                        width: "100%",
+                        maxWidth: "100%",
+                        minWidth: 0,
+                        boxSizing: "border-box",
+                        boxShadow: "none",
+                        backgroundColor: "transparent",
+                        "&:before": { display: "none" },
+                        "&:not(:last-of-type)": {
+                          borderBottom: "1px solid rgba(0,0,0,0.08)",
+                        },
                       }}
-                      sx={{ color: reviewState === "accepted" ? "#2e7d32" : "rgba(46,125,50,0.45)", p: 0.35 }}
                     >
-                      <CheckRoundedIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUpdateQuestionState?.(
-                          page.pageNumber,
-                          index,
-                          reviewState === "rejected" ? "untouched" : "rejected"
-                        );
-                      }}
-                      sx={{ color: reviewState === "rejected" ? "#c62828" : "rgba(198,40,40,0.45)", p: 0.35 }}
-                    >
-                      <CloseRoundedIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setEditingKey((current) => (current === questionKey ? null : questionKey));
-                      }}
-                      disabled={isEditing}
-                      sx={{ color: isEditing ? "action.disabled" : "text.secondary", p: 0.35 }}
-                    >
-                      <EditRoundedIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                </Stack>
-              </AccordionSummary>
-              <AccordionDetails>
-                  <Stack spacing={1.25}>
-                  {isEditing ? (
-                    <Box sx={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: "10px", overflow: "hidden" }}>
-                      <Stack
-                        direction="row"
-                        spacing={0.25}
-                        alignItems="center"
-                        justifyContent="space-between"
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreRoundedIcon />}
                         sx={{
-                          px: 1,
-                          py: 0.75,
-                          borderBottom: "1px solid rgba(0,0,0,0.1)",
-                          backgroundColor: "#f8fafc",
-                        }}
-                      >
-                        <Stack direction="row" spacing={0.25} alignItems="center">
-                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "**")}><FormatBoldRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "_")}><FormatItalicRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => prefixSelectionLines(questionKey, "> ")}><FormatQuoteRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "`")}><CodeRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => wrapSelection(questionKey, "[", "](https://example.com)", "link text")}><LinkRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => prefixSelectionLines(questionKey, "- ")}><FormatListBulletedRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => prefixSelectionLines(questionKey, "1. ")}><FormatListNumberedRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => runEditorCommand(questionKey, "undo")}><UndoRoundedIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" onClick={() => runEditorCommand(questionKey, "redo")}><RedoRoundedIcon fontSize="small" /></IconButton>
-                        </Stack>
-                        <IconButton size="small" onClick={() => setEditingKey(null)}>
-                          <CloseRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Stack>
-                      <TextField
-                        multiline
-                        fullWidth
-                        minRows={8}
-                        value={question}
-                        onChange={(event) =>
-                          onUpdateQuestion?.(page.pageNumber, index, event.target.value)
-                        }
-                        inputRef={(element) => {
-                          editorRefs.current[questionKey] = element;
-                        }}
-                        spellCheck={false}
-                        variant="standard"
-                        InputProps={{
-                          disableUnderline: true,
-                          sx: {
-                            px: 1.5,
-                            py: 1.25,
-                            fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
-                            fontSize: "0.95rem",
-                            alignItems: "flex-start",
+                          width: "100%",
+                          minWidth: 0,
+                          overflow: "hidden",
+                          pr: 6,
+                          position: "relative",
+                          borderRadius: 0,
+                          backgroundColor: "transparent",
+                          "& .MuiAccordionSummary-content": {
+                            minWidth: 0,
+                            my: 1.25,
+                            overflow: "hidden",
+                          },
+                          "& .MuiAccordionSummary-expandIconWrapper": {
+                            position: "absolute",
+                            right: 8,
+                            top: "50%",
+                            transform: "translateY(-50%)",
                           },
                         }}
-                      />
-                    </Box>
-                  ) : (
-                    <Typography
-                      sx={{
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.6,
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {stripQuestionPrefix(question)}
-                    </Typography>
-                  )}
-                </Stack>
-              </AccordionDetails>
-            </Accordion>
-          )}) : null}
-        </Stack>
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          alignItems="center"
+                          sx={{
+                            minWidth: 0,
+                            width: "100%",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 26,
+                              height: 26,
+                              borderRadius: "999px",
+                              bgcolor: badgeColor,
+                              color: "#fff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "0.82rem",
+                              fontWeight: 800,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {questionNumber}
+                          </Box>
+                          <Typography
+                            component="div"
+                            sx={{
+                              fontWeight: 700,
+                              minWidth: 0,
+                              flex: 1,
+                              display: "block",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              color: titleColor,
+                            }}
+                          >
+                            {summarizeQuestion(question, summaryMaxChars)}
+                          </Typography>
+                          <Stack
+                            direction="row"
+                            spacing={0}
+                            alignItems="center"
+                            sx={{
+                              position: "absolute",
+                              right: 36,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              zIndex: 1,
+                            }}
+                          >
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onUpdateQuestionState?.(
+                                  page.pageNumber,
+                                  sourceQuestionIndex,
+                                  reviewState === "accepted"
+                                    ? "untouched"
+                                    : "accepted",
+                                );
+                              }}
+                              sx={{
+                                color:
+                                  reviewState === "accepted"
+                                    ? "#2e7d32"
+                                    : "#bdbdbd",
+                                p: 0.35,
+                              }}
+                            >
+                              <CheckRoundedIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditingKey((current) =>
+                                  current === questionKey ? null : questionKey,
+                                );
+                              }}
+                              disabled={isEditing}
+                              sx={{
+                                color: isEditing
+                                  ? "action.disabled"
+                                  : "text.secondary",
+                                p: 0.35,
+                              }}
+                            >
+                              <EditRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                        </Stack>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Stack spacing={1.25}>
+                          {isEditing ? (
+                            <Box
+                              sx={{
+                                border: "1px solid rgba(0,0,0,0.12)",
+                                borderRadius: "10px",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <Stack
+                                direction="row"
+                                spacing={0.25}
+                                alignItems="center"
+                                justifyContent="space-between"
+                                sx={{
+                                  px: 1,
+                                  py: 0.75,
+                                  borderBottom: "1px solid rgba(0,0,0,0.1)",
+                                  backgroundColor: "#f8fafc",
+                                }}
+                              >
+                                <Stack
+                                  direction="row"
+                                  spacing={0.25}
+                                  alignItems="center"
+                                >
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      wrapSelection(questionKey, "**")
+                                    }
+                                  >
+                                    <FormatBoldRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      wrapSelection(questionKey, "_")
+                                    }
+                                  >
+                                    <FormatItalicRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      prefixSelectionLines(questionKey, "> ")
+                                    }
+                                  >
+                                    <FormatQuoteRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      wrapSelection(questionKey, "`")
+                                    }
+                                  >
+                                    <CodeRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      wrapSelection(
+                                        questionKey,
+                                        "[",
+                                        "](https://example.com)",
+                                        "link text",
+                                      )
+                                    }
+                                  >
+                                    <LinkRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      prefixSelectionLines(questionKey, "- ")
+                                    }
+                                  >
+                                    <FormatListBulletedRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      prefixSelectionLines(questionKey, "1. ")
+                                    }
+                                  >
+                                    <FormatListNumberedRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      runEditorCommand(questionKey, "undo")
+                                    }
+                                  >
+                                    <UndoRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      runEditorCommand(questionKey, "redo")
+                                    }
+                                  >
+                                    <RedoRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                </Stack>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setEditingKey(null)}
+                                >
+                                  <CloseRoundedIcon fontSize="small" />
+                                </IconButton>
+                              </Stack>
+                              <TextField
+                                multiline
+                                fullWidth
+                                minRows={8}
+                                value={question}
+                                onChange={(event) =>
+                                  onUpdateQuestion?.(
+                                    page.pageNumber,
+                                    sourceQuestionIndex,
+                                    event.target.value,
+                                  )
+                                }
+                                inputRef={(element) => {
+                                  editorRefs.current[questionKey] = element;
+                                }}
+                                spellCheck={false}
+                                variant="standard"
+                                InputProps={{
+                                  disableUnderline: true,
+                                  sx: {
+                                    px: 1.5,
+                                    py: 1.25,
+                                    fontFamily:
+                                      '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+                                    fontSize: "0.95rem",
+                                    alignItems: "flex-start",
+                                  },
+                                }}
+                              />
+                            </Box>
+                          ) : (
+                            <Typography
+                              sx={{
+                                whiteSpace: "pre-wrap",
+                                lineHeight: 1.6,
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {stripQuestionPrefix(question)}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })
+              : null}
+          </Stack>
         ) : null}
         {!hasQuestions ? (
-          <Box sx={{ minHeight: 220, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography color="text.secondary">No questions for this page.</Typography>
+          <Box
+            sx={{
+              minHeight: 220,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography color="text.secondary">
+              No questions for this page.
+            </Typography>
           </Box>
         ) : null}
         {page ? (
@@ -735,7 +960,11 @@ const QuestionsAccordionList = ({
                 autoFocus
                 variant="standard"
                 value={pageNumberDraft}
-                onChange={(event) => setPageNumberDraft(event.target.value.replace(/[^\d]/g, "").slice(0, 3))}
+                onChange={(event) =>
+                  setPageNumberDraft(
+                    event.target.value.replace(/[^\d]/g, "").slice(0, 3),
+                  )
+                }
                 onBlur={() => {
                   onUpdatePageNumber?.(page.pageNumber, pageNumberDraft);
                   setIsEditingPageNumber(false);
@@ -747,7 +976,11 @@ const QuestionsAccordionList = ({
                     setIsEditingPageNumber(false);
                   }
                   if (event.key === "Escape") {
-                    setPageNumberDraft(page.detectedPageNumber != null ? String(page.detectedPageNumber) : "");
+                    setPageNumberDraft(
+                      page.detectedPageNumber != null
+                        ? String(page.detectedPageNumber)
+                        : "",
+                    );
                     setIsEditingPageNumber(false);
                   }
                 }}
@@ -788,10 +1021,18 @@ const QuestionsAccordionList = ({
                   gap: 0.35,
                 }}
               >
-                <Typography sx={{ fontWeight: 800, fontSize: "1rem", lineHeight: 1 }}>
-                  {page.detectedPageNumber != null ? page.detectedPageNumber : "-"}
+                <Typography
+                  sx={{ fontWeight: 800, fontSize: "1rem", lineHeight: 1 }}
+                >
+                  {page.detectedPageNumber != null
+                    ? page.detectedPageNumber
+                    : "-"}
                 </Typography>
-                <IconButton size="small" onClick={() => setIsEditingPageNumber(true)} sx={{ color: "#fff", p: 0.2 }}>
+                <IconButton
+                  size="small"
+                  onClick={() => setIsEditingPageNumber(true)}
+                  sx={{ color: "#fff", p: 0.2 }}
+                >
                   <EditRoundedIcon sx={{ fontSize: "0.95rem" }} />
                 </IconButton>
               </Box>
@@ -800,6 +1041,81 @@ const QuestionsAccordionList = ({
         ) : null}
       </Stack>
     </Box>
+  );
+};
+
+const ApprovedQuestionsReview = ({
+  pages,
+  onUpdateQuestion,
+  onUpdateQuestionState,
+  onUpdatePageTitle,
+  onUpdatePageNumber,
+}: {
+  pages: ApprovedQuestionPage[];
+  onUpdateQuestion: (
+    documentId: string,
+    pageNumber: number,
+    questionIndex: number,
+    nextValue: string,
+  ) => void;
+  onUpdateQuestionState: (
+    documentId: string,
+    pageNumber: number,
+    questionIndex: number,
+    nextState: QuestionReviewState,
+  ) => void;
+  onUpdatePageTitle: (
+    documentId: string,
+    pageNumber: number,
+    nextTitle: string,
+  ) => void;
+  onUpdatePageNumber: (
+    documentId: string,
+    pageNumber: number,
+    nextValue: string,
+  ) => void;
+}) => {
+  if (pages.length === 0) {
+    return (
+      <Alert severity="info">
+        Approve questions in the source step to review them here.
+      </Alert>
+    );
+  }
+
+  return (
+    <Stack spacing={2.5}>
+      {pages.map((page) => (
+        <Box key={`${page.sourceDocumentId}_${page.pageNumber}`}>
+          <QuestionsAccordionList
+            page={page}
+            summaryMaxChars={150}
+            onUpdateQuestion={(pageNumber, questionIndex, nextValue) =>
+              onUpdateQuestion(
+                page.sourceDocumentId,
+                pageNumber,
+                questionIndex,
+                nextValue,
+              )
+            }
+            onUpdateQuestionState={(pageNumber, questionIndex, nextState) =>
+              onUpdateQuestionState(
+                page.sourceDocumentId,
+                pageNumber,
+                questionIndex,
+                nextState,
+              )
+            }
+            onUpdatePageTitle={(pageNumber, nextTitle) =>
+              onUpdatePageTitle(page.sourceDocumentId, pageNumber, nextTitle)
+            }
+            onUpdatePageNumber={(pageNumber, nextValue) =>
+              onUpdatePageNumber(page.sourceDocumentId, pageNumber, nextValue)
+            }
+          />
+        </Box>
+      ))}
+    </Stack>
   );
 };
 
@@ -872,7 +1188,8 @@ const JsonValueNode = ({
           fontWeight: 700,
         }}
       >
-        {open ? "[-]" : "[+]"} {showKeys && label ? label : isArray ? `[${entries.length}]` : "{...}"}
+        {open ? "[-]" : "[+]"}{" "}
+        {showKeys && label ? label : isArray ? `[${entries.length}]` : "{...}"}
       </Button>
       {open ? (
         <Box sx={{ mt: 0.25 }}>
@@ -901,7 +1218,14 @@ const QuestionsJsonViewer = ({
   const [showKeys, setShowKeys] = useState(false);
 
   return (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <Box
+      sx={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
       <Box
         sx={{
           display: "flex",
@@ -914,22 +1238,43 @@ const QuestionsJsonViewer = ({
         }}
       >
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" onClick={() => setExpandAll(true)}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => setExpandAll(true)}
+          >
             Expand all
           </Button>
-          <Button size="small" variant="outlined" onClick={() => setExpandAll(false)}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => setExpandAll(false)}
+          >
             Collapse all
           </Button>
         </Stack>
-        <Button size="small" variant="outlined" onClick={() => setShowKeys((current) => !current)}>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setShowKeys((current) => !current)}
+        >
           {showKeys ? "Hide keys" : "View keys"}
         </Button>
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 1.5, py: 1 }}>
         {data.length ? (
-          <JsonValueNode data={data} expandAll={expandAll} showKeys={showKeys} />
+          <JsonValueNode
+            data={data}
+            expandAll={expandAll}
+            showKeys={showKeys}
+          />
         ) : (
-          <Typography color="text.secondary" sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+          <Typography
+            color="text.secondary"
+            sx={{
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            }}
+          >
             No extracted questions yet.
           </Typography>
         )}
@@ -939,10 +1284,13 @@ const QuestionsJsonViewer = ({
 };
 
 const buildConceptsFromDocs = (documents: SourceDocument[]): ConceptDraft[] => {
-  const headings = uniqueValues(documents.flatMap((document) => document.headingCandidates));
-  const concepts = (headings.length
-    ? headings
-    : documents.flatMap((document) => document.titleCandidates)
+  const headings = uniqueValues(
+    documents.flatMap((document) => document.headingCandidates),
+  );
+  const concepts = (
+    headings.length
+      ? headings
+      : documents.flatMap((document) => document.titleCandidates)
   )
     .slice(0, 6)
     .map((title) => ({
@@ -966,12 +1314,14 @@ const buildConceptsFromDocs = (documents: SourceDocument[]): ConceptDraft[] => {
 
 const buildSectionsFromConcepts = (
   concepts: ConceptDraft[],
-  documents: SourceDocument[]
+  documents: SourceDocument[],
 ): SectionDraft[] => {
-  const sourceText = documents.map((document) => document.extractedText).join("\n\n");
+  const sourceText = documents
+    .map((document) => document.extractedText)
+    .join("\n\n");
   const sentences = sentenceSplit(sourceText);
   const fallbackQuestions = uniqueValues(
-    documents.flatMap((document) => document.questionCandidates)
+    documents.flatMap((document) => document.questionCandidates),
   );
 
   return concepts
@@ -979,7 +1329,9 @@ const buildSectionsFromConcepts = (
     .map((concept, index) => {
       const conceptWord = concept.title.toLowerCase().split(" ")[0] || "";
       const synopsisSentence =
-        sentences.find((sentence) => sentence.toLowerCase().includes(conceptWord)) ||
+        sentences.find((sentence) =>
+          sentence.toLowerCase().includes(conceptWord),
+        ) ||
         sentences[index] ||
         concept.synopsis;
       const relatedQuestions = fallbackQuestions
@@ -1022,31 +1374,45 @@ const loadDraft = (lessonId: string): BuilderDraft => {
             const pageTexts = Array.isArray(typed.pageTexts)
               ? typed.pageTexts
               : typeof typed.extractedText === "string"
-              ? typed.extractedText.split(/\n\n+/).filter(Boolean)
-              : [];
+                ? typed.extractedText.split(/\n\n+/).filter(Boolean)
+                : [];
             const pageCount = pageTexts.length || typed.pages || 0;
-            const pageTextQuestions = Array.isArray((typed as SourceDocument).pageTextQuestions)
+            const pageTextQuestions = Array.isArray(
+              (typed as SourceDocument).pageTextQuestions,
+            )
               ? (typed as SourceDocument).pageTextQuestions.map((entry) =>
-                  Array.isArray(entry) ? entry.map((value) => String(value).trim()).filter(Boolean) : []
+                  Array.isArray(entry)
+                    ? entry.map((value) => String(value).trim()).filter(Boolean)
+                    : [],
                 )
               : Array.from({ length: pageCount }, () => []);
-            const pageTextQuestionStates = Array.isArray((typed as SourceDocument).pageTextQuestionStates)
+            const pageTextQuestionStates = Array.isArray(
+              (typed as SourceDocument).pageTextQuestionStates,
+            )
               ? (typed as SourceDocument).pageTextQuestionStates.map((entry) =>
                   Array.isArray(entry)
                     ? entry.map((value) =>
-                        value === "accepted" || value === "rejected" ? value : "untouched"
+                        value === "accepted" || value === "rejected"
+                          ? value
+                          : "untouched",
                       )
-                    : []
+                    : [],
                 )
               : Array.from({ length: pageCount }, () => []);
-            const pageTitles = Array.isArray((typed as SourceDocument).pageTitles)
+            const pageTitles = Array.isArray(
+              (typed as SourceDocument).pageTitles,
+            )
               ? (typed as SourceDocument).pageTitles.map((entry) =>
-                  typeof entry === "string" && entry.trim() ? entry : null
+                  typeof entry === "string" && entry.trim() ? entry : null,
                 )
               : Array.from({ length: pageCount }, () => null);
-            const pageNumbers = Array.isArray((typed as SourceDocument).pageNumbers)
+            const pageNumbers = Array.isArray(
+              (typed as SourceDocument).pageNumbers,
+            )
               ? (typed as SourceDocument).pageNumbers.map((entry) =>
-                  typeof entry === "number" && Number.isFinite(entry) ? entry : null
+                  typeof entry === "number" && Number.isFinite(entry)
+                    ? entry
+                    : null,
                 )
               : Array.from({ length: pageCount }, () => null);
             const pageQuestions = Array.isArray(typed.pageQuestions)
@@ -1062,42 +1428,55 @@ const loadDraft = (lessonId: string): BuilderDraft => {
                           return {
                             label: String(typedItem.label ?? "").trim(),
                             question: String(typedItem.question ?? "").trim(),
-                            answerOptions: Array.isArray(typedItem.answerOptions)
-                              ? typedItem.answerOptions.map((value) => String(value).trim()).filter(Boolean)
+                            answerOptions: Array.isArray(
+                              typedItem.answerOptions,
+                            )
+                              ? typedItem.answerOptions
+                                  .map((value) => String(value).trim())
+                                  .filter(Boolean)
                               : [],
                           };
                         })
-                    : null
+                    : null,
                 )
               : Array.from({ length: pageCount }, () => null);
             const pageQuestionUsage = Array.isArray(typed.pageQuestionUsage)
               ? typed.pageQuestionUsage.map((entry) =>
                   entry && typeof entry === "object"
                     ? (entry as PageQuestionUsageRecord)
-                    : null
+                    : null,
                 )
               : Array.from({ length: pageCount }, () => null);
             return {
               ...typed,
-              pageTitles: Array.from({ length: pageCount }, (_, index) => pageTitles[index] ?? null),
-              pageNumbers: Array.from({ length: pageCount }, (_, index) => pageNumbers[index] ?? null),
+              pageTitles: Array.from(
+                { length: pageCount },
+                (_, index) => pageTitles[index] ?? null,
+              ),
+              pageNumbers: Array.from(
+                { length: pageCount },
+                (_, index) => pageNumbers[index] ?? null,
+              ),
               pageTexts,
               pageTextQuestions: Array.from(
                 { length: pageCount },
-                (_, index) => pageTextQuestions[index] || []
+                (_, index) => pageTextQuestions[index] || [],
               ),
               pageTextQuestionStates: Array.from(
                 { length: pageCount },
-                (_, index) => pageTextQuestionStates[index] || []
+                (_, index) => pageTextQuestionStates[index] || [],
               ),
-              pageQuestions: Array.from({ length: pageCount }, (_, index) => pageQuestions[index] || ""),
+              pageQuestions: Array.from(
+                { length: pageCount },
+                (_, index) => pageQuestions[index] || "",
+              ),
               pageQuestionDetails: Array.from(
                 { length: pageCount },
-                (_, index) => pageQuestionDetails[index] || null
+                (_, index) => pageQuestionDetails[index] || null,
               ),
               pageQuestionUsage: Array.from(
                 { length: pageCount },
-                (_, index) => pageQuestionUsage[index] || null
+                (_, index) => pageQuestionUsage[index] || null,
               ),
             };
           })
@@ -1112,7 +1491,11 @@ const loadDraft = (lessonId: string): BuilderDraft => {
 
 const stepSkills: Record<StepKey, SkillRef[]> = {
   source: [
-    { id: "upload_source_document", label: "Upload Source Document", kind: "compute" },
+    {
+      id: "upload_source_document",
+      label: "Upload Source Document",
+      kind: "compute",
+    },
     {
       id: "extract_document_structure",
       label: "Extract Document Structure",
@@ -1124,8 +1507,16 @@ const stepSkills: Record<StepKey, SkillRef[]> = {
       kind: "ai_driven",
     },
   ],
-  concepts: [{ id: "extract_concepts", label: "Extract Concepts", kind: "ai_driven" }],
-  sections: [{ id: "build_section_drafts", label: "Build Section Drafts", kind: "ai_driven" }],
+  concepts: [
+    { id: "confirm_questions", label: "Confirm Questions", kind: "compute" },
+  ],
+  sections: [
+    {
+      id: "build_section_drafts",
+      label: "Build Section Drafts",
+      kind: "ai_driven",
+    },
+  ],
   review: [{ id: "publish_lesson", label: "Publish Lesson", kind: "compute" }],
 };
 
@@ -1142,10 +1533,13 @@ const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
     }}
   >
     <Typography variant="h4" fontWeight={700}>
-      {hasLessons ? "Select a lesson template" : "Create your first lesson template"}
+      {hasLessons
+        ? "Select a lesson template"
+        : "Create your first lesson template"}
     </Typography>
     <Typography>
-      The new teacher workflow starts from source material, concepts, and section drafts.
+      The new teacher workflow starts from source material, concepts, and
+      section drafts.
     </Typography>
   </Box>
 );
@@ -1157,7 +1551,9 @@ const SkillLinks = ({ skills }: { skills: SkillRef[] }) => (
         key={skill.id}
         component="a"
         href={`/skill?skill=${skill.id}`}
-        onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) =>
+          event.stopPropagation()
+        }
         sx={{
           display: "inline-flex",
           alignItems: "center",
@@ -1189,6 +1585,7 @@ const StepShell = ({
   label,
   expanded,
   complete,
+  inProgress = false,
   enabled,
   showConnector,
   onToggle,
@@ -1200,6 +1597,7 @@ const StepShell = ({
   label: string;
   expanded: boolean;
   complete: boolean;
+  inProgress?: boolean;
   enabled: boolean;
   showConnector: boolean;
   onToggle: () => void;
@@ -1207,11 +1605,18 @@ const StepShell = ({
   skills: SkillRef[];
   children: ReactNode;
 }) => {
-  const circleColor = complete ? "#2e7d32" : enabled ? "#ef6c00" : "#bdbdbd";
+  const circleColor = complete ? "#2e7d32" : inProgress ? "#ef6c00" : "#bdbdbd";
 
   return (
     <Box sx={{ display: "flex", alignItems: "stretch" }}>
-      <Box sx={{ width: 42, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <Box
+        sx={{
+          width: 42,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
         <Box
           sx={{
             width: 34,
@@ -1235,7 +1640,7 @@ const StepShell = ({
               width: 3,
               flex: 1,
               minHeight: 40,
-              bgcolor: enabled ? "#ef6c00" : "rgba(0,0,0,0.12)",
+              bgcolor: circleColor,
               mt: 0,
               mb: "-1.8rem",
             }}
@@ -1269,7 +1674,10 @@ const StepShell = ({
               userSelect: "none",
             }}
           >
-            <Typography fontWeight={800} sx={{ fontSize: "1.35rem", lineHeight: 1.1 }}>
+            <Typography
+              fontWeight={800}
+              sx={{ fontSize: "1.35rem", lineHeight: 1.1 }}
+            >
               {label}
             </Typography>
             <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -1319,9 +1727,14 @@ const PdfPreviewCanvas = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const renderTaskRef = useRef<{ cancel: () => void; promise: Promise<unknown> } | null>(null);
+  const renderTaskRef = useRef<{
+    cancel: () => void;
+    promise: Promise<unknown>;
+  } | null>(null);
   const pdfPageRef = useRef<any>(null);
-  const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(
+    null,
+  );
   const lastFitZoomRef = useRef(1);
   const dragStateRef = useRef<{
     active: boolean;
@@ -1336,7 +1749,10 @@ const PdfPreviewCanvas = ({
   const [fitZoom, setFitZoom] = useState(1);
   const [manualZoom, setManualZoom] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null);
+  const [pageSize, setPageSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
   useEffect(() => {
     setManualZoom(false);
@@ -1353,7 +1769,8 @@ const PdfPreviewCanvas = ({
       setError("");
       try {
         const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-        const pdfWorker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
+        const pdfWorker =
+          await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
         pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker.default;
         const pdf = await pdfjs.getDocument({ url }).promise;
         const page = await pdf.getPage(pageNumber);
@@ -1369,7 +1786,11 @@ const PdfPreviewCanvas = ({
       } catch (loadError) {
         console.error("PDF preview load failed", loadError);
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Could not load PDF preview");
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load PDF preview",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -1405,16 +1826,29 @@ const PdfPreviewCanvas = ({
       lastContainerSizeRef.current = { width: nextWidth, height: nextHeight };
       const horizontalPadding = 32;
       const verticalPadding = 32;
-      const widthScale = Math.max(0.2, (nextWidth - horizontalPadding) / pageSize.width);
-      const heightScale = Math.max(0.2, (nextHeight - verticalPadding) / pageSize.height);
-      const nextFitZoom = Number((fullscreen || fillHeight ? heightScale : Math.min(widthScale, heightScale)).toFixed(2));
+      const widthScale = Math.max(
+        0.2,
+        (nextWidth - horizontalPadding) / pageSize.width,
+      );
+      const heightScale = Math.max(
+        0.2,
+        (nextHeight - verticalPadding) / pageSize.height,
+      );
+      const nextFitZoom = Number(
+        (fullscreen || fillHeight
+          ? heightScale
+          : Math.min(widthScale, heightScale)
+        ).toFixed(2),
+      );
       if (Math.abs(lastFitZoomRef.current - nextFitZoom) < 0.02) {
         return;
       }
       lastFitZoomRef.current = nextFitZoom;
       setFitZoom(nextFitZoom);
       setZoom((current) =>
-        manualZoom || Math.abs(current - nextFitZoom) < 0.02 ? current : nextFitZoom
+        manualZoom || Math.abs(current - nextFitZoom) < 0.02
+          ? current
+          : nextFitZoom,
       );
     };
 
@@ -1457,7 +1891,11 @@ const PdfPreviewCanvas = ({
         }
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        const renderTask = page.render({ canvas, canvasContext: context, viewport });
+        const renderTask = page.render({
+          canvas,
+          canvasContext: context,
+          viewport,
+        });
         renderTaskRef.current = renderTask;
         await renderTask.promise;
         if (renderTaskRef.current === renderTask) {
@@ -1465,7 +1903,9 @@ const PdfPreviewCanvas = ({
         }
       } catch (renderError) {
         const errorName =
-          renderError && typeof renderError === "object" && "name" in renderError
+          renderError &&
+          typeof renderError === "object" &&
+          "name" in renderError
             ? String(renderError.name)
             : "";
         if (errorName === "RenderingCancelledException") {
@@ -1473,7 +1913,11 @@ const PdfPreviewCanvas = ({
         }
         console.error("PDF preview render failed", renderError);
         if (!cancelled) {
-          setError(renderError instanceof Error ? renderError.message : "Could not render PDF preview");
+          setError(
+            renderError instanceof Error
+              ? renderError.message
+              : "Could not render PDF preview",
+          );
         }
       }
     };
@@ -1491,7 +1935,9 @@ const PdfPreviewCanvas = ({
 
   const adjustZoom = (delta: number) => {
     setManualZoom(true);
-    setZoom((current) => Math.min(3, Math.max(0.2, Number((current + delta).toFixed(2)))));
+    setZoom((current) =>
+      Math.min(3, Math.max(0.2, Number((current + delta).toFixed(2)))),
+    );
   };
 
   const resetZoom = () => {
@@ -1526,8 +1972,10 @@ const PdfPreviewCanvas = ({
       return;
     }
     event.preventDefault();
-    container.scrollLeft = dragState.scrollLeft - (event.clientX - dragState.startX);
-    container.scrollTop = dragState.scrollTop - (event.clientY - dragState.startY);
+    container.scrollLeft =
+      dragState.scrollLeft - (event.clientX - dragState.startX);
+    container.scrollTop =
+      dragState.scrollTop - (event.clientY - dragState.startY);
   };
 
   const handlePointerUp = (event?: React.PointerEvent<HTMLDivElement>) => {
@@ -1562,8 +2010,12 @@ const PdfPreviewCanvas = ({
           m: 0,
           p: 0.5,
           borderRadius: "999px",
-          backgroundColor: fullscreen ? "rgba(46,46,46,0.98)" : "rgba(17,17,17,0.96)",
-          border: fullscreen ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(255,255,255,0.14)",
+          backgroundColor: fullscreen
+            ? "rgba(46,46,46,0.98)"
+            : "rgba(17,17,17,0.96)",
+          border: fullscreen
+            ? "1px solid rgba(255,255,255,0.14)"
+            : "1px solid rgba(255,255,255,0.14)",
           opacity: 0.1,
           transition: "opacity 0.18s ease",
           "&:hover": {
@@ -1587,12 +2039,22 @@ const PdfPreviewCanvas = ({
         >
           {Math.round(zoom * 100)}%
         </Button>
-        <IconButton size="small" onClick={() => adjustZoom(0.15)} disabled={loading || Boolean(error)}>
+        <IconButton
+          size="small"
+          onClick={() => adjustZoom(0.15)}
+          disabled={loading || Boolean(error)}
+        >
           <ZoomInRoundedIcon sx={{ color: "#fff", fontSize: 18 }} />
         </IconButton>
         {toolbarControls ? (
           <>
-            <Box sx={{ width: 1, backgroundColor: "rgba(255,255,255,0.18)", mx: 0.25 }} />
+            <Box
+              sx={{
+                width: 1,
+                backgroundColor: "rgba(255,255,255,0.18)",
+                mx: 0.25,
+              }}
+            />
             {toolbarControls}
           </>
         ) : null}
@@ -1613,7 +2075,8 @@ const PdfPreviewCanvas = ({
           border: "none",
           overflow: "auto",
           position: "relative",
-          cursor: loading || error ? "default" : isDragging ? "grabbing" : "grab",
+          cursor:
+            loading || error ? "default" : isDragging ? "grabbing" : "grab",
           touchAction: "none",
         }}
       >
@@ -1634,7 +2097,9 @@ const PdfPreviewCanvas = ({
             }}
           >
             <CircularProgress size={22} color="inherit" />
-            <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>Rendering PDF…</Typography>
+            <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
+              Rendering PDF…
+            </Typography>
           </Stack>
         ) : null}
         {!loading && error ? (
@@ -1650,10 +2115,14 @@ const PdfPreviewCanvas = ({
               justifyContent: "center",
             }}
           >
-            <Typography sx={{ fontSize: "0.98rem", fontWeight: 800, color: "#111" }}>
+            <Typography
+              sx={{ fontSize: "0.98rem", fontWeight: 800, color: "#111" }}
+            >
               Preview unavailable
             </Typography>
-            <Typography sx={{ fontSize: "0.9rem", textAlign: "center" }}>{error}</Typography>
+            <Typography sx={{ fontSize: "0.9rem", textAlign: "center" }}>
+              {error}
+            </Typography>
           </Stack>
         ) : null}
         <Box
@@ -1693,13 +2162,20 @@ const LessonWorkspace = ({
   const [draft, setDraft] = useState<BuilderDraft>(emptyDraft);
   const [titleDraft, setTitleDraft] = useState("");
   const [summaryDraft, setSummaryDraft] = useState("");
-  const [previewDocuments, setPreviewDocuments] = useState<PreviewDocument[]>([]);
+  const [previewDocuments, setPreviewDocuments] = useState<PreviewDocument[]>(
+    [],
+  );
   const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
   const [activePreviewPage, setActivePreviewPage] = useState(1);
   const [analyzingDocument, setAnalyzingDocument] = useState(false);
   const [localOcringDocument, setLocalOcringDocument] = useState(false);
-  const [localOcrProgress, setLocalOcrProgress] = useState({ current: 0, total: 0 });
-  const [sourcePaneSplit, setSourcePaneSplit] = useState(loadStoredSourcePaneSplit);
+  const [localOcrProgress, setLocalOcrProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+  const [sourcePaneSplit, setSourcePaneSplit] = useState(
+    loadStoredSourcePaneSplit,
+  );
   const [resizingSourcePane, setResizingSourcePane] = useState(false);
   const [sourceFullscreenOpen, setSourceFullscreenOpen] = useState(false);
   const [usageDialogOpen, setUsageDialogOpen] = useState(false);
@@ -1783,11 +2259,17 @@ const LessonWorkspace = ({
     if (!lesson) {
       return;
     }
-    window.localStorage.setItem(getStorageKey(lesson.id), JSON.stringify(draft));
+    window.localStorage.setItem(
+      getStorageKey(lesson.id),
+      JSON.stringify(draft),
+    );
   }, [draft, lesson]);
 
   useEffect(() => {
-    window.localStorage.setItem(SOURCE_SPLIT_STORAGE_KEY, String(sourcePaneSplit));
+    window.localStorage.setItem(
+      SOURCE_SPLIT_STORAGE_KEY,
+      String(sourcePaneSplit),
+    );
   }, [sourcePaneSplit]);
 
   useEffect(() => {
@@ -1827,17 +2309,37 @@ const LessonWorkspace = ({
 
   const approvedConcepts = useMemo(
     () => draft.concepts.filter((concept) => concept.approved),
-    [draft.concepts]
+    [draft.concepts],
   );
+  const approvedQuestionPages = useMemo(
+    () => buildApprovedQuestionPages(draft.sourceDocuments),
+    [draft.sourceDocuments],
+  );
+  const approvedQuestionsCount = useMemo(
+    () =>
+      approvedQuestionPages.reduce(
+        (total, page) => total + page.questions.length,
+        0,
+      ),
+    [approvedQuestionPages],
+  );
+  const questionsConfirmComplete =
+    draft.workflowState === "sections" ||
+    draft.workflowState === "review" ||
+    draft.workflowState === "published" ||
+    draft.sections.length > 0;
 
   const activePreview =
     previewDocuments.find((document) => document.id === activePreviewId) ||
     previewDocuments[0] ||
     null;
   const activeSourceDocument =
-    draft.sourceDocuments.find((document) => document.id === activePreview?.id) || null;
+    draft.sourceDocuments.find(
+      (document) => document.id === activePreview?.id,
+    ) || null;
   const activeQuestionUsage =
-    activeSourceDocument?.pageQuestionUsage.find((entry) => Boolean(entry)) || null;
+    activeSourceDocument?.pageQuestionUsage.find((entry) => Boolean(entry)) ||
+    null;
   const activeExtractedTextPreview = activeSourceDocument
     ? activeSourceDocument.pageTextQuestions
         .map((questions, index) => ({
@@ -1858,8 +2360,8 @@ const LessonWorkspace = ({
     return <EmptyState hasLessons={hasLessons} />;
   }
 
-  const sourceComplete = draft.sourceDocuments.length > 0;
-  const conceptsComplete = approvedConcepts.length > 0;
+  const sourceComplete = approvedQuestionsCount > 0;
+  const conceptsComplete = questionsConfirmComplete;
   const sectionsComplete = draft.sections.length > 0;
   const reviewComplete = sectionsComplete && draft.overview.trim().length > 0;
 
@@ -1901,7 +2403,8 @@ const LessonWorkspace = ({
 
   const inspectPdfDocument = async (file: File): Promise<SourceDocument> => {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const pdfWorker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
+    const pdfWorker =
+      await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
     pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker.default;
 
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -1937,7 +2440,9 @@ const LessonWorkspace = ({
     }));
     if (!titleDraft.trim()) {
       const suggestedTitle =
-        draft.sourceDocuments.flatMap((document) => document.titleCandidates)[0] || "";
+        draft.sourceDocuments.flatMap(
+          (document) => document.titleCandidates,
+        )[0] || "";
       if (suggestedTitle) {
         setTitleDraft(suggestedTitle);
       }
@@ -1945,7 +2450,10 @@ const LessonWorkspace = ({
   };
 
   const buildSectionsStep = () => {
-    const sections = buildSectionsFromConcepts(draft.concepts, draft.sourceDocuments);
+    const sections = buildSectionsFromConcepts(
+      draft.concepts,
+      draft.sourceDocuments,
+    );
     updateDraft((current) => ({
       ...current,
       workflowState: "sections",
@@ -1968,11 +2476,12 @@ const LessonWorkspace = ({
         lastSkillRunAt: new Date().toISOString(),
       }));
       setExpandedStep("source");
-      setRerunNotice("Source was reopened. Concepts, sections, and review after it were cleared.");
+      setRerunNotice(
+        "Source was reopened. Concepts, sections, and review after it were cleared.",
+      );
       return;
     }
     if (step === "concepts") {
-      buildConceptStep();
       updateDraft((current) => ({
         ...current,
         sections: [],
@@ -1981,7 +2490,9 @@ const LessonWorkspace = ({
         lastSkillRunAt: new Date().toISOString(),
       }));
       setExpandedStep("concepts");
-      setRerunNotice("Concepts were rerun. Section drafts and review after them were cleared.");
+      setRerunNotice(
+        "Question confirmation was reopened. Later workflow steps after it were cleared.",
+      );
       return;
     }
     if (step === "sections") {
@@ -1993,7 +2504,9 @@ const LessonWorkspace = ({
         lastSkillRunAt: new Date().toISOString(),
       }));
       setExpandedStep("sections");
-      setRerunNotice("Sections were rerun. Review content after them was cleared.");
+      setRerunNotice(
+        "Sections were rerun. Review content after them was cleared.",
+      );
       return;
     }
     updateDraft((current) => ({
@@ -2035,7 +2548,8 @@ const LessonWorkspace = ({
       setRerunNotice("");
       onNotify("Source material uploaded", "success");
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Failed to read PDF";
+      const detail =
+        error instanceof Error ? error.message : "Failed to read PDF";
       onNotify(detail, "error");
     } finally {
       setExtracting(false);
@@ -2048,17 +2562,25 @@ const LessonWorkspace = ({
     }
 
     URL.revokeObjectURL(activePreview.url);
-    previewUrlsRef.current = previewUrlsRef.current.filter((url) => url !== activePreview.url);
+    previewUrlsRef.current = previewUrlsRef.current.filter(
+      (url) => url !== activePreview.url,
+    );
 
-    const remainingPreviewDocuments = previewDocuments.filter((document) => document.id !== activePreview.id);
+    const remainingPreviewDocuments = previewDocuments.filter(
+      (document) => document.id !== activePreview.id,
+    );
     const nextActivePreviewId = remainingPreviewDocuments[0]?.id || null;
 
     setPreviewDocuments(remainingPreviewDocuments);
     setActivePreviewId(nextActivePreviewId);
     updateDraft((current) => ({
       ...current,
-      sourceDocuments: current.sourceDocuments.filter((document) => document.id !== activePreview.id),
-      workflowState: remainingPreviewDocuments.length ? current.workflowState : "source",
+      sourceDocuments: current.sourceDocuments.filter(
+        (document) => document.id !== activePreview.id,
+      ),
+      workflowState: remainingPreviewDocuments.length
+        ? current.workflowState
+        : "source",
     }));
     onNotify("Source document removed", "success");
   };
@@ -2067,7 +2589,7 @@ const LessonWorkspace = ({
     documentId: string,
     nextPageTexts: string[],
     nextPageNumbers?: Array<number | null>,
-    nextPageTitles?: Array<string | null>
+    nextPageTitles?: Array<string | null>,
   ) => {
     updateDraft((current) => ({
       ...current,
@@ -2077,22 +2599,29 @@ const LessonWorkspace = ({
         }
         const normalizedPageTexts = Array.from(
           { length: document.pages },
-          (_, index) => nextPageTexts[index] || ""
+          (_, index) => nextPageTexts[index] || "",
         );
         const normalizedPageNumbers = Array.from(
           { length: document.pages },
-          (_, index) => nextPageNumbers?.[index] ?? document.pageNumbers[index] ?? null
+          (_, index) =>
+            nextPageNumbers?.[index] ?? document.pageNumbers[index] ?? null,
         );
         const normalizedPageTitles = Array.from(
           { length: document.pages },
-          (_, index) => nextPageTitles?.[index] ?? document.pageTitles[index] ?? null
+          (_, index) =>
+            nextPageTitles?.[index] ?? document.pageTitles[index] ?? null,
         );
-        const normalizedPageTextQuestions = normalizedPageTexts.map((pageText) =>
-          splitPageTextIntoQuestions(pageText)
+        const normalizedPageTextQuestions = normalizedPageTexts.map(
+          (pageText) => splitPageTextIntoQuestions(pageText),
         );
-        const normalizedPageTextQuestionStates = normalizedPageTextQuestions.map((questions, pageIndex) =>
-          questions.map((_, questionIndex) => document.pageTextQuestionStates[pageIndex]?.[questionIndex] || "untouched")
-        );
+        const normalizedPageTextQuestionStates =
+          normalizedPageTextQuestions.map((questions, pageIndex) =>
+            questions.map(
+              (_, questionIndex) =>
+                document.pageTextQuestionStates[pageIndex]?.[questionIndex] ||
+                "untouched",
+            ),
+          );
         console.debug("[LessonWorkspace] OCR parse update", {
           documentId,
           documentName: document.name,
@@ -2104,15 +2633,15 @@ const LessonWorkspace = ({
           })),
         });
         const derivedFields = deriveDocumentFields(normalizedPageTexts);
-          return {
-            ...document,
-            pageTitles: normalizedPageTitles,
-            pageNumbers: normalizedPageNumbers,
-            pageTexts: normalizedPageTexts,
-            pageTextQuestions: normalizedPageTextQuestions,
-            pageTextQuestionStates: normalizedPageTextQuestionStates,
-            ...derivedFields,
-          };
+        return {
+          ...document,
+          pageTitles: normalizedPageTitles,
+          pageNumbers: normalizedPageNumbers,
+          pageTexts: normalizedPageTexts,
+          pageTextQuestions: normalizedPageTextQuestions,
+          pageTextQuestionStates: normalizedPageTextQuestionStates,
+          ...derivedFields,
+        };
       }),
     }));
   };
@@ -2121,7 +2650,7 @@ const LessonWorkspace = ({
     documentId: string,
     pageNumber: number,
     questionIndex: number,
-    nextQuestion: string
+    nextQuestion: string,
   ) => {
     updateDraft((current) => ({
       ...current,
@@ -2129,15 +2658,18 @@ const LessonWorkspace = ({
         if (document.id !== documentId) {
           return document;
         }
-        const nextPageTextQuestions = document.pageTextQuestions.map((questions, index) =>
-          index === pageNumber - 1
-            ? questions.map((question, innerIndex) =>
-                innerIndex === questionIndex ? nextQuestion : question
-              )
-            : questions
+        const nextPageTextQuestions = document.pageTextQuestions.map(
+          (questions, index) =>
+            index === pageNumber - 1
+              ? questions.map((question, innerIndex) =>
+                  innerIndex === questionIndex ? nextQuestion : question,
+                )
+              : questions,
         );
         const nextPageTexts = document.pageTexts.map((pageText, index) =>
-          index === pageNumber - 1 ? nextPageTextQuestions[index].join("\n") : pageText
+          index === pageNumber - 1
+            ? nextPageTextQuestions[index].join("\n")
+            : pageText,
         );
         const derivedFields = deriveDocumentFields(nextPageTexts);
         return {
@@ -2154,7 +2686,7 @@ const LessonWorkspace = ({
     documentId: string,
     pageNumber: number,
     questionIndex: number,
-    nextState: QuestionReviewState
+    nextState: QuestionReviewState,
   ) => {
     updateDraft((current) => ({
       ...current,
@@ -2164,10 +2696,13 @@ const LessonWorkspace = ({
         }
         return {
           ...document,
-          pageTextQuestionStates: document.pageTextQuestionStates.map((states, index) =>
-            index === pageNumber - 1
-              ? states.map((state, innerIndex) => (innerIndex === questionIndex ? nextState : state))
-              : states
+          pageTextQuestionStates: document.pageTextQuestionStates.map(
+            (states, index) =>
+              index === pageNumber - 1
+                ? states.map((state, innerIndex) =>
+                    innerIndex === questionIndex ? nextState : state,
+                  )
+                : states,
           ),
         };
       }),
@@ -2177,7 +2712,7 @@ const LessonWorkspace = ({
   const updateDocumentPageTitle = (
     documentId: string,
     pageNumber: number,
-    nextTitle: string
+    nextTitle: string,
   ) => {
     updateDraft((current) => ({
       ...current,
@@ -2188,7 +2723,11 @@ const LessonWorkspace = ({
         return {
           ...document,
           pageTitles: document.pageTitles.map((title, index) =>
-            index === pageNumber - 1 ? (nextTitle.trim() ? nextTitle : null) : title
+            index === pageNumber - 1
+              ? nextTitle.trim()
+                ? nextTitle
+                : null
+              : title,
           ),
         };
       }),
@@ -2198,10 +2737,15 @@ const LessonWorkspace = ({
   const updateDocumentPageNumber = (
     documentId: string,
     pageNumber: number,
-    nextValue: string
+    nextValue: string,
   ) => {
     const trimmed = nextValue.trim();
-    const normalized = trimmed === "" ? null : /^[0-9]{1,3}$/.test(trimmed) ? Number(trimmed) : null;
+    const normalized =
+      trimmed === ""
+        ? null
+        : /^[0-9]{1,3}$/.test(trimmed)
+          ? Number(trimmed)
+          : null;
     updateDraft((current) => ({
       ...current,
       sourceDocuments: current.sourceDocuments.map((document) => {
@@ -2211,7 +2755,7 @@ const LessonWorkspace = ({
         return {
           ...document,
           pageNumbers: document.pageNumbers.map((value, index) =>
-            index === pageNumber - 1 ? normalized : value
+            index === pageNumber - 1 ? normalized : value,
           ),
         };
       }),
@@ -2228,17 +2772,37 @@ const LessonWorkspace = ({
       const pageTexts: string[] = [];
       const pageTitles: Array<string | null> = [];
       const pageNumbers: Array<number | null> = [];
-      for (let pageNumber = 1; pageNumber <= activeSourceDocument.pages; pageNumber += 1) {
-        const extracted = await extractPageColumns(activePreview.file, pageNumber);
+      for (
+        let pageNumber = 1;
+        pageNumber <= activeSourceDocument.pages;
+        pageNumber += 1
+      ) {
+        const extracted = await extractPageColumns(
+          activePreview.file,
+          pageNumber,
+        );
         pageTitles.push(extracted.title ?? null);
         pageNumbers.push(extracted.pageNumber ?? null);
-        pageTexts.push((extracted.questionsSection || extracted.combined || "").trim());
-        updateDocumentPageTexts(activeSourceDocument.id, pageTexts, pageNumbers, pageTitles);
-        setLocalOcrProgress({ current: pageNumber, total: activeSourceDocument.pages });
+        pageTexts.push(
+          (extracted.questionsSection || extracted.combined || "").trim(),
+        );
+        updateDocumentPageTexts(
+          activeSourceDocument.id,
+          pageTexts,
+          pageNumbers,
+          pageTitles,
+        );
+        setLocalOcrProgress({
+          current: pageNumber,
+          total: activeSourceDocument.pages,
+        });
       }
       onNotify("Local OCR prepared with questions only.", "success");
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Could not run local OCR in the browser";
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "Could not run local OCR in the browser";
       console.error("Local document OCR failed", error);
       onNotify(detail, "error");
     } finally {
@@ -2252,19 +2816,25 @@ const LessonWorkspace = ({
       return;
     }
     if (!getAccessTokenSilently || !apiBaseUrl || !auth0Audience) {
-      onNotify("OCR extraction is not configured in the teacher portal", "error");
+      onNotify(
+        "OCR extraction is not configured in the teacher portal",
+        "error",
+      );
       return;
     }
     setAnalyzingDocument(true);
     try {
-      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      const headers = await buildAuthHeaders(
+        getAccessTokenSilently,
+        auth0Audience,
+      );
       const extraction = await extractLessonPageQuestions(
         `${apiBaseUrl}/lesson/id/${lesson.id}/question-extraction`,
         headers,
         {
           file: activePreview.file,
           pageCount: activeSourceDocument.pages,
-        }
+        },
       );
       const usage: PageQuestionUsageRecord = {
         ...extraction.usage,
@@ -2281,40 +2851,47 @@ const LessonWorkspace = ({
           }
           const nextPageQuestions = Array.from(
             { length: document.pages },
-            (_, index) => extraction.pageQuestions[index] || ""
+            (_, index) => extraction.pageQuestions[index] || "",
           );
           const nextPageQuestionDetails = Array.from(
             { length: document.pages },
-            (_, index) => extraction.pageQuestionDetails[index] || null
+            (_, index) => extraction.pageQuestionDetails[index] || null,
           );
-          const nextPageQuestionUsage = Array.from({ length: document.pages }, (_, index) =>
-            index === 0 ? usage : null
+          const nextPageQuestionUsage = Array.from(
+            { length: document.pages },
+            (_, index) => (index === 0 ? usage : null),
           );
           return {
             ...document,
             pageQuestions: nextPageQuestions,
             pageQuestionDetails: nextPageQuestionDetails,
             pageQuestionUsage: nextPageQuestionUsage,
-            questionCandidates: deriveQuestionCandidatesFromPages(nextPageQuestions),
+            questionCandidates:
+              deriveQuestionCandidatesFromPages(nextPageQuestions),
           };
         }),
       }));
-      const extractedPageCount = extraction.pageQuestions.filter((page) => page.trim()).length;
+      const extractedPageCount = extraction.pageQuestions.filter((page) =>
+        page.trim(),
+      ).length;
       if (!extractedPageCount) {
         onNotify(
           `OCR completed. No questions detected. Cost ${formatCostCents(usage.costCents)}.`,
-          "error"
+          "error",
         );
         return;
       }
       onNotify(
         `OCR completed for ${extractedPageCount} page${extractedPageCount === 1 ? "" : "s"}. Cost ${formatCostCents(
-          usage.costCents
+          usage.costCents,
         )}.`,
-        "success"
+        "success",
       );
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Could not extract questions from PDF";
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "Could not extract questions from PDF";
       console.error("Document question extraction failed", error);
       onNotify(detail, "error");
     } finally {
@@ -2323,9 +2900,14 @@ const LessonWorkspace = ({
   };
 
   const handleConceptGeneration = () => {
-    buildConceptStep();
+    updateDraft((current) => ({
+      ...current,
+      workflowState: "concepts",
+      lastSkillRunAt: new Date().toISOString(),
+    }));
+    setExpandedStep("concepts");
     setRerunNotice("");
-    onNotify("Concepts prepared for teacher review", "success");
+    onNotify("Approved questions prepared for confirmation", "success");
   };
 
   const handleSectionDraftGeneration = () => {
@@ -2336,7 +2918,8 @@ const LessonWorkspace = ({
 
   const handlePublish = async () => {
     setPublishing(true);
-    const nextStatus = draft.workflowState === "published" ? "Draft" : "Published";
+    const nextStatus =
+      draft.workflowState === "published" ? "Draft" : "Published";
     const updated = await onUpdateStatus(lesson.id, nextStatus);
     setPublishing(false);
     if (!updated) {
@@ -2347,7 +2930,12 @@ const LessonWorkspace = ({
       ...current,
       workflowState: nextStatus === "Published" ? "published" : "review",
     }));
-    onNotify(nextStatus === "Published" ? "Lesson published" : "Lesson moved back to draft", "success");
+    onNotify(
+      nextStatus === "Published"
+        ? "Lesson published"
+        : "Lesson moved back to draft",
+      "success",
+    );
   };
 
   const buildPreviewToolbarControls = (fullscreen = false) => {
@@ -2360,27 +2948,45 @@ const LessonWorkspace = ({
         <IconButton
           size="small"
           disabled={!activeSourceDocument || activePreviewPage <= 1}
-          onClick={() => setActivePreviewPage((current) => Math.max(1, current - 1))}
+          onClick={() =>
+            setActivePreviewPage((current) => Math.max(1, current - 1))
+          }
           sx={{ color: "#fff" }}
         >
           <ChevronLeftRoundedIcon />
         </IconButton>
-        <Typography sx={{ color: "#fff", fontWeight: 800, minWidth: 44, textAlign: "center" }}>
-          {activeSourceDocument ? `${activePreviewPage}/${activeSourceDocument.pages}` : ""}
+        <Typography
+          sx={{
+            color: "#fff",
+            fontWeight: 800,
+            minWidth: 44,
+            textAlign: "center",
+          }}
+        >
+          {activeSourceDocument
+            ? `${activePreviewPage}/${activeSourceDocument.pages}`
+            : ""}
         </Typography>
         <IconButton
           size="small"
-          disabled={!activeSourceDocument || activePreviewPage >= activeSourceDocument.pages}
+          disabled={
+            !activeSourceDocument ||
+            activePreviewPage >= activeSourceDocument.pages
+          }
           onClick={() =>
             setActivePreviewPage((current) =>
-              activeSourceDocument ? Math.min(activeSourceDocument.pages, current + 1) : current
+              activeSourceDocument
+                ? Math.min(activeSourceDocument.pages, current + 1)
+                : current,
             )
           }
           sx={{ color: "#fff" }}
         >
           <ChevronRightRoundedIcon />
         </IconButton>
-        <Box sx={{ mx: 0.5, color: "rgba(255,255,255,0.35)", fontWeight: 700 }}>|</Box>
+        <Box sx={{ mx: 0.5, color: "rgba(255,255,255,0.35)", fontWeight: 700 }}>
+          |
+        </Box>
         <IconButton
           size="small"
           onClick={() => void runLocalOcrOnCurrentDocument()}
@@ -2388,20 +2994,37 @@ const LessonWorkspace = ({
           sx={{ color: "#fff", px: 0.75, borderRadius: "10px" }}
         >
           {localOcringDocument ? (
-            <Typography sx={{ color: "#fff", fontWeight: 800, fontSize: "0.95rem", lineHeight: 1 }}>
+            <Typography
+              sx={{
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: "0.95rem",
+                lineHeight: 1,
+              }}
+            >
               ...
             </Typography>
           ) : (
             <DocumentScannerRoundedIcon sx={{ color: "#fff", fontSize: 19 }} />
           )}
         </IconButton>
-        <Box sx={{ mx: 0.5, color: "rgba(255,255,255,0.35)", fontWeight: 700 }}>|</Box>
+        <Box sx={{ mx: 0.5, color: "rgba(255,255,255,0.35)", fontWeight: 700 }}>
+          |
+        </Box>
         {!fullscreen ? (
           <>
-            <IconButton size="small" onClick={() => setSourceFullscreenOpen(true)} sx={{ color: "#fff" }}>
+            <IconButton
+              size="small"
+              onClick={() => setSourceFullscreenOpen(true)}
+              sx={{ color: "#fff" }}
+            >
               <FullscreenRoundedIcon />
             </IconButton>
-            <IconButton size="small" onClick={removeCurrentSourceDocument} sx={{ color: "#fff" }}>
+            <IconButton
+              size="small"
+              onClick={removeCurrentSourceDocument}
+              sx={{ color: "#fff" }}
+            >
               <DeleteRoundedIcon />
             </IconButton>
           </>
@@ -2499,11 +3122,16 @@ const LessonWorkspace = ({
                   justifyContent: "center",
                   gap: 1.5,
                   color: "text.secondary",
-                  backgroundColor: dragActive ? "rgba(0,0,0,0.04)" : "transparent",
+                  backgroundColor: dragActive
+                    ? "rgba(0,0,0,0.04)"
+                    : "transparent",
                   textAlign: "center",
                 }}
               >
-                <Typography fontWeight={800} sx={{ fontSize: "1.15rem", color: "text.primary" }}>
+                <Typography
+                  fontWeight={800}
+                  sx={{ fontSize: "1.15rem", color: "text.primary" }}
+                >
                   {titleDraft || "Upload Source Material"}
                 </Typography>
                 <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
@@ -2535,7 +3163,9 @@ const LessonWorkspace = ({
               width: 4,
               height: "100%",
               borderRadius: "999px",
-              backgroundColor: resizingSourcePane ? "rgba(239,108,0,0.72)" : "rgba(0,0,0,0.12)",
+              backgroundColor: resizingSourcePane
+                ? "rgba(239,108,0,0.72)"
+                : "rgba(0,0,0,0.12)",
               transition: "background-color 0.18s ease",
             }}
           />
@@ -2562,25 +3192,43 @@ const LessonWorkspace = ({
               if (!activeSourceDocument) {
                 return;
               }
-              updateDocumentPageTitle(activeSourceDocument.id, pageNumber, nextTitle);
+              updateDocumentPageTitle(
+                activeSourceDocument.id,
+                pageNumber,
+                nextTitle,
+              );
             }}
             onUpdatePageNumber={(pageNumber, nextValue) => {
               if (!activeSourceDocument) {
                 return;
               }
-              updateDocumentPageNumber(activeSourceDocument.id, pageNumber, nextValue);
+              updateDocumentPageNumber(
+                activeSourceDocument.id,
+                pageNumber,
+                nextValue,
+              );
             }}
             onUpdateQuestion={(pageNumber, questionIndex, nextValue) => {
               if (!activeSourceDocument) {
                 return;
               }
-              updateDocumentPageQuestion(activeSourceDocument.id, pageNumber, questionIndex, nextValue);
+              updateDocumentPageQuestion(
+                activeSourceDocument.id,
+                pageNumber,
+                questionIndex,
+                nextValue,
+              );
             }}
             onUpdateQuestionState={(pageNumber, questionIndex, nextState) => {
               if (!activeSourceDocument) {
                 return;
               }
-              updateDocumentQuestionState(activeSourceDocument.id, pageNumber, questionIndex, nextState);
+              updateDocumentQuestionState(
+                activeSourceDocument.id,
+                pageNumber,
+                questionIndex,
+                nextState,
+              );
             }}
           />
           {localOcringDocument && localOcrProgress.total > 0 ? (
@@ -2597,7 +3245,9 @@ const LessonWorkspace = ({
               </Typography>
               <LinearProgress
                 variant="determinate"
-                value={(localOcrProgress.current / localOcrProgress.total) * 100}
+                value={
+                  (localOcrProgress.current / localOcrProgress.total) * 100
+                }
                 sx={{ height: 10, borderRadius: 999, width: "100%" }}
               />
             </Box>
@@ -2605,14 +3255,23 @@ const LessonWorkspace = ({
         </Box>
       </Box>
       {!fullscreen ? (
-      <Stack direction="row" justifyContent="center" alignItems="center">
-        <Button variant="outlined" onClick={handleConceptGeneration} disabled={!sourceComplete}>
-          Continue
-        </Button>
-      </Stack>
+        <Stack direction="row" justifyContent="center" alignItems="center">
+          <Button
+            variant="outlined"
+            onClick={handleConceptGeneration}
+            disabled={!sourceComplete}
+          >
+            Continue
+          </Button>
+        </Stack>
       ) : null}
       {!fullscreen && extracting ? (
-        <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          justifyContent="center"
+        >
           <CircularProgress size={18} />
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
             Loading PDF…
@@ -2624,7 +3283,14 @@ const LessonWorkspace = ({
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 2,
+          flexWrap: "wrap",
+        }}
+      >
         <Box sx={{ minWidth: 280, flex: 1 }}>
           <TextField
             value={titleDraft}
@@ -2671,7 +3337,10 @@ const LessonWorkspace = ({
             <IconButton onClick={onCreateLesson} sx={{ color: "primary.main" }}>
               <AddRoundedIcon />
             </IconButton>
-            <IconButton onClick={onDuplicateLesson} sx={{ color: "primary.main" }}>
+            <IconButton
+              onClick={onDuplicateLesson}
+              sx={{ color: "primary.main" }}
+            >
               <ContentCopyRoundedIcon />
             </IconButton>
             {showDelete ? (
@@ -2697,7 +3366,9 @@ const LessonWorkspace = ({
             }}
           >
             {draft.workflowState === "published" ||
-            String(lesson.status || "").toLowerCase().includes("publish")
+            String(lesson.status || "")
+              .toLowerCase()
+              .includes("publish")
               ? "public"
               : "draft"}
           </Box>
@@ -2726,31 +3397,50 @@ const LessonWorkspace = ({
 
       <Box sx={{ mt: "2.5rem" }}>
         <StepShell
-        stepNumber={1}
-        label="Upload Source Material"
-        expanded={expandedStep === "source"}
-        complete={sourceComplete}
-        enabled
-        showConnector
-        onToggle={() => setExpandedStep((current) => (current === "source" ? null : "source"))}
-        onRerun={() => rerunStep("source")}
-        skills={stepSkills.source}
-      >
-        {renderSourceWorkspace()}
-        {activeSourceDocument ? (
-          <Typography variant="body2" color="text.secondary">
-            {activeSourceDocument.pageQuestions.filter((page) => page.trim()).length
-              ? `${activeSourceDocument.pageQuestions.filter((page) => page.trim()).length} page${
-                  activeSourceDocument.pageQuestions.filter((page) => page.trim()).length === 1 ? "" : "s"
-                } with extracted questions.`
-              : "No extracted questions stored yet."}
-          </Typography>
-        ) : null}
-      </StepShell>
+          stepNumber={1}
+          label="Upload Source"
+          expanded={expandedStep === "source"}
+          complete={sourceComplete}
+          inProgress={draft.sourceDocuments.length > 0 && !sourceComplete}
+          enabled
+          showConnector
+          onToggle={() =>
+            setExpandedStep((current) =>
+              current === "source" ? null : "source",
+            )
+          }
+          onRerun={() => rerunStep("source")}
+          skills={stepSkills.source}
+        >
+          {renderSourceWorkspace()}
+          {activeSourceDocument ? (
+            <Typography variant="body2" color="text.secondary">
+              {activeSourceDocument.pageQuestions.filter((page) => page.trim())
+                .length
+                ? `${activeSourceDocument.pageQuestions.filter((page) => page.trim()).length} page${
+                    activeSourceDocument.pageQuestions.filter((page) =>
+                      page.trim(),
+                    ).length === 1
+                      ? ""
+                      : "s"
+                  } with extracted questions.`
+                : "No extracted questions stored yet."}
+            </Typography>
+          ) : null}
+        </StepShell>
       </Box>
-      <Dialog open={usageDialogOpen} onClose={() => setUsageDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={usageDialogOpen}
+        onClose={() => setUsageDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
         <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
             <Typography fontWeight={800} sx={{ fontSize: "1.1rem" }}>
               AI Extraction Cost
             </Typography>
@@ -2761,7 +3451,8 @@ const LessonWorkspace = ({
           {activeQuestionUsage ? (
             <>
               <Typography>
-                {formatCostCents(activeQuestionUsage.costCents)} for this document
+                {formatCostCents(activeQuestionUsage.costCents)} for this
+                document
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Model: {activeQuestionUsage.model}
@@ -2779,7 +3470,8 @@ const LessonWorkspace = ({
                 Cached input tokens: {activeQuestionUsage.cachedInputTokens}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Extracted at: {new Date(activeQuestionUsage.extractedAt).toLocaleString()}
+                Extracted at:{" "}
+                {new Date(activeQuestionUsage.extractedAt).toLocaleString()}
               </Typography>
               {activeQuestionUsage.requestId ? (
                 <Typography variant="body2" color="text.secondary">
@@ -2788,10 +3480,15 @@ const LessonWorkspace = ({
               ) : null}
             </>
           ) : (
-            <Typography color="text.secondary">No AI extraction usage is available for this document yet.</Typography>
+            <Typography color="text.secondary">
+              No AI extraction usage is available for this document yet.
+            </Typography>
           )}
           <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 1 }}>
-            <Button variant="contained" onClick={() => setUsageDialogOpen(false)}>
+            <Button
+              variant="contained"
+              onClick={() => setUsageDialogOpen(false)}
+            >
               Close
             </Button>
           </Box>
@@ -2800,7 +3497,10 @@ const LessonWorkspace = ({
       <Dialog
         open={sourceFullscreenOpen}
         onClose={() => {
-          if (document.fullscreenElement && typeof document.exitFullscreen === "function") {
+          if (
+            document.fullscreenElement &&
+            typeof document.exitFullscreen === "function"
+          ) {
             void document.exitFullscreen().catch(() => {});
           }
           setSourceFullscreenOpen(false);
@@ -2810,11 +3510,22 @@ const LessonWorkspace = ({
       >
         <Box
           ref={sourceFullscreenRef}
-          sx={{ p: 0, display: "flex", flexDirection: "column", gap: 0, minHeight: "100vh", position: "relative", bgcolor: "#fff" }}
+          sx={{
+            p: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 0,
+            minHeight: "100vh",
+            position: "relative",
+            bgcolor: "#fff",
+          }}
         >
           <IconButton
             onClick={() => {
-              if (document.fullscreenElement && typeof document.exitFullscreen === "function") {
+              if (
+                document.fullscreenElement &&
+                typeof document.exitFullscreen === "function"
+              ) {
                 void document.exitFullscreen().catch(() => {});
               }
               setSourceFullscreenOpen(false);
@@ -2839,98 +3550,62 @@ const LessonWorkspace = ({
 
       <StepShell
         stepNumber={2}
-        label="Confirm Concepts"
+        label="Confirm Questions"
         expanded={expandedStep === "concepts"}
         complete={conceptsComplete}
+        inProgress={approvedQuestionsCount > 0 && !conceptsComplete}
         enabled={stepEnabled.concepts}
         showConnector
         onToggle={() =>
-          setExpandedStep((current) => (current === "concepts" ? null : "concepts"))
+          setExpandedStep((current) =>
+            current === "concepts" ? null : "concepts",
+          )
         }
         onRerun={() => rerunStep("concepts")}
         skills={stepSkills.concepts}
       >
         <Stack spacing={2}>
-          {draft.concepts.length === 0 ? (
-            <Alert severity="info">Upload PDFs first, then prepare concepts.</Alert>
-          ) : (
-            <Stack spacing={1.5}>
-              {draft.concepts.map((concept) => (
-                <Box key={concept.id}>
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                    <TextField
-                      label="Concept"
-                      value={concept.title}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          concepts: current.concepts.map((item) =>
-                            item.id === concept.id ? { ...item, title: event.target.value } : item
-                          ),
-                        }))
-                      }
-                      fullWidth
-                    />
-                    <Button
-                      variant={concept.approved ? "contained" : "outlined"}
-                      onClick={() =>
-                        updateDraft((current) => ({
-                          ...current,
-                          concepts: current.concepts.map((item) =>
-                            item.id === concept.id
-                              ? { ...item, approved: !item.approved }
-                              : item
-                          ),
-                        }))
-                      }
-                    >
-                      {concept.approved ? "Approved" : "Keep Out"}
-                    </Button>
-                  </Stack>
-                  <TextField
-                    label="Teacher note"
-                    value={concept.synopsis}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        concepts: current.concepts.map((item) =>
-                          item.id === concept.id
-                            ? { ...item, synopsis: event.target.value }
-                            : item
-                        ),
-                      }))
-                    }
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    sx={{ mt: 1.5 }}
-                  />
-                  <Divider sx={{ mt: 2 }} />
-                </Box>
-              ))}
-            </Stack>
-          )}
+          <ApprovedQuestionsReview
+            pages={approvedQuestionPages}
+            onUpdateQuestion={(
+              documentId,
+              pageNumber,
+              questionIndex,
+              nextValue,
+            ) => {
+              updateDocumentPageQuestion(
+                documentId,
+                pageNumber,
+                questionIndex,
+                nextValue,
+              );
+            }}
+            onUpdateQuestionState={(
+              documentId,
+              pageNumber,
+              questionIndex,
+              nextState,
+            ) => {
+              updateDocumentQuestionState(
+                documentId,
+                pageNumber,
+                questionIndex,
+                nextState,
+              );
+            }}
+            onUpdatePageTitle={(documentId, pageNumber, nextTitle) => {
+              updateDocumentPageTitle(documentId, pageNumber, nextTitle);
+            }}
+            onUpdatePageNumber={(documentId, pageNumber, nextValue) => {
+              updateDocumentPageNumber(documentId, pageNumber, nextValue);
+            }}
+          />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <Button
-              variant="outlined"
-              onClick={() =>
-                updateDraft((current) => ({
-                  ...current,
-                  concepts: [
-                    ...current.concepts,
-                    {
-                      id: createId("concept"),
-                      title: `New Concept ${current.concepts.length + 1}`,
-                      synopsis: "Add the concept scope here.",
-                      approved: true,
-                    },
-                  ],
-                }))
-              }
+              variant="contained"
+              onClick={handleSectionDraftGeneration}
+              disabled={approvedQuestionsCount === 0}
             >
-              Add Concept
-            </Button>
-            <Button variant="contained" onClick={handleSectionDraftGeneration} disabled={!conceptsComplete}>
               Continue
             </Button>
           </Stack>
@@ -2942,17 +3617,22 @@ const LessonWorkspace = ({
         label="Draft Sections"
         expanded={expandedStep === "sections"}
         complete={sectionsComplete}
+        inProgress={stepEnabled.sections && !sectionsComplete}
         enabled={stepEnabled.sections}
         showConnector
         onToggle={() =>
-          setExpandedStep((current) => (current === "sections" ? null : "sections"))
+          setExpandedStep((current) =>
+            current === "sections" ? null : "sections",
+          )
         }
         onRerun={() => rerunStep("sections")}
         skills={stepSkills.sections}
       >
         <Stack spacing={1.5}>
           {draft.sections.length === 0 ? (
-            <Alert severity="info">Approve concepts, then create section drafts.</Alert>
+            <Alert severity="info">
+              Approve concepts, then create section drafts.
+            </Alert>
           ) : (
             draft.sections.map((section) => (
               <Box key={section.id}>
@@ -2968,7 +3648,9 @@ const LessonWorkspace = ({
                         ...current,
                         workflowState: "review",
                         sections: current.sections.map((item) =>
-                          item.id === section.id ? { ...item, synopsis: event.target.value } : item
+                          item.id === section.id
+                            ? { ...item, synopsis: event.target.value }
+                            : item,
                         ),
                       }))
                     }
@@ -2986,7 +3668,7 @@ const LessonWorkspace = ({
                         sections: current.sections.map((item) =>
                           item.id === section.id
                             ? { ...item, teachingNotes: event.target.value }
-                            : item
+                            : item,
                         ),
                       }))
                     }
@@ -3010,7 +3692,7 @@ const LessonWorkspace = ({
                                   .map(cleanLine)
                                   .filter(Boolean),
                               }
-                            : item
+                            : item,
                         ),
                       }))
                     }
@@ -3036,9 +3718,12 @@ const LessonWorkspace = ({
         label="Review Lesson"
         expanded={expandedStep === "review"}
         complete={reviewComplete}
+        inProgress={stepEnabled.review && !reviewComplete}
         enabled={stepEnabled.review}
         showConnector={false}
-        onToggle={() => setExpandedStep((current) => (current === "review" ? null : "review"))}
+        onToggle={() =>
+          setExpandedStep((current) => (current === "review" ? null : "review"))
+        }
         onRerun={() => rerunStep("review")}
         skills={stepSkills.review}
       >
@@ -3047,7 +3732,10 @@ const LessonWorkspace = ({
             label="Lesson Overview"
             value={draft.overview}
             onChange={(event) =>
-              updateDraft((current) => ({ ...current, overview: event.target.value }))
+              updateDraft((current) => ({
+                ...current,
+                overview: event.target.value,
+              }))
             }
             onBlur={(event) => void handleOverviewSave(event.target.value)}
             fullWidth
@@ -3055,9 +3743,17 @@ const LessonWorkspace = ({
             minRows={3}
             placeholder="Add a short teacher-facing summary of this lesson."
           />
-          <Box display="grid" gridTemplateColumns={{ xs: "1fr", md: "1fr 1fr 1fr" }} gap={1.5}>
+          <Box
+            display="grid"
+            gridTemplateColumns={{ xs: "1fr", md: "1fr 1fr 1fr" }}
+            gap={1.5}
+          >
             <Box>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ fontWeight: 700 }}
+              >
                 Source Documents
               </Typography>
               <Typography variant="h5" fontWeight={800}>
@@ -3065,7 +3761,11 @@ const LessonWorkspace = ({
               </Typography>
             </Box>
             <Box>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ fontWeight: 700 }}
+              >
                 Approved Concepts
               </Typography>
               <Typography variant="h5" fontWeight={800}>
@@ -3073,7 +3773,11 @@ const LessonWorkspace = ({
               </Typography>
             </Box>
             <Box>
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ fontWeight: 700 }}
+              >
                 Draft Sections
               </Typography>
               <Typography variant="h5" fontWeight={800}>
@@ -3082,7 +3786,11 @@ const LessonWorkspace = ({
             </Box>
           </Box>
           {draft.lastSkillRunAt ? (
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ fontWeight: 700 }}
+            >
               Last skill run {new Date(draft.lastSkillRunAt).toLocaleString()}
             </Typography>
           ) : null}
