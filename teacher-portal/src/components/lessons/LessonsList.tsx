@@ -129,7 +129,7 @@ const LessonsList = ({
     setUploadingIcon(true);
     const url = await onUploadIcon(iconLesson.id, iconFile);
     if (!url) {
-      onNotify("Failed to upload lesson icon", "error");
+      onNotify("Failed to upload template cover", "error");
       setUploadingIcon(false);
       return;
     }
@@ -362,7 +362,7 @@ const LessonsList = ({
                     {iconSrc ? (
                       <img
                         src={iconSrc}
-                        alt="Lesson"
+                        alt="Lesson template"
                         style={{
                           width: "100%",
                           height: "100%",
@@ -397,7 +397,7 @@ const LessonsList = ({
         ) : null}
       </Box>
       <Dialog open={iconDialogOpen} onClose={resetIconDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>Update lesson icon</DialogTitle>
+        <DialogTitle>Update template cover</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           <Typography variant="body2" color="text.secondary">
             Upload a square image at least 64x64.

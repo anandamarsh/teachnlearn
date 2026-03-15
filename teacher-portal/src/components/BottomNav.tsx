@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Avatar, Box, Button, Menu, MenuItem, Paper } from "@mui/material";
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import HubRoundedIcon from "@mui/icons-material/HubRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
@@ -10,9 +11,10 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 type BottomNavProps = {
   isAuthenticated: boolean;
   userAvatar?: string | null;
-  currentPage: "home" | "lessons" | "profile";
+  currentPage: "home" | "lessons" | "skills" | "profile";
   onLessonsClick: () => void;
   onHomeClick: () => void;
+  onSkillsClick: () => void;
   onProfileClick: () => void;
   onAuthClick: () => void;
   onLogout: () => void;
@@ -29,6 +31,7 @@ const BottomNav = ({
   currentPage,
   onLessonsClick,
   onHomeClick,
+  onSkillsClick,
   onProfileClick,
   onAuthClick,
   onLogout,
@@ -40,6 +43,7 @@ const BottomNav = ({
 }: BottomNavProps) => {
   const isHome = currentPage === "home";
   const isLessons = currentPage === "lessons";
+  const isSkills = currentPage === "skills";
   const isProfile = currentPage === "profile";
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const menuOpen = Boolean(menuAnchor);
@@ -90,6 +94,19 @@ const BottomNav = ({
           }}
         >
           <DescriptionRoundedIcon />
+        </Button>
+        <Button
+          onClick={onSkillsClick}
+          sx={{
+            minWidth: 0,
+            px: 2,
+            borderRadius: 999,
+            color: "primary.main",
+            backgroundColor: isSkills ? "rgba(230,81,0,0.18)" : "transparent",
+            height: "100%",
+          }}
+        >
+          <HubRoundedIcon />
         </Button>
         <Button
           onClick={onProfileClick}

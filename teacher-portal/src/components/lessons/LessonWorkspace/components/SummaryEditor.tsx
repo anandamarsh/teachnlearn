@@ -64,7 +64,7 @@ const SummaryEditor = ({
         }}
       >
         <Typography variant="h6" color="text.secondary">
-          {contentDraft || "Add a short report summary."}
+          {contentDraft || "Add a short template brief for the teaching plan."}
         </Typography>
       </Box>
     )}

@@ -31,6 +31,11 @@ def ensure_lesson_prefix(sanitized_email: str, lesson_id: str, settings: Setting
     s3_client.put_object(Bucket=settings.s3_bucket, Key=key, Body=b"")
 
 
+def _is_access_denied(error: ClientError) -> bool:
+    code = (error.response.get("Error") or {}).get("Code")
+    return code in {"AccessDenied", "AllAccessDisabled", "UnauthorizedOperation"}
+
+
 def delete_lesson_prefix(sanitized_email: str, lesson_id: str, settings: Settings) -> None:
     if not settings.s3_bucket:
         raise RuntimeError("S3 bucket not configured")
@@ -45,13 +50,17 @@ def delete_lesson_prefix(sanitized_email: str, lesson_id: str, settings: Setting
             pass
 
     # Remove all versions/delete markers when bucket versioning is enabled.
-    versions_paginator = s3_client.get_paginator("list_object_versions")
     version_items: list[dict[str, str]] = []
-    for page in versions_paginator.paginate(Bucket=settings.s3_bucket, Prefix=prefix):
-        for obj in page.get("Versions", []):
-            version_items.append({"Key": obj["Key"], "VersionId": obj["VersionId"]})
-        for marker in page.get("DeleteMarkers", []):
-            version_items.append({"Key": marker["Key"], "VersionId": marker["VersionId"]})
+    try:
+        versions_paginator = s3_client.get_paginator("list_object_versions")
+        for page in versions_paginator.paginate(Bucket=settings.s3_bucket, Prefix=prefix):
+            for obj in page.get("Versions", []):
+                version_items.append({"Key": obj["Key"], "VersionId": obj["VersionId"]})
+            for marker in page.get("DeleteMarkers", []):
+                version_items.append({"Key": marker["Key"], "VersionId": marker["VersionId"]})
+    except ClientError as exc:
+        if not _is_access_denied(exc):
+            raise
     if version_items:
         s3_client.delete_objects(Bucket=settings.s3_bucket, Delete={"Objects": version_items})
         return

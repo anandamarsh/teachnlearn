@@ -11,6 +11,10 @@ type LessonsPageProps = {
   selectedLessonId: string | null;
   loading: boolean;
   isAuthenticated: boolean;
+  onCreateLesson: () => void;
+  onDuplicateLesson: () => void;
+  onDeleteLesson: () => void;
+  showDelete: boolean;
   onSelectLesson: (lessonId: string) => void;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
   onUpdateContent: (lessonId: string, content: string) => Promise<Lesson | null>;
@@ -39,6 +43,10 @@ const LessonsPage = ({
   selectedLessonId,
   loading,
   isAuthenticated,
+  onCreateLesson,
+  onDuplicateLesson,
+  onDeleteLesson,
+  showDelete,
   onSelectLesson,
   onUpdateTitle,
   onUpdateContent,
@@ -100,6 +108,10 @@ const LessonsPage = ({
               lesson={selectedLesson}
               hasLessons={lessons.length > 0}
               isAuthenticated={isAuthenticated}
+              onCreateLesson={onCreateLesson}
+              onDuplicateLesson={onDuplicateLesson}
+              onDeleteLesson={onDeleteLesson}
+              showDelete={showDelete}
               onUpdateTitle={onUpdateTitle}
               onUpdateContent={onUpdateContent}
               onUpdateStatus={onUpdateStatus}

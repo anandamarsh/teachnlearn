@@ -18,18 +18,20 @@ const EmptyState = ({ hasLessons }: EmptyStateProps) => (
     {hasLessons ? (
       <>
         <Typography variant="h3" sx={{ mb: 1 }}>
-          Select a lesson
+          Select a lesson template
         </Typography>
         <Typography color="text.secondary">
-          Pick a lesson from the left panel to begin.
+          Pick a teacher-owned template from the left panel to begin.
         </Typography>
       </>
     ) : (
       <>
         <Typography variant="h3" sx={{ mb: 1, color: "#1565c0" }}>
-          Create your first lesson
+          Create your first lesson template
         </Typography>
-        <Typography color="text.secondary">Press the + icon below</Typography>
+        <Typography color="text.secondary">
+          Start a generic class lesson, then specialize it later.
+        </Typography>
       </>
     )}
   </Box>

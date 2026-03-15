@@ -18,13 +18,41 @@ import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
 import LessonsPage from "./components/lessons/LessonsPage";
 import Profile from "./components/Profile";
+import SkillsPage from "./components/skills/SkillsPage";
 import { useLessons } from "./hooks/useLessons";
+import { useSkills } from "./hooks/useSkills";
 import { buildAuthHeaders } from "./auth/buildAuthHeaders";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
 
-type PageKey = "home" | "lessons" | "profile";
+type PageKey = "home" | "lessons" | "skills" | "profile";
+
+const getPageFromPath = (pathname: string): PageKey => {
+  if (pathname === "/skill") {
+    return "skills";
+  }
+  if (pathname === "/lessons") {
+    return "lessons";
+  }
+  if (pathname === "/profile") {
+    return "profile";
+  }
+  return "home";
+};
+
+const getPathFromPage = (page: PageKey) => {
+  if (page === "skills") {
+    return "/skill";
+  }
+  if (page === "lessons") {
+    return "/lessons";
+  }
+  if (page === "profile") {
+    return "/profile";
+  }
+  return "/";
+};
 
 function App() {
   const {
@@ -36,8 +64,25 @@ function App() {
     user,
   } = useAuth0();
 
-  const [page, setPage] = useState<PageKey>("home");
+  const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
   const configError = !apiBaseUrl || !auth0Audience;
+  const {
+    skills,
+    selectedSkillId,
+    setSelectedSkillId,
+    createSkill,
+    updateSkill,
+    duplicateSkill: duplicateSkillDefinition,
+    deleteSkill: deleteSkillDefinition,
+    resetSkills,
+    error: skillsError,
+    setError: setSkillsError,
+  } = useSkills({
+    apiBaseUrl,
+    auth0Audience,
+    isAuthenticated,
+    getAccessTokenSilently,
+  });
 
   const [wsPulse, setWsPulse] = useState<{ id: number; color: "success" | "error" } | null>(
     null
@@ -209,6 +254,13 @@ function App() {
     }
   }, [error, notify, setError]);
 
+  useEffect(() => {
+    if (skillsError) {
+      notify(skillsError, "error");
+      setSkillsError("");
+    }
+  }, [notify, setSkillsError, skillsError]);
+
   if (configError) {
     return (
       <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
@@ -237,6 +289,34 @@ function App() {
     }
     prevAuthRef.current = isAuthenticated;
   }, [isAuthenticated, isLoading]);
+
+  useEffect(() => {
+    const onPopState = () => setPage(getPageFromPath(window.location.pathname));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (page !== "skills" || !skills.length) {
+      return;
+    }
+    const skillId = new URLSearchParams(window.location.search).get("skill");
+    if (skillId && skills.some((skill) => skill.id === skillId) && selectedSkillId !== skillId) {
+      setSelectedSkillId(skillId);
+    }
+  }, [page, selectedSkillId, setSelectedSkillId, skills]);
+
+  useEffect(() => {
+    const nextPath = getPathFromPage(page);
+    const current = `${window.location.pathname}${window.location.search}`;
+    const next =
+      page === "skills"
+        ? `${nextPath}${window.location.search || ""}`
+        : nextPath;
+    if (current !== next) {
+      window.history.replaceState({}, "", next);
+    }
+  }, [page]);
 
   const fetchOtp = useCallback(async () => {
     if (!apiBaseUrl || !auth0Audience) {
@@ -316,6 +396,7 @@ function App() {
       {page === "home" ? (
         <Home
           onLessonsClick={() => setPage("lessons")}
+          onSkillsClick={() => setPage("skills")}
           onProfileClick={() => setPage("profile")}
           otpCode={otpCode}
           otpStatus={otpStatus}
@@ -329,6 +410,10 @@ function App() {
           selectedLessonId={selectedLessonId}
           loading={loading}
           isAuthenticated={isAuthenticated}
+          onCreateLesson={handleCreateLesson}
+          onDuplicateLesson={() => setDuplicateOpen(true)}
+          onDeleteLesson={() => setDeleteOpen(true)}
+          showDelete={Boolean(selectedLesson) && !isSelectedPublished}
           onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           onUpdateTitle={handleUpdateTitle}
           onUpdateContent={handleUpdateContent}
@@ -353,6 +438,22 @@ function App() {
           onNotify={notify}
         />
       ) : null}
+      {page === "skills" ? (
+        <SkillsPage
+          skills={skills}
+          selectedSkillId={selectedSkillId}
+          onSelectSkill={(skillId) => setSelectedSkillId(skillId)}
+          onCreateSkill={() => {
+            createSkill();
+            notify("Skill created", "success");
+          }}
+          onUpdateSkill={updateSkill}
+          onDuplicateSkill={duplicateSkillDefinition}
+          onDeleteSkill={deleteSkillDefinition}
+          onResetSkills={resetSkills}
+          onNotify={notify}
+        />
+      ) : null}
 
       <BottomNav
         isAuthenticated={isAuthenticated}
@@ -360,6 +461,7 @@ function App() {
         currentPage={page}
         onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
+        onSkillsClick={() => setPage("skills")}
         onProfileClick={() => setPage("profile")}
         onCreateLesson={handleCreateLesson}
         onDuplicateLesson={() => setDuplicateOpen(true)}

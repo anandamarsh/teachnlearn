@@ -77,13 +77,25 @@ const checkboxCheckedIconSx = {
 };
 
 const formatSectionLabel = (key: string) => {
+  const interimLabels: Record<string, string> = {
+    assessment: "Source Material",
+    concepts: "Concept Review",
+    background: "Planning Notes",
+    lesson: "Concept Draft",
+    exercises: "Activities",
+  };
   const match = key.match(/^([a-z_]+)-(\d+)$/);
   if (!match) {
-    return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+    return (
+      interimLabels[key] ||
+      key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+    );
   }
   const base = match[1];
   const index = Number(match[2]);
-  const baseLabel = base.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  const baseLabel =
+    interimLabels[base] ||
+    base.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
   return `${baseLabel} ${index}`;
 };
 
