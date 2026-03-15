@@ -53,6 +53,23 @@ export const updateLesson = async (
   return data;
 };
 
+export const publishApprovedQuestionsLesson = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: Record<string, unknown>
+) => {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to publish approved questions"));
+  }
+  return data as { lesson?: Record<string, unknown> };
+};
+
 export const deleteLesson = async (endpoint: string, headers: Record<string, string>) => {
   const response = await fetch(endpoint, {
     method: "DELETE",

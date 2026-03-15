@@ -24,7 +24,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
@@ -58,6 +57,7 @@ import {
 } from "../../../auth/buildAuthHeaders";
 import {
   extractLessonPageQuestions,
+  publishApprovedQuestionsLesson,
   type LessonPageQuestionItem,
   type LessonPageQuestionUsage,
 } from "../../../api/lessons";
@@ -100,7 +100,7 @@ type WorkflowState =
   | "sections"
   | "review"
   | "published";
-type StepKey = "source" | "concepts" | "sections" | "review";
+type StepKey = "source" | "concepts";
 type QuestionReviewState = "untouched" | "accepted" | "rejected";
 
 type SourceDocument = {
@@ -1510,14 +1510,6 @@ const stepSkills: Record<StepKey, SkillRef[]> = {
   concepts: [
     { id: "confirm_questions", label: "Confirm Questions", kind: "compute" },
   ],
-  sections: [
-    {
-      id: "build_section_drafts",
-      label: "Build Section Drafts",
-      kind: "ai_driven",
-    },
-  ],
-  review: [{ id: "publish_lesson", label: "Publish Lesson", kind: "compute" }],
 };
 
 const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
@@ -2307,10 +2299,6 @@ const LessonWorkspace = ({
     }
   };
 
-  const approvedConcepts = useMemo(
-    () => draft.concepts.filter((concept) => concept.approved),
-    [draft.concepts],
-  );
   const approvedQuestionPages = useMemo(
     () => buildApprovedQuestionPages(draft.sourceDocuments),
     [draft.sourceDocuments],
@@ -2327,7 +2315,8 @@ const LessonWorkspace = ({
     draft.workflowState === "sections" ||
     draft.workflowState === "review" ||
     draft.workflowState === "published" ||
-    draft.sections.length > 0;
+    draft.sections.length > 0 ||
+    String(lesson?.status || "").toLowerCase().includes("publish");
 
   const activePreview =
     previewDocuments.find((document) => document.id === activePreviewId) ||
@@ -2363,7 +2352,6 @@ const LessonWorkspace = ({
   const sourceComplete = approvedQuestionsCount > 0;
   const conceptsComplete = questionsConfirmComplete;
   const sectionsComplete = draft.sections.length > 0;
-  const reviewComplete = sectionsComplete && draft.overview.trim().length > 0;
 
   const updateDraft = (updater: (current: BuilderDraft) => BuilderDraft) => {
     setDraft((current) => updater(current));
@@ -2372,8 +2360,6 @@ const LessonWorkspace = ({
   const stepEnabled: Record<StepKey, boolean> = {
     source: true,
     concepts: sourceComplete,
-    sections: conceptsComplete,
-    review: sectionsComplete,
   };
 
   const saveTitle = async () => {
@@ -2387,11 +2373,6 @@ const LessonWorkspace = ({
     if (updated) {
       onNotify("Lesson title updated", "success");
     }
-  };
-
-  const handleOverviewSave = async (value: string) => {
-    updateDraft((current) => ({ ...current, overview: value }));
-    await onUpdateContent(lesson.id, value);
   };
 
   const saveSummary = async () => {
@@ -2495,27 +2476,6 @@ const LessonWorkspace = ({
       );
       return;
     }
-    if (step === "sections") {
-      buildSectionsStep();
-      updateDraft((current) => ({
-        ...current,
-        overview: "",
-        workflowState: "sections",
-        lastSkillRunAt: new Date().toISOString(),
-      }));
-      setExpandedStep("sections");
-      setRerunNotice(
-        "Sections were rerun. Review content after them was cleared.",
-      );
-      return;
-    }
-    updateDraft((current) => ({
-      ...current,
-      workflowState: "review",
-      lastSkillRunAt: new Date().toISOString(),
-    }));
-    setExpandedStep("review");
-    setRerunNotice("Review was reopened from the latest lesson state.");
   };
 
   const handleFilesUploaded = async (files: FileList | null) => {
@@ -2916,26 +2876,49 @@ const LessonWorkspace = ({
     onNotify("Concept sections drafted", "success");
   };
 
-  const handlePublish = async () => {
-    setPublishing(true);
-    const nextStatus =
-      draft.workflowState === "published" ? "Draft" : "Published";
-    const updated = await onUpdateStatus(lesson.id, nextStatus);
-    setPublishing(false);
-    if (!updated) {
-      onNotify("Could not update lesson status", "error");
+  const handlePublishApprovedQuestions = async () => {
+    if (!lesson || !getAccessTokenSilently || !apiBaseUrl || !auth0Audience) {
+      onNotify("Publish is not configured in the teacher portal", "error");
       return;
     }
-    updateDraft((current) => ({
-      ...current,
-      workflowState: nextStatus === "Published" ? "published" : "review",
-    }));
-    onNotify(
-      nextStatus === "Published"
-        ? "Lesson published"
-        : "Lesson moved back to draft",
-      "success",
-    );
+    if (approvedQuestionPages.length === 0) {
+      onNotify("Approve at least one question before publishing", "error");
+      return;
+    }
+    setPublishing(true);
+    try {
+      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      await publishApprovedQuestionsLesson(
+        `${apiBaseUrl}/lesson/id/${lesson.id}/publish-approved-questions`,
+        headers,
+        {
+          title: titleDraft.trim() || lesson.title,
+          pages: approvedQuestionPages.map((page) => ({
+            pageNumber: page.pageNumber,
+            title: page.title,
+            detectedPageNumber: page.detectedPageNumber,
+            questions: page.questions,
+          })),
+        }
+      );
+      const updated = await onUpdateStatus(lesson.id, "published");
+      if (!updated) {
+        onNotify("Lesson was published but local status could not be refreshed", "error");
+        return;
+      }
+      updateDraft((current) => ({
+        ...current,
+        workflowState: "published",
+      }));
+      setExpandedStep("concepts");
+      setRerunNotice("");
+      onNotify("Approved questions published", "success");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Failed to publish approved questions";
+      onNotify(detail, "error");
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const buildPreviewToolbarControls = (fullscreen = false) => {
@@ -3179,7 +3162,7 @@ const LessonWorkspace = ({
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            borderRadius: fullscreen ? 0 : "1.5rem",
+            borderRadius: 0,
             border: "none",
             backgroundColor: "#fff",
             overflow: "hidden",
@@ -3334,9 +3317,6 @@ const LessonWorkspace = ({
         </Box>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Stack direction="row" spacing={0.25} alignItems="center">
-            <IconButton onClick={onCreateLesson} sx={{ color: "primary.main" }}>
-              <AddRoundedIcon />
-            </IconButton>
             <IconButton
               onClick={onDuplicateLesson}
               sx={{ color: "primary.main" }}
@@ -3355,7 +3335,11 @@ const LessonWorkspace = ({
               height: 38,
               px: 1.5,
               borderRadius: "999px",
-              backgroundColor: "#ef6c00",
+              backgroundColor:
+                draft.workflowState === "published" ||
+                String(lesson.status || "").toLowerCase().includes("publish")
+                  ? "#2e7d32"
+                  : "#ef6c00",
               color: "common.white",
               display: "inline-flex",
               alignItems: "center",
@@ -3372,22 +3356,6 @@ const LessonWorkspace = ({
               ? "public"
               : "draft"}
           </Box>
-          <Button
-            variant="contained"
-            onClick={handlePublish}
-            disabled={publishing || !reviewComplete}
-            sx={{
-              height: 38,
-              minWidth: 140,
-              borderRadius: "999px",
-              textTransform: "none",
-              fontWeight: 700,
-              fontSize: "0.9rem",
-              px: 2,
-            }}
-          >
-            Publish
-          </Button>
         </Stack>
       </Box>
 
@@ -3555,7 +3523,7 @@ const LessonWorkspace = ({
         complete={conceptsComplete}
         inProgress={approvedQuestionsCount > 0 && !conceptsComplete}
         enabled={stepEnabled.concepts}
-        showConnector
+        showConnector={false}
         onToggle={() =>
           setExpandedStep((current) =>
             current === "concepts" ? null : "concepts",
@@ -3603,199 +3571,15 @@ const LessonWorkspace = ({
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <Button
               variant="contained"
-              onClick={handleSectionDraftGeneration}
-              disabled={approvedQuestionsCount === 0}
+              onClick={handlePublishApprovedQuestions}
+              disabled={publishing || approvedQuestionsCount === 0}
             >
-              Continue
+              Publish
             </Button>
           </Stack>
         </Stack>
       </StepShell>
 
-      <StepShell
-        stepNumber={3}
-        label="Draft Sections"
-        expanded={expandedStep === "sections"}
-        complete={sectionsComplete}
-        inProgress={stepEnabled.sections && !sectionsComplete}
-        enabled={stepEnabled.sections}
-        showConnector
-        onToggle={() =>
-          setExpandedStep((current) =>
-            current === "sections" ? null : "sections",
-          )
-        }
-        onRerun={() => rerunStep("sections")}
-        skills={stepSkills.sections}
-      >
-        <Stack spacing={1.5}>
-          {draft.sections.length === 0 ? (
-            <Alert severity="info">
-              Approve concepts, then create section drafts.
-            </Alert>
-          ) : (
-            draft.sections.map((section) => (
-              <Box key={section.id}>
-                <Typography fontWeight={700} sx={{ mb: 1.5 }}>
-                  {section.title}
-                </Typography>
-                <Stack spacing={1.5}>
-                  <TextField
-                    label="Synopsis"
-                    value={section.synopsis}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        workflowState: "review",
-                        sections: current.sections.map((item) =>
-                          item.id === section.id
-                            ? { ...item, synopsis: event.target.value }
-                            : item,
-                        ),
-                      }))
-                    }
-                    fullWidth
-                    multiline
-                    minRows={2}
-                  />
-                  <TextField
-                    label="Teaching Notes"
-                    value={section.teachingNotes}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        workflowState: "review",
-                        sections: current.sections.map((item) =>
-                          item.id === section.id
-                            ? { ...item, teachingNotes: event.target.value }
-                            : item,
-                        ),
-                      }))
-                    }
-                    fullWidth
-                    multiline
-                    minRows={4}
-                  />
-                  <TextField
-                    label="Questions"
-                    value={section.questions.join("\n")}
-                    onChange={(event) =>
-                      updateDraft((current) => ({
-                        ...current,
-                        workflowState: "review",
-                        sections: current.sections.map((item) =>
-                          item.id === section.id
-                            ? {
-                                ...item,
-                                questions: event.target.value
-                                  .split("\n")
-                                  .map(cleanLine)
-                                  .filter(Boolean),
-                              }
-                            : item,
-                        ),
-                      }))
-                    }
-                    fullWidth
-                    multiline
-                    minRows={4}
-                    helperText="One question per line"
-                    FormHelperTextProps={{ sx: { fontWeight: 700 } }}
-                  />
-                </Stack>
-                <Divider sx={{ mt: 2 }} />
-              </Box>
-            ))
-          )}
-          <Button variant="contained" disabled={!sectionsComplete}>
-            Continue
-          </Button>
-        </Stack>
-      </StepShell>
-
-      <StepShell
-        stepNumber={4}
-        label="Review Lesson"
-        expanded={expandedStep === "review"}
-        complete={reviewComplete}
-        inProgress={stepEnabled.review && !reviewComplete}
-        enabled={stepEnabled.review}
-        showConnector={false}
-        onToggle={() =>
-          setExpandedStep((current) => (current === "review" ? null : "review"))
-        }
-        onRerun={() => rerunStep("review")}
-        skills={stepSkills.review}
-      >
-        <Stack spacing={2}>
-          <TextField
-            label="Lesson Overview"
-            value={draft.overview}
-            onChange={(event) =>
-              updateDraft((current) => ({
-                ...current,
-                overview: event.target.value,
-              }))
-            }
-            onBlur={(event) => void handleOverviewSave(event.target.value)}
-            fullWidth
-            multiline
-            minRows={3}
-            placeholder="Add a short teacher-facing summary of this lesson."
-          />
-          <Box
-            display="grid"
-            gridTemplateColumns={{ xs: "1fr", md: "1fr 1fr 1fr" }}
-            gap={1.5}
-          >
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontWeight: 700 }}
-              >
-                Source Documents
-              </Typography>
-              <Typography variant="h5" fontWeight={800}>
-                {draft.sourceDocuments.length}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontWeight: 700 }}
-              >
-                Approved Concepts
-              </Typography>
-              <Typography variant="h5" fontWeight={800}>
-                {approvedConcepts.length}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontWeight: 700 }}
-              >
-                Draft Sections
-              </Typography>
-              <Typography variant="h5" fontWeight={800}>
-                {draft.sections.length}
-              </Typography>
-            </Box>
-          </Box>
-          {draft.lastSkillRunAt ? (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ fontWeight: 700 }}
-            >
-              Last skill run {new Date(draft.lastSkillRunAt).toLocaleString()}
-            </Typography>
-          ) : null}
-        </Stack>
-      </StepShell>
     </Box>
   );
 };

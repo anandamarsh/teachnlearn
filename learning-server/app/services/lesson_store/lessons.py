@@ -1,3 +1,4 @@
+import html
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -10,6 +11,169 @@ from .s3 import delete_lesson_prefix, ensure_lesson_prefix, sanitize_email
 
 
 class LessonStoreLessons:
+    def _render_approved_questions_html(
+        self, pages: list[dict[str, Any]]
+    ) -> str:
+        blocks: list[str] = []
+        for page in pages:
+            title = str(page.get("title") or "").strip()
+            detected_page_number = page.get("detectedPageNumber")
+            questions = page.get("questions") or []
+            heading_parts = [part for part in [title] if part]
+            if detected_page_number is not None:
+                heading_parts.append(f"Page {detected_page_number}")
+            heading = " | ".join(heading_parts) or f"Page {page.get('pageNumber')}"
+            items: list[str] = []
+            for question in questions:
+                lines = [
+                    html.escape(str(line).strip())
+                    for line in str(question or "").splitlines()
+                    if str(line).strip()
+                ]
+                if not lines:
+                    continue
+                items.append(f"<li>{'<br/>'.join(lines)}</li>")
+            if not items:
+                continue
+            blocks.append(
+                "\n".join(
+                    [
+                        "<section>",
+                        f"<h2>{html.escape(heading)}</h2>",
+                        "<ol>",
+                        *items,
+                        "</ol>",
+                        "</section>",
+                    ]
+                )
+            )
+        return "\n".join(blocks).strip()
+
+    def publish_approved_questions(
+        self,
+        email: str,
+        lesson_id: str,
+        title: str | None,
+        pages: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        sanitized = sanitize_email(email)
+        print(
+            f"[PUBLISH][DEBUG] store.publish_approved_questions: sanitized={sanitized} lesson_id={lesson_id} pages={len(pages)}"
+        )
+        with self._lock:
+            self._ensure_bucket()
+            lesson = self.get(email, lesson_id)
+            entries = self._load_index(sanitized)
+            if lesson is None:
+                print(
+                    "[PUBLISH][DEBUG] store.publish_approved_questions: lesson not found, recreating shell"
+                )
+                now = datetime.now(timezone.utc).isoformat()
+                lesson = {
+                    "id": lesson_id,
+                    "title": str(title or "Approved Questions").strip()
+                    or "Approved Questions",
+                    "status": "draft",
+                    "summary": None,
+                    "subject": None,
+                    "level": None,
+                    "requires_login": None,
+                    "created_at": now,
+                    "updated_at": now,
+                    "sections": {},
+                    "sectionsMeta": {},
+                }
+                ensure_lesson_prefix(sanitized, lesson_id, self._settings)
+
+            retained_entries: list[dict[str, Any]] = []
+            deleted_lesson_ids: list[str] = []
+            for entry in entries:
+                entry_id = str(entry.get("id") or "").strip()
+                if not entry_id:
+                    continue
+                if entry_id == lesson_id:
+                    retained_entries.append(entry)
+                    continue
+                if self.is_protected_lesson(email, entry_id):
+                    retained_entries.append(entry)
+                    continue
+                delete_lesson_prefix(sanitized, entry_id, self._settings)
+                deleted_lesson_ids.append(entry_id)
+            print(
+                f"[PUBLISH][DEBUG] store.publish_approved_questions: deleted_old_lessons={deleted_lesson_ids}"
+            )
+
+            now = datetime.now(timezone.utc).isoformat()
+            next_title = str(title or lesson.get("title") or "Approved Questions").strip()
+            lesson_html = self._render_approved_questions_html(pages)
+            print(
+                f"[PUBLISH][DEBUG] store.publish_approved_questions: next_title={next_title!r} html_length={len(lesson_html)}"
+            )
+            lesson["title"] = next_title
+            lesson["status"] = "published"
+            lesson["summary"] = f"{len(pages)} page group(s) of approved questions"
+            lesson["approvedQuestions"] = pages
+            lesson["updated_at"] = now
+
+            sections = {"lesson": self._section_filename("lesson")}
+            lesson["sections"] = sections
+            previous_meta = (lesson.get("sectionsMeta") or {}).get("lesson") or {}
+            lesson["sectionsMeta"] = {
+                "lesson": {
+                    "key": "lesson",
+                    "updatedAt": now,
+                    "version": int(previous_meta.get("version", 0)) + 1,
+                    "contentLength": len(lesson_html.strip()),
+                }
+            }
+
+            lesson_key = self._lesson_key(sanitized, lesson_id)
+            lesson_section_key = self._section_key(sanitized, lesson_id, sections["lesson"])
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=lesson_section_key,
+                Body=lesson_html.encode("utf-8"),
+                ContentType=self._section_content_type("lesson"),
+            )
+            print(
+                f"[PUBLISH][DEBUG] store.publish_approved_questions: wrote lesson section key={lesson_section_key}"
+            )
+            self._s3_client.put_object(
+                Bucket=self._settings.s3_bucket,
+                Key=lesson_key,
+                Body=json.dumps(lesson, indent=2).encode("utf-8"),
+                ContentType="application/json",
+            )
+            print(
+                f"[PUBLISH][DEBUG] store.publish_approved_questions: wrote lesson index key={lesson_key}"
+            )
+
+            updated = False
+            for entry in retained_entries:
+                if entry.get("id") == lesson_id:
+                    entry["title"] = next_title
+                    entry["status"] = "published"
+                    entry["updated_at"] = now
+                    updated = True
+                    break
+            if not updated:
+                retained_entries.append(
+                    {
+                        "id": lesson_id,
+                        "title": next_title,
+                        "status": "published",
+                        "subject": lesson.get("subject"),
+                        "level": lesson.get("level"),
+                        "requires_login": lesson.get("requires_login"),
+                        "updated_at": now,
+                    }
+                )
+            self._save_index(sanitized, retained_entries)
+            print(
+                f"[PUBLISH][DEBUG] store.publish_approved_questions: saved index entries={len(retained_entries)}"
+            )
+        return lesson
+
     def is_protected_lesson(self, email: str, lesson_id: str) -> bool:
         lesson = self.get(email, lesson_id)
         if not lesson:
