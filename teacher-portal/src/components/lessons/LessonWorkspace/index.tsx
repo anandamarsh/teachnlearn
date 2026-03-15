@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Dialog,
   Box,
@@ -8,18 +11,21 @@ import {
   CircularProgress,
   Divider,
   IconButton,
+  LinearProgress,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import DocumentScannerRoundedIcon from "@mui/icons-material/DocumentScannerRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import FullscreenRoundedIcon from "@mui/icons-material/FullscreenRounded";
 import MemoryRoundedIcon from "@mui/icons-material/MemoryRounded";
-import OpenWithRoundedIcon from "@mui/icons-material/OpenWithRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
@@ -253,6 +259,153 @@ const questionsToEditorText = (pageQuestionDetails: Array<LessonPageQuestionItem
     })
     .filter(Boolean)
     .join("\n\n");
+
+const normalizeQuestionNumber = (rawNumber: string) => {
+  if (/^[Il]$/i.test(rawNumber)) {
+    return 1;
+  }
+  const parsed = Number(rawNumber);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getQuestionNumber = (question: string) => {
+  const match = question.match(/^\s*((?:\d+|[Il]))\.\s+/);
+  if (!match) {
+    return null;
+  }
+  return normalizeQuestionNumber(match[1]);
+};
+
+const stripQuestionPrefix = (question: string) =>
+  question.replace(/^\s*(?:\d+|[Il])\.\s+/, "").trim();
+
+const splitPageTextIntoQuestions = (pageText: string) => {
+  const normalized = String(pageText || "")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized
+    .split(/(?=^\s*(?:\d+|[Il])\.\s+)/m)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => Boolean(chunk) && /^\s*(?:\d+|[Il])\.\s+/.test(chunk));
+};
+
+const summarizeQuestion = (question: string) => {
+  const singleLine = cleanLine(stripQuestionPrefix(question));
+  if (singleLine.length <= 120) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, 117).trim()}...`;
+};
+
+const QuestionsAccordionList = ({
+  page,
+  fullscreen = false,
+}: {
+  page: { pageNumber: number; questions: string[] } | null;
+  fullscreen?: boolean;
+}) => {
+  const hasQuestions = Boolean(page?.questions.length);
+
+  return (
+    <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", p: 1.5, pt: fullscreen ? 4 : 1.5 }}>
+      <Stack spacing={1.25}>
+        {page ? (
+        <Stack spacing={1}>
+          {!fullscreen ? (
+            <Typography sx={{ fontSize: "0.82rem", fontWeight: 800, color: "text.secondary", px: 0.5 }}>
+              Page {page.pageNumber}
+            </Typography>
+          ) : null}
+          {hasQuestions ? page.questions.map((question, index) => {
+            const questionNumber = getQuestionNumber(question) ?? index + 1;
+            return (
+            <Accordion
+              key={`${page.pageNumber}_${index}`}
+              disableGutters
+              elevation={0}
+              sx={{
+                borderRadius: 0,
+                overflow: "hidden",
+                width: "100%",
+                boxShadow: "none",
+                backgroundColor: "transparent",
+                "&:before": { display: "none" },
+                "&:not(:last-of-type)": {
+                  borderBottom: "1px solid rgba(0,0,0,0.08)",
+                },
+              }}
+            >
+              <AccordionSummary
+                expandIcon={<ExpandMoreRoundedIcon />}
+                sx={{
+                  width: "100%",
+                  "& .MuiAccordionSummary-content": {
+                    minWidth: 0,
+                    my: 1.25,
+                  },
+                }}
+              >
+                <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0, width: "100%" }}>
+                  <Box
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "999px",
+                      bgcolor: "#1976d2",
+                      color: "#fff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.82rem",
+                      fontWeight: 800,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {questionNumber}
+                  </Box>
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      minWidth: 0,
+                      flex: 1,
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {summarizeQuestion(question)}
+                  </Typography>
+                </Stack>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Typography
+                  sx={{
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.6,
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {stripQuestionPrefix(question)}
+                </Typography>
+              </AccordionDetails>
+            </Accordion>
+          )}) : null}
+        </Stack>
+        ) : null}
+        {!hasQuestions ? (
+          <Box sx={{ minHeight: 220, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography color="text.secondary">No questions for this page.</Typography>
+          </Box>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+};
 
 const formatJsonScalar = (value: unknown) => {
   if (typeof value === "string") {
@@ -728,7 +881,21 @@ const StepShell = ({
   );
 };
 
-const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
+const PdfPreviewCanvas = ({
+  url,
+  title,
+  pageNumber,
+  fullscreen = false,
+  toolbarControls,
+  fillHeight = false,
+}: {
+  url: string;
+  title: string;
+  pageNumber: number;
+  fullscreen?: boolean;
+  toolbarControls?: ReactNode;
+  fillHeight?: boolean;
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const renderTaskRef = useRef<{ cancel: () => void; promise: Promise<unknown> } | null>(null);
@@ -768,7 +935,7 @@ const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
         const pdfWorker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url");
         pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker.default;
         const pdf = await pdfjs.getDocument({ url }).promise;
-        const page = await pdf.getPage(1);
+        const page = await pdf.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
         if (cancelled) {
           return;
@@ -795,7 +962,7 @@ const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, pageNumber]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -819,7 +986,7 @@ const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
       const verticalPadding = 32;
       const widthScale = Math.max(0.2, (nextWidth - horizontalPadding) / pageSize.width);
       const heightScale = Math.max(0.2, (nextHeight - verticalPadding) / pageSize.height);
-      const nextFitZoom = Number(Math.min(widthScale, heightScale).toFixed(2));
+      const nextFitZoom = Number((fullscreen || fillHeight ? heightScale : Math.min(widthScale, heightScale)).toFixed(2));
       if (Math.abs(lastFitZoomRef.current - nextFitZoom) < 0.02) {
         return;
       }
@@ -952,22 +1119,12 @@ const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
 
   return (
     <Box
-      ref={containerRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
       sx={{
         width: "100%",
-        height: 640,
-        minHeight: 640,
-        maxHeight: 640,
-        borderRadius: "1.5rem",
-        backgroundColor: "#2a2a2a",
-        overflow: "auto",
+        height: fullscreen || fillHeight ? "100%" : 640,
+        minHeight: fullscreen || fillHeight ? "100%" : 640,
+        maxHeight: fullscreen || fillHeight ? "100%" : 640,
         position: "relative",
-        cursor: loading || error ? "default" : isDragging ? "grabbing" : "grab",
-        touchAction: "none",
       }}
     >
       <Stack
@@ -975,17 +1132,22 @@ const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
         spacing={0.5}
         onPointerDown={(event) => event.stopPropagation()}
         sx={{
-          position: "sticky",
-          top: 12,
-          left: 12,
+          position: "absolute",
+          bottom: "0.5rem",
+          left: "50%",
+          transform: "translateX(-50%)",
           zIndex: 2,
           width: "fit-content",
-          m: 1.5,
+          m: 0,
           p: 0.5,
           borderRadius: "999px",
-          backgroundColor: "rgba(17,17,17,0.78)",
-          border: "1px solid rgba(255,255,255,0.14)",
-          backdropFilter: "blur(10px)",
+          backgroundColor: fullscreen ? "rgba(46,46,46,0.98)" : "rgba(17,17,17,0.96)",
+          border: fullscreen ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(255,255,255,0.14)",
+          opacity: 0.1,
+          transition: "opacity 0.18s ease",
+          "&:hover": {
+            opacity: 1,
+          },
         }}
       >
         <IconButton
@@ -1007,67 +1169,84 @@ const PdfPreviewCanvas = ({ url, title }: { url: string; title: string }) => {
         <IconButton size="small" onClick={() => adjustZoom(0.15)} disabled={loading || Boolean(error)}>
           <ZoomInRoundedIcon sx={{ color: "#fff", fontSize: 18 }} />
         </IconButton>
-        <Box sx={{ width: 1, backgroundColor: "rgba(255,255,255,0.14)", mx: 0.25 }} />
-        <Button
-          size="small"
-          variant="text"
-          disabled
-          startIcon={<OpenWithRoundedIcon sx={{ color: "#fff", fontSize: 16 }} />}
-          sx={{ color: "rgba(255,255,255,0.9)", fontWeight: 700 }}
-        >
-          Drag
-        </Button>
+        {toolbarControls ? (
+          <>
+            <Box sx={{ width: 1, backgroundColor: "rgba(255,255,255,0.18)", mx: 0.25 }} />
+            {toolbarControls}
+          </>
+        ) : null}
       </Stack>
-      {loading ? (
-        <Stack
-          spacing={1}
-          alignItems="center"
-          sx={{
-            color: "rgba(255,255,255,0.72)",
-            minHeight: 640,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            position: "absolute",
-            inset: 0,
-            zIndex: 1,
-            backgroundColor: "rgba(42,42,42,0.72)",
-          }}
-        >
-          <CircularProgress size={22} color="inherit" />
-          <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>Rendering PDF…</Typography>
-        </Stack>
-      ) : null}
-      {!loading && error ? (
-        <Stack
-          spacing={1}
-          alignItems="center"
-          sx={{
-            color: "rgba(255,255,255,0.72)",
-            px: 3,
-            minHeight: 640,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Typography sx={{ fontSize: "0.98rem", fontWeight: 800, color: "#fff" }}>
-            Preview unavailable
-          </Typography>
-          <Typography sx={{ fontSize: "0.9rem", textAlign: "center" }}>{error}</Typography>
-        </Stack>
-      ) : null}
       <Box
-        component="canvas"
-        ref={canvasRef}
-        title={title}
+        ref={containerRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
         sx={{
-          display: error ? "none" : "block",
-          m: "0 auto 1rem",
-          borderRadius: "0.75rem",
+          width: "100%",
+          height: "100%",
+          minHeight: "100%",
+          maxHeight: "100%",
+          borderRadius: 0,
           backgroundColor: "#fff",
+          border: "none",
+          overflow: "auto",
+          position: "relative",
+          cursor: loading || error ? "default" : isDragging ? "grabbing" : "grab",
+          touchAction: "none",
         }}
-      />
+      >
+        {loading ? (
+          <Stack
+            spacing={1}
+            alignItems="center"
+            sx={{
+              color: "rgba(0,0,0,0.68)",
+              minHeight: fullscreen ? "calc(100vh - 140px)" : 640,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "absolute",
+              inset: 0,
+              zIndex: 1,
+              backgroundColor: "rgba(255,255,255,0.82)",
+            }}
+          >
+            <CircularProgress size={22} color="inherit" />
+            <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>Rendering PDF…</Typography>
+          </Stack>
+        ) : null}
+        {!loading && error ? (
+          <Stack
+            spacing={1}
+            alignItems="center"
+            sx={{
+              color: "rgba(0,0,0,0.68)",
+              px: 3,
+              minHeight: fullscreen ? "calc(100vh - 140px)" : 640,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography sx={{ fontSize: "0.98rem", fontWeight: 800, color: "#111" }}>
+              Preview unavailable
+            </Typography>
+            <Typography sx={{ fontSize: "0.9rem", textAlign: "center" }}>{error}</Typography>
+          </Stack>
+        ) : null}
+        <Box
+          component="canvas"
+          ref={canvasRef}
+          title={title}
+          sx={{
+            display: error ? "none" : "block",
+            m: fullscreen ? 0 : "0 auto 1rem",
+            borderRadius: fullscreen ? 0 : "0.75rem",
+            backgroundColor: "#fff",
+          }}
+        />
+      </Box>
     </Box>
   );
 };
@@ -1089,13 +1268,16 @@ const LessonWorkspace = ({
   const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
   const previewUrlsRef = useRef<string[]>([]);
   const sourcePaneRef = useRef<HTMLDivElement | null>(null);
+  const sourceFullscreenRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<BuilderDraft>(emptyDraft);
   const [titleDraft, setTitleDraft] = useState("");
   const [summaryDraft, setSummaryDraft] = useState("");
   const [previewDocuments, setPreviewDocuments] = useState<PreviewDocument[]>([]);
   const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
+  const [activePreviewPage, setActivePreviewPage] = useState(1);
   const [analyzingDocument, setAnalyzingDocument] = useState(false);
   const [localOcringDocument, setLocalOcringDocument] = useState(false);
+  const [localOcrProgress, setLocalOcrProgress] = useState({ current: 0, total: 0 });
   const [sourcePaneSplit, setSourcePaneSplit] = useState(loadStoredSourcePaneSplit);
   const [resizingSourcePane, setResizingSourcePane] = useState(false);
   const [sourceFullscreenOpen, setSourceFullscreenOpen] = useState(false);
@@ -1128,10 +1310,15 @@ const LessonWorkspace = ({
     setSummaryDraft(lesson.summary || "");
     setPreviewDocuments([]);
     setActivePreviewId(null);
+    setActivePreviewPage(1);
     setUsageDialogOpen(false);
     setExpandedStep(null);
     setRerunNotice("");
   }, [lesson]);
+
+  useEffect(() => {
+    setActivePreviewPage(1);
+  }, [activePreviewId]);
 
   useEffect(() => {
     return () => {
@@ -1182,6 +1369,41 @@ const LessonWorkspace = ({
     window.localStorage.setItem(SOURCE_SPLIT_STORAGE_KEY, String(sourcePaneSplit));
   }, [sourcePaneSplit]);
 
+  useEffect(() => {
+    if (!sourceFullscreenOpen) {
+      return;
+    }
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setSourceFullscreenOpen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [sourceFullscreenOpen]);
+
+  const toggleBrowserFullscreen = async () => {
+    const element = sourceFullscreenRef.current;
+    if (!element) {
+      return;
+    }
+    try {
+      if (document.fullscreenElement) {
+        if (typeof document.exitFullscreen === "function") {
+          await document.exitFullscreen();
+        }
+        return;
+      }
+      if (typeof element.requestFullscreen === "function") {
+        await element.requestFullscreen();
+      }
+    } catch {
+      // Ignore fullscreen API failures; the dialog remains open.
+    }
+  };
+
   const approvedConcepts = useMemo(
     () => draft.concepts.filter((concept) => concept.approved),
     [draft.concepts]
@@ -1196,14 +1418,13 @@ const LessonWorkspace = ({
   const activeQuestionUsage =
     activeSourceDocument?.pageQuestionUsage.find((entry) => Boolean(entry)) || null;
   const activeExtractedTextPreview = activeSourceDocument
-    ? activeSourceDocument.pageTexts
-        .map((pageText, index) => {
-          const cleaned = String(pageText || "").trim();
-          return cleaned ? `Page ${index + 1}\n${cleaned}` : "";
-        })
-        .filter(Boolean)
-        .join("\n\n")
-    : "";
+    ? activeSourceDocument.pageTextQuestions
+        .map((questions, index) => ({
+          pageNumber: index + 1,
+          questions,
+        }))
+        .find((page) => page.pageNumber === activePreviewPage) || null
+    : null;
   const activeExtractedQuestionsText = activeSourceDocument
     ? questionsToEditorText(activeSourceDocument.pageQuestionDetails)
     : "";
@@ -1426,20 +1647,24 @@ const LessonWorkspace = ({
           { length: document.pages },
           (_, index) => nextPageTexts[index] || ""
         );
+        const normalizedPageTextQuestions = normalizedPageTexts.map((pageText) =>
+          splitPageTextIntoQuestions(pageText)
+        );
         console.debug("[LessonWorkspace] OCR parse update", {
           documentId,
           documentName: document.name,
           pages: normalizedPageTexts.map((pageText, index) => ({
             pageNumber: index + 1,
             textPreview: String(pageText || "").slice(0, 800),
-            parsedQuestionCount: (document.pageTextQuestions[index] || []).length,
-            parsedQuestions: document.pageTextQuestions[index] || [],
+            parsedQuestionCount: normalizedPageTextQuestions[index].length,
+            parsedQuestions: normalizedPageTextQuestions[index],
           })),
         });
         const derivedFields = deriveDocumentFields(normalizedPageTexts);
         return {
           ...document,
           pageTexts: normalizedPageTexts,
+          pageTextQuestions: normalizedPageTextQuestions,
           ...derivedFields,
         };
       }),
@@ -1451,13 +1676,15 @@ const LessonWorkspace = ({
       return;
     }
     setLocalOcringDocument(true);
+    setLocalOcrProgress({ current: 0, total: activeSourceDocument.pages });
     try {
       const pageTexts: string[] = [];
       for (let pageNumber = 1; pageNumber <= activeSourceDocument.pages; pageNumber += 1) {
         const extracted = await extractPageColumns(activePreview.file, pageNumber);
         pageTexts.push((extracted.questionsSection || extracted.combined || "").trim());
+        updateDocumentPageTexts(activeSourceDocument.id, pageTexts);
+        setLocalOcrProgress({ current: pageNumber, total: activeSourceDocument.pages });
       }
-      updateDocumentPageTexts(activeSourceDocument.id, pageTexts);
       onNotify("Local OCR prepared with questions only.", "success");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Could not run local OCR in the browser";
@@ -1465,6 +1692,7 @@ const LessonWorkspace = ({
       onNotify(detail, "error");
     } finally {
       setLocalOcringDocument(false);
+      setLocalOcrProgress({ current: 0, total: 0 });
     }
   };
 
@@ -1571,6 +1799,74 @@ const LessonWorkspace = ({
     onNotify(nextStatus === "Published" ? "Lesson published" : "Lesson moved back to draft", "success");
   };
 
+  const buildPreviewToolbarControls = (fullscreen = false) => {
+    if (!activePreview) {
+      return null;
+    }
+
+    return (
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <IconButton
+          size="small"
+          disabled={!activeSourceDocument || activePreviewPage <= 1}
+          onClick={() => setActivePreviewPage((current) => Math.max(1, current - 1))}
+          sx={{ color: "#fff" }}
+        >
+          <ChevronLeftRoundedIcon />
+        </IconButton>
+        <Typography sx={{ color: "#fff", fontWeight: 800, minWidth: 44, textAlign: "center" }}>
+          {activeSourceDocument ? `${activePreviewPage}/${activeSourceDocument.pages}` : ""}
+        </Typography>
+        <IconButton
+          size="small"
+          disabled={!activeSourceDocument || activePreviewPage >= activeSourceDocument.pages}
+          onClick={() =>
+            setActivePreviewPage((current) =>
+              activeSourceDocument ? Math.min(activeSourceDocument.pages, current + 1) : current
+            )
+          }
+          sx={{ color: "#fff" }}
+        >
+          <ChevronRightRoundedIcon />
+        </IconButton>
+        <Box sx={{ mx: 0.5, color: "rgba(255,255,255,0.35)", fontWeight: 700 }}>|</Box>
+        <IconButton
+          size="small"
+          onClick={() => void runLocalOcrOnCurrentDocument()}
+          disabled={!canAnalyzeSource || localOcringDocument}
+          sx={{ color: "#fff", px: 0.75, borderRadius: "10px" }}
+        >
+          {localOcringDocument ? (
+            <Typography sx={{ color: "#fff", fontWeight: 800, fontSize: "0.95rem", lineHeight: 1 }}>
+              ...
+            </Typography>
+          ) : (
+            <DocumentScannerRoundedIcon sx={{ color: "#fff", fontSize: 19 }} />
+          )}
+        </IconButton>
+        <Box sx={{ mx: 0.5, color: "rgba(255,255,255,0.35)", fontWeight: 700 }}>|</Box>
+        {!fullscreen ? (
+          <>
+            <IconButton size="small" onClick={() => setSourceFullscreenOpen(true)} sx={{ color: "#fff" }}>
+              <FullscreenRoundedIcon />
+            </IconButton>
+            <IconButton size="small" onClick={removeCurrentSourceDocument} sx={{ color: "#fff" }}>
+              <DeleteRoundedIcon />
+            </IconButton>
+          </>
+        ) : (
+          <IconButton
+            size="small"
+            onClick={() => void toggleBrowserFullscreen()}
+            sx={{ color: "#fff", mx: 0.25 }}
+          >
+            <FullscreenRoundedIcon />
+          </IconButton>
+        )}
+      </Stack>
+    );
+  };
+
   const renderSourceWorkspace = (fullscreen = false) => (
     <Stack spacing={2}>
       <Box
@@ -1580,7 +1876,8 @@ const LessonWorkspace = ({
           flexDirection: { xs: "column", lg: "row" },
           gap: { xs: 2, lg: 0 },
           alignItems: "stretch",
-          minHeight: { lg: fullscreen ? "calc(100vh - 190px)" : 760 },
+          minHeight: { lg: fullscreen ? "100vh" : 760 },
+          height: { lg: fullscreen ? "100vh" : "auto" },
         }}
       >
         <Box
@@ -1602,18 +1899,22 @@ const LessonWorkspace = ({
             void handleFilesUploaded(event.dataTransfer.files);
           }}
           sx={{
-            display: "block",
+            display: "flex",
             width: { xs: "100%", lg: `calc(${sourcePaneSplit}% - 6px)` },
             flexShrink: 0,
-            borderRadius: "2rem",
-            border: "1px solid rgba(255,255,255,0.14)",
-            backgroundColor: "#1f1f1f",
-            color: "common.white",
+            height: { lg: fullscreen ? "100vh" : 760 },
+            maxHeight: { lg: fullscreen ? "100vh" : 760 },
+            minHeight: { lg: fullscreen ? "100vh" : 760 },
+            borderRadius: 0,
+            border: "2px solid rgba(0,0,0,0.12)",
+            backgroundColor: "#fff",
+            color: "text.primary",
             overflow: "hidden",
             cursor: activePreview ? "default" : "pointer",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+            boxShadow: "none",
             outline: dragActive ? "3px solid rgba(76,175,80,0.55)" : "none",
             position: "relative",
+            flexDirection: "column",
           }}
         >
           <input
@@ -1623,86 +1924,17 @@ const LessonWorkspace = ({
             type="file"
             onChange={(event) => void handleFilesUploaded(event.target.files)}
           />
-          {activePreview ? (
-            <>
-              <IconButton
-                onClick={() => setSourceFullscreenOpen(true)}
-                sx={{
-                  position: "absolute",
-                  bottom: 12,
-                  left: 12,
-                  zIndex: 2,
-                  color: "#fff",
-                  backgroundColor: "rgba(0,0,0,0.42)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                }}
-              >
-                <FullscreenRoundedIcon />
-              </IconButton>
-              <IconButton
-                onClick={removeCurrentSourceDocument}
-                sx={{
-                  position: "absolute",
-                  bottom: 12,
-                  right: 12,
-                  zIndex: 2,
-                  color: "#fff",
-                  backgroundColor: "rgba(0,0,0,0.42)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  "&:hover": {
-                    backgroundColor: "rgba(183,28,28,0.82)",
-                  },
-                }}
-              >
-                <DeleteRoundedIcon />
-              </IconButton>
-            </>
-          ) : null}
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              px: 3,
-              py: 2,
-            }}
-          >
-            {activeQuestionUsage ? (
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setUsageDialogOpen(true)}
-                sx={{
-                  color: "#fff",
-                  borderColor: "rgba(255,255,255,0.28)",
-                }}
-              >
-                {formatCostCents(activeQuestionUsage.costCents)}
-              </Button>
-            ) : (
-              <Box />
-            )}
-            <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 800 }}>
-              {activeSourceDocument ? `${activeSourceDocument.pages} pages` : ""}
-            </Typography>
-          </Box>
-          <Box sx={{ px: 3, pb: 3 }}>
+          <Box sx={{ px: fullscreen ? 0 : 3, pb: 0, flex: 1, minHeight: 0 }}>
             {activePreview ? (
-              <Stack spacing={0.5}>
-                <PdfPreviewCanvas url={activePreview.url} title={activePreview.name} />
-                <Typography
-                  fontWeight={800}
-                  sx={{
-                    fontSize: "1.05rem",
-                    color: "#fff",
-                    textAlign: "center",
-                    mt: "auto",
-                    pt: 0.5,
-                    pb: 0.5,
-                  }}
-                >
-                  {activePreview.name}
-                </Typography>
+              <Stack spacing={0.5} sx={{ height: "100%" }}>
+                <PdfPreviewCanvas
+                  url={activePreview.url}
+                  title={activePreview.name}
+                  pageNumber={activePreviewPage}
+                  fullscreen={fullscreen}
+                  toolbarControls={buildPreviewToolbarControls(fullscreen)}
+                  fillHeight
+                />
               </Stack>
             ) : (
               <Box
@@ -1715,12 +1947,12 @@ const LessonWorkspace = ({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 1.5,
-                  color: "rgba(255,255,255,0.72)",
-                  backgroundColor: dragActive ? "rgba(255,255,255,0.06)" : "transparent",
+                  color: "text.secondary",
+                  backgroundColor: dragActive ? "rgba(0,0,0,0.04)" : "transparent",
                   textAlign: "center",
                 }}
               >
-                <Typography fontWeight={800} sx={{ fontSize: "1.15rem", color: "#fff" }}>
+                <Typography fontWeight={800} sx={{ fontSize: "1.15rem", color: "text.primary" }}>
                   {titleDraft || "Upload Source Material"}
                 </Typography>
                 <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
@@ -1761,79 +1993,54 @@ const LessonWorkspace = ({
           sx={{
             width: { xs: "100%", lg: `calc(${100 - sourcePaneSplit}% - 6px)` },
             flexShrink: 0,
-            height: { lg: fullscreen ? "calc(100vh - 190px)" : 760 },
-            maxHeight: { lg: fullscreen ? "calc(100vh - 190px)" : 760 },
+            height: { lg: fullscreen ? "100vh" : 760 },
+            maxHeight: { lg: fullscreen ? "100vh" : 760 },
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            borderRadius: "1.5rem",
-            border: "1px solid rgba(0,0,0,0.08)",
+            borderRadius: fullscreen ? 0 : "1.5rem",
+            border: "none",
             backgroundColor: "#fff",
             overflow: "hidden",
           }}
         >
-          <TextField
-            value={activeExtractedTextPreview}
-            fullWidth
-            multiline
-            placeholder="Extracted text will appear here after Local OCR runs."
-            InputProps={{
-              readOnly: true,
-              sx: {
-                height: "100%",
-                alignItems: "stretch",
-                borderRadius: 0,
-              },
-            }}
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              maxHeight: "100%",
-              "& .MuiInputBase-root": {
-                height: "100%",
-                maxHeight: "100%",
-              },
-              "& .MuiInputBase-inputMultiline": {
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                whiteSpace: "pre-wrap",
-                height: "100% !important",
-                maxHeight: "100% !important",
-                overflowY: "auto !important",
-                overflowX: "hidden !important",
-                boxSizing: "border-box",
-                padding: "16.5px 14px",
-              },
-            }}
-          />
+          <QuestionsAccordionList page={activeExtractedTextPreview} fullscreen={fullscreen} />
+          {localOcringDocument && localOcrProgress.total > 0 ? (
+            <Box
+              sx={{
+                px: 2,
+                py: 1.5,
+                borderTop: "1px solid rgba(0,0,0,0.08)",
+                backgroundColor: "#fff",
+              }}
+            >
+              <Typography sx={{ fontWeight: 800, textAlign: "center", mb: 1 }}>
+                {localOcrProgress.current}/{localOcrProgress.total} pages parsed
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={(localOcrProgress.current / localOcrProgress.total) * 100}
+                sx={{ height: 10, borderRadius: 999, width: "100%" }}
+              />
+            </Box>
+          ) : null}
         </Box>
       </Box>
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-        <Button
-          variant="outlined"
-          onClick={() => void runLocalOcrOnCurrentDocument()}
-          disabled={!canAnalyzeSource || localOcringDocument}
-        >
-          {localOcringDocument ? "Running Local OCR…" : "Local OCR"}
-        </Button>
-        <Button
-          variant="contained"
-          onClick={() => void runLlmOnCurrentDocument()}
-          disabled={!canAnalyzeSource || analyzingDocument}
-        >
-          {analyzingDocument ? "Running LLM…" : "Do LLM"}
-        </Button>
+      {!fullscreen ? (
+      <Stack direction="row" justifyContent="center" alignItems="center">
         <Button variant="outlined" onClick={handleConceptGeneration} disabled={!sourceComplete}>
           Continue
         </Button>
-        {extracting ? (
-          <Stack direction="row" spacing={1} alignItems="center">
-            <CircularProgress size={18} />
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              Loading PDF…
-            </Typography>
-          </Stack>
-        ) : null}
       </Stack>
+      ) : null}
+      {!fullscreen && extracting ? (
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+          <CircularProgress size={18} />
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            Loading PDF…
+          </Typography>
+        </Stack>
+      ) : null}
     </Stack>
   );
 
@@ -2012,13 +2219,42 @@ const LessonWorkspace = ({
           </Box>
         </Box>
       </Dialog>
-      <Dialog open={sourceFullscreenOpen} onClose={() => setSourceFullscreenOpen(false)} fullScreen>
-        <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 2, minHeight: "100vh" }}>
-          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-            <IconButton onClick={() => setSourceFullscreenOpen(false)}>
-              <CloseRoundedIcon />
-            </IconButton>
-          </Box>
+      <Dialog
+        open={sourceFullscreenOpen}
+        onClose={() => {
+          if (document.fullscreenElement && typeof document.exitFullscreen === "function") {
+            void document.exitFullscreen().catch(() => {});
+          }
+          setSourceFullscreenOpen(false);
+        }}
+        fullScreen
+        PaperProps={{ sx: { borderRadius: 0 } }}
+      >
+        <Box
+          ref={sourceFullscreenRef}
+          sx={{ p: 0, display: "flex", flexDirection: "column", gap: 0, minHeight: "100vh", position: "relative", bgcolor: "#fff" }}
+        >
+          <IconButton
+            onClick={() => {
+              if (document.fullscreenElement && typeof document.exitFullscreen === "function") {
+                void document.exitFullscreen().catch(() => {});
+              }
+              setSourceFullscreenOpen(false);
+            }}
+            sx={{
+              position: "absolute",
+              top: 10,
+              right: 10,
+              zIndex: 5,
+              color: "#fff",
+              backgroundColor: "#c62828",
+              "&:hover": {
+                backgroundColor: "#b71c1c",
+              },
+            }}
+          >
+            <CloseRoundedIcon />
+          </IconButton>
           {renderSourceWorkspace(true)}
         </Box>
       </Dialog>
