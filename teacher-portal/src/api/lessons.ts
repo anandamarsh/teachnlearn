@@ -185,3 +185,56 @@ export const saveExerciseGenerator = async (
   }
   return data as { updatedAt?: string; filename?: string; contentLength?: number };
 };
+
+export type LessonPageQuestionUsage = {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cachedInputTokens: number;
+  uncachedInputTokens: number;
+  inputCostUsd: number;
+  cachedInputCostUsd: number;
+  outputCostUsd: number;
+  costUsd: number;
+  costCents: number;
+};
+
+export type LessonPageQuestionItem = {
+  label?: string;
+  question: string;
+  answerOptions: string[];
+};
+
+export type LessonPageQuestionExtraction = {
+  pageQuestions: string[];
+  pageQuestionDetails: LessonPageQuestionItem[][];
+  usage: LessonPageQuestionUsage;
+  pageCount: number;
+  requestId?: string | null;
+  uploadRequestId?: string | null;
+  fileId?: string | null;
+  extractedAt: string;
+};
+
+export const extractLessonPageQuestions = async (
+  endpoint: string,
+  headers: Record<string, string>,
+  payload: { file: File; pageCount: number }
+) => {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  formData.append("pageCount", String(payload.pageCount));
+  const safeHeaders = { ...headers };
+  delete safeHeaders["Content-Type"];
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: safeHeaders,
+    body: formData,
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(extractError(data, "Failed to extract questions from page"));
+  }
+  return data as LessonPageQuestionExtraction;
+};

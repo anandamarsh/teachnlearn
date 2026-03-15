@@ -11,7 +11,6 @@ import requests
 from pypdf import PdfReader
 
 from app.core.settings import Settings
-from app.services.textbook_ocr import extract_pdf_text_by_columns
 
 logger = logging.getLogger("learning-server.openai")
 
@@ -498,33 +497,4 @@ def extract_questions_from_pdf_file(
         "requestId": response.headers.get("x-request-id"),
         "uploadRequestId": upload_request_id,
         "fileId": file_id,
-    }
-
-
-def preview_question_text_from_pdf(
-    *,
-    pdf_bytes: bytes,
-    filename: str,
-    page_count: int,
-    settings: Settings,
-) -> dict[str, Any]:
-    debug_dir = (
-        Path(__file__).resolve().parents[2]
-        / "logs"
-        / "ocr_preview"
-        / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    )
-    _trace(f"text.preview.ocr.start filename={filename} debug_dir={debug_dir}")
-    page_texts = extract_pdf_text_by_columns(
-        pdf_bytes=pdf_bytes,
-        page_count=page_count,
-        debug_dir=str(debug_dir),
-        trace=lambda message: _trace(message),
-    )
-    _trace(
-        f"text.preview.success filename={filename} pages={len(page_texts)} non_empty_pages={sum(1 for text in page_texts if text.strip())}"
-    )
-    return {
-        "pageTexts": page_texts,
-        "pageCount": page_count,
     }

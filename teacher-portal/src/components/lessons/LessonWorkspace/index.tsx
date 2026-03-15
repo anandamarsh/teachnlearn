@@ -33,7 +33,6 @@ import {
 } from "../../../auth/buildAuthHeaders";
 import {
   extractLessonPageQuestions,
-  previewLessonPageQuestions,
   type LessonPageQuestionItem,
   type LessonPageQuestionUsage,
 } from "../../../api/lessons";
@@ -1097,7 +1096,6 @@ const LessonWorkspace = ({
   const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
   const [analyzingDocument, setAnalyzingDocument] = useState(false);
   const [localOcringDocument, setLocalOcringDocument] = useState(false);
-  const [remoteOcringDocument, setRemoteOcringDocument] = useState(false);
   const [sourcePaneSplit, setSourcePaneSplit] = useState(loadStoredSourcePaneSplit);
   const [resizingSourcePane, setResizingSourcePane] = useState(false);
   const [sourceFullscreenOpen, setSourceFullscreenOpen] = useState(false);
@@ -1470,36 +1468,6 @@ const LessonWorkspace = ({
     }
   };
 
-  const runRemoteOcrOnCurrentDocument = async () => {
-    if (!lesson || !activeSourceDocument || !activePreview?.file) {
-      return;
-    }
-    if (!getAccessTokenSilently || !apiBaseUrl || !auth0Audience) {
-      onNotify("OCR extraction is not configured in the teacher portal", "error");
-      return;
-    }
-    setRemoteOcringDocument(true);
-    try {
-      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-      const preview = await previewLessonPageQuestions(
-        `${apiBaseUrl}/lesson/id/${lesson.id}/question-extraction/preview`,
-        headers,
-        {
-          file: activePreview.file,
-          pageCount: activeSourceDocument.pages,
-        }
-      );
-      updateDocumentPageTexts(activeSourceDocument.id, preview.pageTexts);
-      onNotify("Remote OCR prepared. Parsed questions are ready in the results panel.", "success");
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Could not preview extracted text";
-      console.error("Document text preview failed", error);
-      onNotify(detail, "error");
-    } finally {
-      setRemoteOcringDocument(false);
-    }
-  };
-
   const runLlmOnCurrentDocument = async () => {
     if (!lesson || !activeSourceDocument || !activePreview?.file) {
       return;
@@ -1808,7 +1776,7 @@ const LessonWorkspace = ({
             value={activeExtractedTextPreview}
             fullWidth
             multiline
-            placeholder="Extracted text will appear here after Local OCR or Remote OCR runs."
+            placeholder="Extracted text will appear here after Local OCR runs."
             InputProps={{
               readOnly: true,
               sx: {
@@ -1846,13 +1814,6 @@ const LessonWorkspace = ({
           disabled={!canAnalyzeSource || localOcringDocument}
         >
           {localOcringDocument ? "Running Local OCR…" : "Local OCR"}
-        </Button>
-        <Button
-          variant="outlined"
-          onClick={() => void runRemoteOcrOnCurrentDocument()}
-          disabled={!canAnalyzeSource || remoteOcringDocument}
-        >
-          {remoteOcringDocument ? "Running Remote OCR…" : "Remote OCR"}
         </Button>
         <Button
           variant="contained"
