@@ -17,6 +17,7 @@ export const listCatalogLessons = async (
       ...raw,
       requiresLogin,
       exerciseConfig,
+      approvedQuestions: raw.approvedQuestions ?? null,
     };
   });
 };

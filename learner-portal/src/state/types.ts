@@ -12,6 +12,14 @@ export type CatalogLesson = {
   exerciseGenerator?: ExerciseGeneratorMeta | null;
   exerciseConfig?: ExerciseConfig | null;
   exerciseMode?: string | null;
+  approvedQuestions?: ApprovedQuestionPage[] | null;
+};
+
+export type ApprovedQuestionPage = {
+  title?: string | null;
+  detectedPageNumber?: number | null;
+  pageNumber?: number | null;
+  questions?: string[] | null;
 };
 
 export type LessonSectionKey = string;
@@ -37,6 +45,7 @@ export type ExerciseStep = {
 
 export type ExerciseItem = {
   type: string;
+  promptTitle?: string;
   question_html: string;
   original?: boolean;
   diagram?: string;
@@ -44,6 +53,7 @@ export type ExerciseItem = {
   answer: string;
   formula_html?: string;
   steps?: ExerciseStep[];
+  freeResponse?: boolean;
 };
 
 export type ExerciseStatus = "unattempted" | "correct" | "incorrect";

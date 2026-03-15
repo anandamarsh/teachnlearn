@@ -156,6 +156,10 @@ const ExercisesSection = ({
     [exerciseSectionKey, lessonId]
   );
   const shuffleInitializedRef = useRef(false);
+  const freeResponseMode = useMemo(
+    () => rawExercises.length > 0 && rawExercises.every((item) => item.freeResponse),
+    [rawExercises]
+  );
 
   const getExerciseNumber = () => {
     const match = exerciseSectionKey.match(/-(\d+)$/);
@@ -448,8 +452,23 @@ self.onmessage = async (event) => {
   };
 
   useEffect(() => {
+    if (!freeResponseMode) {
+      return;
+    }
+    if (!rawExercises.length) {
+      return;
+    }
+    setMaxExerciseIndex(Math.max(rawExercises.length - 1, 0));
+  }, [freeResponseMode, rawExercises.length, setMaxExerciseIndex]);
+
+  useEffect(() => {
     if (!exercisesSource.length) {
       setExercises([]);
+      return;
+    }
+    if (freeResponseMode) {
+      setExercises(exercisesSource);
+      shuffleInitializedRef.current = true;
       return;
     }
     let order: number[] | null = null;
@@ -479,7 +498,7 @@ self.onmessage = async (event) => {
       scrollToIndex(0, "auto", true);
     }
     shuffleInitializedRef.current = true;
-  }, [exercisesSource, shuffleStorageKey]);
+  }, [exercisesSource, freeResponseMode, shuffleStorageKey, setExerciseIndex, setMaxExerciseIndex]);
 
   useEffect(() => {
     const hasAttempts = exerciseStatuses.some(
@@ -491,6 +510,9 @@ self.onmessage = async (event) => {
   }, [exerciseStatuses]);
 
   useEffect(() => {
+    if (freeResponseMode) {
+      return;
+    }
     if (!exercisesSource.length) {
       return;
     }
@@ -516,6 +538,7 @@ self.onmessage = async (event) => {
     exerciseGuides,
     exerciseIndex,
     exerciseStatuses,
+    freeResponseMode,
     fibAnswers,
     maxExerciseIndex,
     mcqSelections,
@@ -1467,7 +1490,9 @@ self.onmessage = async (event) => {
   };
 
   const goToIndex = (nextIndex: number) => {
-    const unlockLimit = Math.max(maxExerciseIndex, exerciseIndex);
+    const unlockLimit = freeResponseMode
+      ? exercises.length - 1
+      : Math.max(maxExerciseIndex, exerciseIndex);
     if (
       nextIndex >= 0 &&
       nextIndex < exercises.length &&
@@ -1555,10 +1580,12 @@ self.onmessage = async (event) => {
 
   return (
     <Box className="exercise-panel">
-      <div className="exercise-score-box">
-        <div className="exercise-score-label">Score</div>
-        <div className="exercise-score-value">{scoreSnapshot.skillScore}</div>
-      </div>
+      {!freeResponseMode ? (
+        <div className="exercise-score-box">
+          <div className="exercise-score-label">Score</div>
+          <div className="exercise-score-value">{scoreSnapshot.skillScore}</div>
+        </div>
+      ) : null}
       {showMagicFab ? (
         <Fab
           color="primary"
@@ -1801,12 +1828,15 @@ self.onmessage = async (event) => {
                 goToIndex(
                   Math.min(
                     exerciseIndex + 1,
-                    maxExerciseIndex,
+                    freeResponseMode ? exercises.length - 1 : maxExerciseIndex,
                     exercises.length - 1
                   )
                 )
               }
-              disabled={exerciseIndex >= maxExerciseIndex}
+              disabled={
+                exerciseIndex >=
+                (freeResponseMode ? exercises.length - 1 : maxExerciseIndex)
+              }
             >
               <ChevronRightRoundedIcon />
             </IconButton>
@@ -1815,15 +1845,24 @@ self.onmessage = async (event) => {
             count={exercises.length}
             currentIndex={exerciseIndex}
             statuses={exerciseStatuses}
-            maxUnlockedIndex={maxExerciseIndex}
+            maxUnlockedIndex={
+              freeResponseMode ? Math.max(exercises.length - 1, 0) : maxExerciseIndex
+            }
             onSelect={(idx) => {
-              if (idx > maxExerciseIndex) {
+              if (!freeResponseMode && idx > maxExerciseIndex) {
                 return;
               }
               setExerciseIndex(idx);
               scrollToIndex(idx, "auto");
             }}
           />
+          {freeResponseMode && exerciseIndex === exercises.length - 1 ? (
+            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+              <Button variant="contained" size="large">
+                Submit
+              </Button>
+            </Box>
+          ) : null}
         </>
       ) : generatorAvailable ? (
         <Box

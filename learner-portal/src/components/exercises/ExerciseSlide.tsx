@@ -58,6 +58,7 @@ const ExerciseSlide = ({
     stepCount > 0 && guide.helpActive && guide.stepIndex >= stepCount;
   const showSteps = guide.helpActive && stepCount > 0;
   const showMainInput = !showSteps || stepsComplete;
+  const isFreeResponse = Boolean(exercise.freeResponse);
   const isMainLocked = guide.completed;
   const displayFibValue =
     isMainLocked && !fibValue.trim()
@@ -471,11 +472,6 @@ const ExerciseSlide = ({
     <Box className="exercise-slide" data-slide-index={slideIndex}>
       <Box className="exercise-slide-content">
         <Box className="exercise-question-wrap">
-          {exercise.original ? (
-            <span className="exercise-original-badge" aria-label="Original">
-              ★ Original
-            </span>
-          ) : null}
           <Box
             className={`exercise-question${isActive ? " on-screen" : ""}`}
             dangerouslySetInnerHTML={{ __html: exercise.question_html || "" }}
@@ -543,7 +539,7 @@ const ExerciseSlide = ({
                     value={displayFibValue}
                     onChange={(event) => onMainFibChange(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key !== "Enter") {
+                      if (isFreeResponse || event.key !== "Enter") {
                         return;
                       }
                       if (!fibDisabled) {
@@ -552,26 +548,33 @@ const ExerciseSlide = ({
                     }}
                     placeholder="Type your answer"
                     error={
-                      guide.mainPending === "incorrectPending" ||
-                      guide.mainLastIncorrect
+                      !isFreeResponse &&
+                      (guide.mainPending === "incorrectPending" ||
+                        guide.mainLastIncorrect)
                     }
+                    multiline={isFreeResponse}
+                    minRows={isFreeResponse ? 5 : undefined}
                     helperText={
-                      guide.mainPending === "incorrectPending" ||
-                      guide.mainLastIncorrect
+                      isFreeResponse
+                        ? "Write your answer here."
+                        : guide.mainPending === "incorrectPending" ||
+                          guide.mainLastIncorrect
                         ? "Sorry, that's not correct. Lets work it out together"
                         : " "
                     }
                     FormHelperTextProps={{ className: "fib-helper-text" }}
                     inputProps={{
                       readOnly:
-                        isMainLocked ||
-                        guide.mainPending === "incorrectPending",
+                        !isFreeResponse &&
+                        (isMainLocked ||
+                          guide.mainPending === "incorrectPending"),
                     }}
                     disabled={
-                      isMainLocked || guide.mainPending === "incorrectPending"
+                      !isFreeResponse &&
+                      (isMainLocked || guide.mainPending === "incorrectPending")
                     }
                     InputProps={{
-                      endAdornment: displayFibValue ? (
+                      endAdornment: !isFreeResponse && displayFibValue ? (
                         <InputAdornment position="end">
                           <IconButton
                             size="small"
@@ -589,20 +592,21 @@ const ExerciseSlide = ({
                       ) : null,
                     }}
                   />
-                <IconButton
-                  className="fib-check"
-                  color="primary"
-                  onClick={() => {
-                    if (guide.completed) {
-                      scheduleRecheck();
-                      return;
-                    }
-                    onMainFibSubmit();
-                  }}
-                  disabled={fibCheckDisabled}
-                  aria-label="Check answer"
-                  sx={{
-                    width: 30,
+                  {!isFreeResponse ? (
+                    <IconButton
+                      className="fib-check"
+                      color="primary"
+                      onClick={() => {
+                        if (guide.completed) {
+                          scheduleRecheck();
+                          return;
+                        }
+                        onMainFibSubmit();
+                      }}
+                      disabled={fibCheckDisabled}
+                      aria-label="Check answer"
+                      sx={{
+                        width: 30,
                       height: 30,
                       borderRadius: "50%",
                       padding: 0,
@@ -622,10 +626,11 @@ const ExerciseSlide = ({
                           : "rgba(0, 0, 0, 0.2)",
                         color: "#fff",
                       },
-                    }}
-                  >
-                    <CheckRoundedIcon />
-                  </IconButton>
+                      }}
+                    >
+                      <CheckRoundedIcon />
+                    </IconButton>
+                  ) : null}
                 </Box>
               </Box>
             ) : (

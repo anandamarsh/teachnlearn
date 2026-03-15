@@ -245,6 +245,8 @@ class LessonStoreLessons:
                             payload["exerciseGenerator"] = full.get("exerciseGenerator")
                         if "exerciseMode" in full:
                             payload["exerciseMode"] = full.get("exerciseMode")
+                        if "approvedQuestions" in full:
+                            payload["approvedQuestions"] = full.get("approvedQuestions")
                 payload["teacher"] = account
                 entries.append(payload)
         entries.sort(key=lambda item: item.get("updated_at", ""), reverse=True)

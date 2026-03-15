@@ -90,6 +90,9 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   const activeExercises = activeExerciseSectionKey
     ? exercisesBySection[activeExerciseSectionKey] || []
     : [];
+  const activePromptTitle = activeExerciseSectionKey
+    ? activeExercises[exerciseIndex]?.promptTitle || ""
+    : "";
 
   useEffect(() => {
     if (!openSection) {
@@ -306,6 +309,9 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
             <Box width={40} />
           )}
         </Box>
+        {isExercisesSection(openSection) && activePromptTitle ? (
+          <Box className="exercise-prompt-title">{activePromptTitle}</Box>
+        ) : null}
         <Box className="lesson-content" sx={{ margin: "1rem auto !important" }}>
           {indexLoading && !sectionKeys.length ? (
             null
