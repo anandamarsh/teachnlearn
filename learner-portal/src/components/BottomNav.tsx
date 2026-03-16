@@ -5,21 +5,19 @@ import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 
 type BottomNavProps = {
   isAuthenticated: boolean;
-  userAvatar?: string | null;
+  studentName?: string | null;
   currentPage: "home" | "lesson";
   onLessonsClick: () => void;
   onHomeClick: () => void;
-  onAuthClick: () => void;
   onLogout: () => void;
 };
 
 const BottomNav = ({
   isAuthenticated,
-  userAvatar,
+  studentName,
   currentPage,
   onLessonsClick,
   onHomeClick,
-  onAuthClick,
   onLogout,
 }: BottomNavProps) => {
   const isHome = currentPage === "home";
@@ -63,6 +61,7 @@ const BottomNav = ({
         </Button>
         <Button
           onClick={onLessonsClick}
+          disabled={!isAuthenticated}
           sx={{
             minWidth: 0,
             px: 2,
@@ -78,8 +77,6 @@ const BottomNav = ({
           onClick={(event) => {
             if (isAuthenticated) {
               setMenuAnchor(event.currentTarget);
-            } else {
-              onAuthClick();
             }
           }}
           sx={{
@@ -91,8 +88,7 @@ const BottomNav = ({
           }}
         >
           <Avatar
-            src={userAvatar || undefined}
-            alt="User"
+            alt={studentName || "Student"}
             sx={{
               width: 36,
               height: 36,
@@ -100,7 +96,9 @@ const BottomNav = ({
               border: "2px solid",
               borderColor: "primary.main",
             }}
-          />
+          >
+            {studentName ? studentName.trim().charAt(0).toUpperCase() : "?"}
+          </Avatar>
         </Button>
         <Menu
           anchorEl={menuAnchor}

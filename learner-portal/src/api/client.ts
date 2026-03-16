@@ -1,5 +1,3 @@
-import { GetTokenSilentlyOptions } from "@auth0/auth0-react";
-
 export type AuthedFetchOptions = {
   responseType?: "json" | "text";
 };
@@ -9,25 +7,13 @@ export type AuthedFetch = (
   options?: AuthedFetchOptions
 ) => Promise<any>;
 
-type TokenFetcher = (options?: GetTokenSilentlyOptions) => Promise<string>;
-
 export const createAuthedFetch = (
-  getAccessTokenSilently: TokenFetcher,
-  apiBaseUrl: string,
-  auth0Audience: string,
-  isAuthenticated: boolean
+  apiBaseUrl: string
 ) => {
   return async (path: string, options: AuthedFetchOptions = {}) => {
-    let headers: Record<string, string> | undefined;
-    if (isAuthenticated) {
-      const token = await getAccessTokenSilently({
-        authorizationParams: { audience: auth0Audience },
-      });
-      headers = {
-        Authorization: `Bearer ${token}`,
-      };
-    }
-    const response = await fetch(`${apiBaseUrl}${path}`, { headers });
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      credentials: "include",
+    });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       const message = payload.detail || "Request failed";

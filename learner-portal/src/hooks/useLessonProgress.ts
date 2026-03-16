@@ -81,7 +81,7 @@ export const useLessonProgress = (
   exerciseCountsBySection: Record<string, number>
 ) => {
   const [openSection, setOpenSection] = useState<LessonSectionKey>(
-    sectionKeys[0] || "lesson"
+    sectionKeys[0] || "exercises"
   );
   const activeExerciseSectionKey = isExercisesSection(openSection)
     ? openSection
@@ -169,7 +169,7 @@ export const useLessonProgress = (
       },
       {}
     );
-    const fallbackOpen = sectionKeys[0] || "lesson";
+    const fallbackOpen = sectionKeys[0] || "exercises";
     const firstIncomplete =
       sectionKeys.find((key) => !nextCompleted[key]) || fallbackOpen;
     const parsedOpen = parsed?.open;
@@ -312,7 +312,7 @@ export const useLessonProgress = (
     }
     const count = exerciseCountRef.current;
     const defaultState = buildDefaultExerciseState(count);
-    setOpenSection(sectionKeys[0] || "lesson");
+    setOpenSection(sectionKeys[0] || "exercises");
     setCompletedSections(
       sectionKeys.reduce<Record<LessonSectionKey, boolean>>((acc, key) => {
         acc[key] = false;

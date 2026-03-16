@@ -1,103 +1,18 @@
-import { useEffect, useState } from "react";
-import { Box, Button, Container, IconButton, Stack, Typography } from "@mui/material";
+import { Box, Button, Container } from "@mui/material";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
-import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
-import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 
 type HomeProps = {
   onLessonsClick: () => void;
-  onProfileClick: () => void;
-  otpCode: string;
-  otpStatus: "idle" | "loading" | "error";
-  onReloadOtp: () => void;
+  onStudentsClick: () => void;
 };
 
-const Home = ({
-  onLessonsClick,
-  onProfileClick,
-  otpCode,
-  otpStatus,
-  onReloadOtp,
-}: HomeProps) => {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) {
-      return;
-    }
-    const timeout = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timeout);
-  }, [copied]);
-
-  const handleCopy = async () => {
-    if (!otpCode) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(otpCode);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
-
+const Home = ({ onLessonsClick, onStudentsClick }: HomeProps) => {
   return (
     <Container
       maxWidth="sm"
       sx={{ minHeight: "100vh", display: "flex", justifyContent: "flex-start" }}
     >
-      <Box
-        sx={{
-          position: "fixed",
-          bottom: "calc(16px + 3rem)",
-          right: 16,
-          zIndex: 1200,
-        }}
-      >
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Box>
-            <Typography
-              variant="h6"
-              sx={{
-                fontFamily:
-                  'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                letterSpacing: "0.08em",
-                color: "#b27d7d",
-              }}
-            >
-              {otpStatus === "loading" ? "•••-•••" : otpCode || "—"}
-            </Typography>
-            {otpStatus === "error" ? (
-              <Typography variant="caption" color="error.main">
-                Failed to load
-              </Typography>
-            ) : null}
-          </Box>
-          <Stack direction="row" spacing={0.5}>
-            <IconButton
-              size="small"
-              aria-label="Copy login code"
-              onClick={handleCopy}
-              disabled={!otpCode || otpStatus === "loading"}
-              sx={{
-                color: copied ? "success.main" : "inherit",
-                transition: "color 150ms ease",
-              }}
-            >
-              <ContentCopyRoundedIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label="Reload login code"
-              onClick={onReloadOtp}
-              disabled={otpStatus === "loading"}
-            >
-              <RefreshRoundedIcon fontSize="small" />
-            </IconButton>
-          </Stack>
-        </Stack>
-      </Box>
       <Box
         width="100%"
         textAlign="center"
@@ -139,7 +54,7 @@ const Home = ({
         <Button
           variant="contained"
           size="large"
-          startIcon={<PersonRoundedIcon />}
+          startIcon={<GroupsRoundedIcon />}
           sx={{
             height: 64,
             fontSize: "1.1rem",
@@ -150,9 +65,9 @@ const Home = ({
             minWidth: 260,
             boxShadow: "0 12px 18px rgba(0,0,0,0.18)",
           }}
-          onClick={onProfileClick}
+          onClick={onStudentsClick}
         >
-          Profile
+          Students
         </Button>
       </Box>
     </Container>

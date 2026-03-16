@@ -31,6 +31,23 @@ export default defineConfig({
       },
     }),
   ],
+  optimizeDeps: {
+    include: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "@codemirror/lang-markdown",
+      "@mui/icons-material/AttachFileRounded",
+      "@mui/icons-material/FormatBoldRounded",
+      "@mui/icons-material/FormatItalicRounded",
+      "@mui/icons-material/FormatListBulletedRounded",
+      "@mui/icons-material/FormatListNumberedRounded",
+      "@mui/icons-material/SaveRounded",
+      "@mui/icons-material/TableChartRounded",
+      "@mui/icons-material/CloseRounded",
+      "@mui/icons-material/DescriptionRounded",
+    ],
+  },
   server: {
     port: 4444,
   },

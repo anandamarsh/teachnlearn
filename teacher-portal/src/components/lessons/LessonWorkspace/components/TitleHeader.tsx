@@ -143,7 +143,7 @@ const TitleHeader = ({
             }}
           >
             <Typography variant="h2">
-              {titleDraft || "Untitled lesson"}
+              {titleDraft || "Untitled template"}
             </Typography>
           </Box>
         )}

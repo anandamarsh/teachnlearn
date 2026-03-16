@@ -1,12 +1,100 @@
 import { useCallback, useEffect, useState } from "react";
 import { AuthedFetch } from "../api/client";
-import { CatalogLesson, ExerciseItem } from "../state/types";
+import {
+  ApprovedQuestionPage,
+  CatalogLesson,
+  ExerciseItem,
+} from "../state/types";
 import {
   getSectionBaseKey,
   getSectionsAfterBackground,
   isExercisesSection,
   normalizeSectionOrder,
 } from "../utils/lessonSections";
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const buildApprovedQuestionHtml = (question: string) => {
+  const lines = String(question || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim());
+  if (!lines.length) {
+    return "";
+  }
+  const contentLines = lines.filter((line) => line.length > 0);
+  if (!contentLines.length) {
+    return "";
+  }
+  const firstLineMatch = contentLines[0]?.match(/^(\d+\.\s*)(\([a-z]\)\s*.*)$/i);
+  const numberPrefix = firstLineMatch ? firstLineMatch[1] : "";
+  let contentIndex = -1;
+  const renderedLines = lines
+    .map((line) => {
+      if (!line) {
+        return '<div class="approved-question-break" aria-hidden="true">&nbsp;</div>';
+      }
+      contentIndex += 1;
+      if (contentIndex === 0 && firstLineMatch) {
+        return [
+          '<div class="approved-question-row">',
+          `<span class="approved-question-prefix">${escapeHtml(numberPrefix)}</span>`,
+          `<span class="approved-question-text">${escapeHtml(firstLineMatch[2])}</span>`,
+          "</div>",
+        ].join("");
+      }
+      if (numberPrefix && /^\([a-z]\)\s*/i.test(line)) {
+        return [
+          '<div class="approved-question-row">',
+          '<span class="approved-question-prefix"></span>',
+          `<span class="approved-question-text">${escapeHtml(line)}</span>`,
+          "</div>",
+        ].join("");
+      }
+      return `<div class="approved-question-line">${escapeHtml(line)}</div>`;
+    })
+    .join("");
+  return `<div class="approved-question-body">${renderedLines}</div>`;
+};
+
+const buildApprovedQuestionExercises = (
+  pages: ApprovedQuestionPage[] | null | undefined
+): ExerciseItem[] => {
+  if (!Array.isArray(pages)) {
+    return [];
+  }
+  return pages.flatMap((page, pageIdx) => {
+    const title = String(page?.title || "").trim();
+    const detectedPageNumber =
+      typeof page?.detectedPageNumber === "number"
+        ? page.detectedPageNumber
+        : null;
+    const fallbackPageNumber =
+      typeof page?.pageNumber === "number" ? page.pageNumber : pageIdx + 1;
+    const pageLabel = title
+      ? title
+      : detectedPageNumber !== null
+      ? `Page ${detectedPageNumber}`
+      : `Page ${fallbackPageNumber}`;
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+    return questions
+      .map((question) => String(question || "").trim())
+      .filter(Boolean)
+      .map((question) => ({
+        type: "fib",
+        promptTitle: pageLabel,
+        question_html: buildApprovedQuestionHtml(question),
+        answer: "",
+        original: true,
+        freeResponse: true,
+      }));
+  });
+};
 
 type SectionState = {
   sectionHtml: Record<string, string>;
@@ -52,11 +140,22 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
       const ordered = normalizeSectionOrder(payload.sections);
       const filtered = ordered.filter((key) => {
         const baseKey = getSectionBaseKey(key);
-        return baseKey !== "references" && baseKey !== "samples";
+        return (
+          baseKey !== "references" &&
+          baseKey !== "samples" &&
+          baseKey !== "lesson"
+        );
       });
       const orderedAfterBackground = getSectionsAfterBackground(filtered);
       const useGeneratorTabs =
         lesson.exerciseMode === "generator" || Boolean(lesson.exerciseGenerator);
+      const approvedQuestionExercises = buildApprovedQuestionExercises(
+        lesson.approvedQuestions
+      );
+      const hasApprovedQuestionExercises = approvedQuestionExercises.length > 0;
+      const hasStoredExercises = orderedAfterBackground.some((key) =>
+        isExercisesSection(key)
+      );
       const baseKeys = useGeneratorTabs
         ? orderedAfterBackground.filter(
             (key) => getSectionBaseKey(key) !== "exercises"
@@ -67,17 +166,13 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         useGeneratorTabs && exercisesCount > 0
           ? Array.from({ length: exercisesCount }, (_, idx) => `exercise-${idx + 1}`)
           : [];
-      const lessonIndex = baseKeys.findIndex(
-        (key) => getSectionBaseKey(key) === "lesson"
-      );
-      const nextKeys =
-        lessonIndex >= 0
-          ? [
-              ...baseKeys.slice(0, lessonIndex + 1),
-              ...exerciseTabs,
-              ...baseKeys.slice(lessonIndex + 1),
-            ]
-          : [...baseKeys, ...exerciseTabs];
+      const nextKeys = [
+        ...baseKeys,
+        ...exerciseTabs,
+        ...(!useGeneratorTabs && !hasStoredExercises && hasApprovedQuestionExercises
+          ? ["exercises"]
+          : []),
+      ];
       setSectionKeys(Array.from(new Set(nextKeys)));
     } finally {
       setIndexLoading(false);
@@ -104,6 +199,9 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         return;
       }
       const baseKey = getSectionBaseKey(sectionKey);
+      const approvedQuestionExercises = buildApprovedQuestionExercises(
+        lesson.approvedQuestions
+      );
       if (baseKey === "exercise") {
         setExercisesBySection((prev) => ({ ...prev, [sectionKey]: [] }));
         setLoadedSections((prev) => ({ ...prev, [sectionKey]: true }));
@@ -112,6 +210,18 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
       setLoading((prev) => ({ ...prev, [sectionKey]: true }));
       try {
         if (isExercisesSection(sectionKey)) {
+          if (
+            sectionKey === "exercises" &&
+            approvedQuestionExercises.length > 0 &&
+            lesson.exerciseMode !== "generator" &&
+            !lesson.exerciseGenerator
+          ) {
+            setExercisesBySection((prev) => ({
+              ...prev,
+              [sectionKey]: approvedQuestionExercises,
+            }));
+            return;
+          }
           const payload = await fetchWithAuth(
             `/catalog/teacher/${lesson.teacher}/lesson/${lesson.id}/sections/exercises/${sectionKey}`
           );

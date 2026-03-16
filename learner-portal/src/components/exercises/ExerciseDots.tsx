@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Box } from "@mui/material";
-import { ExerciseStatus } from "../../state/types";
+import { ExerciseResponseSaveState, ExerciseStatus } from "../../state/types";
 
 type ExerciseDotsProps = {
   count: number;
   currentIndex: number;
   statuses: ExerciseStatus[];
+  responseSaveStates?: ExerciseResponseSaveState[];
   maxUnlockedIndex: number;
   onSelect: (index: number) => void;
 };
@@ -14,6 +15,7 @@ const ExerciseDots = ({
   count,
   currentIndex,
   statuses,
+  responseSaveStates,
   maxUnlockedIndex,
   onSelect,
 }: ExerciseDotsProps) => {
@@ -79,9 +81,10 @@ const ExerciseDots = ({
           const status = statuses[idx] ?? "unattempted";
           const isLatest = idx === maxUnlockedIndex;
           const isDisplayed = idx === currentIndex;
-          const dotState = status;
+          const responseState = responseSaveStates?.[idx];
+          const dotState = responseState ? `response-${responseState}` : status;
           const latestClass =
-            status === "unattempted" && isDisplayed ? "latest" : "";
+            !responseState && status === "unattempted" && isDisplayed ? "latest" : "";
           const isLocked = idx > maxUnlockedIndex;
           return (
             <button

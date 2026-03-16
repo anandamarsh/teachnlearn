@@ -17,7 +17,7 @@ def register_routes(
     mcp: Any, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
 ) -> None:
     register_health(mcp)
-    register_auth_routes(mcp, settings)
+    register_auth_routes(mcp, store, settings)
     register_catalog_routes(mcp, store, settings)
     register_lesson_routes(mcp, store, settings, events)
     register_section_routes(mcp, store, settings, events)

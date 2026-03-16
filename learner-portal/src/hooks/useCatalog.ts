@@ -5,14 +5,21 @@ import { CatalogLesson } from "../state/types";
 
 type UseCatalogOptions = {
   fetchWithAuth: AuthedFetch;
+  enabled?: boolean;
 };
 
-export const useCatalog = ({ fetchWithAuth }: UseCatalogOptions) => {
+export const useCatalog = ({ fetchWithAuth, enabled = true }: UseCatalogOptions) => {
   const [lessons, setLessons] = useState<CatalogLesson[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!enabled) {
+      setLessons([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -23,7 +30,7 @@ export const useCatalog = ({ fetchWithAuth }: UseCatalogOptions) => {
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth]);
+  }, [enabled, fetchWithAuth]);
 
   useEffect(() => {
     load();

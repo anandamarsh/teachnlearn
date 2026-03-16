@@ -22,6 +22,7 @@
   background: #fafafa;
   padding: 0.5rem 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  overflow: visible;
 }
 
 .lesson-tabs-scroll {
@@ -39,6 +40,28 @@
 
 .lesson-tabs-scroll .MuiTabs-scroller::-webkit-scrollbar {
   display: none;
+}
+
+.lesson-title-tag-overlay {
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.lesson-title-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.4rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: #fff3e8;
+  border: 1px solid rgba(234, 88, 12, 0.18);
+  color: #9a3412;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .lesson-stepper-inner {
@@ -173,5 +196,9 @@
 
   .lesson-content {
     width: 95%;
+  }
+
+  .lesson-title-tag-overlay {
+    right: 1rem;
   }
 }

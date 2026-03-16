@@ -14,17 +14,45 @@ import {
   Typography,
 } from "@mui/material";
 import "./App.css";
-import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
 import LessonsPage from "./components/lessons/LessonsPage";
-import Profile from "./components/Profile";
+import Students from "./components/Students";
 import { useLessons } from "./hooks/useLessons";
 import { buildAuthHeaders } from "./auth/buildAuthHeaders";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
 
-type PageKey = "home" | "lessons" | "profile";
+type PageKey = "lessons" | "students";
+
+const getPageFromPath = (pathname: string): PageKey => {
+  if (pathname === "/lessons") {
+    return "lessons";
+  }
+  if (pathname === "/students" || pathname === "/profile") {
+    return "students";
+  }
+  return "lessons";
+};
+
+const getPathFromPage = (page: PageKey) => {
+  if (page === "lessons") {
+    return "/lessons";
+  }
+  if (page === "students") {
+    return "/students";
+  }
+  return "/lessons";
+};
+
+const isAuthCallbackUrl = (search: string) => {
+  const params = new URLSearchParams(search);
+  return (
+    (params.has("code") && params.has("state")) ||
+    params.has("error") ||
+    params.has("error_description")
+  );
+};
 
 function App() {
   const {
@@ -36,9 +64,8 @@ function App() {
     user,
   } = useAuth0();
 
-  const [page, setPage] = useState<PageKey>("home");
+  const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
   const configError = !apiBaseUrl || !auth0Audience;
-
   const [wsPulse, setWsPulse] = useState<{ id: number; color: "success" | "error" } | null>(
     null
   );
@@ -86,6 +113,7 @@ function App() {
   const [otpCode, setOtpCode] = useState("");
   const [otpStatus, setOtpStatus] = useState<"idle" | "loading" | "error">("idle");
   const otpStorageKey = "tp_otp_cache_v1";
+  const [addStudentSignal, setAddStudentSignal] = useState(0);
 
   const notify = useCallback((message: string, severity: "success" | "error") => {
     setSnackbar({ open: true, message, severity });
@@ -218,6 +246,9 @@ function App() {
   }
 
   useEffect(() => {
+    if (isAuthCallbackUrl(window.location.search)) {
+      return;
+    }
     if (!isLoading && !isAuthenticated) {
       loginWithRedirect();
     }
@@ -237,6 +268,24 @@ function App() {
     }
     prevAuthRef.current = isAuthenticated;
   }, [isAuthenticated, isLoading]);
+
+  useEffect(() => {
+    const onPopState = () => setPage(getPageFromPath(window.location.pathname));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (isLoading || isAuthCallbackUrl(window.location.search)) {
+      return;
+    }
+    const nextPath = getPathFromPage(page);
+    const current = `${window.location.pathname}${window.location.search}`;
+    const next = nextPath;
+    if (current !== next) {
+      window.history.replaceState({}, "", next);
+    }
+  }, [isLoading, page]);
 
   const fetchOtp = useCallback(async () => {
     if (!apiBaseUrl || !auth0Audience) {
@@ -311,17 +360,8 @@ function App() {
       className="app-shell"
       minHeight="100vh"
       bgcolor="background.default"
-      pb={page === "home" ? 0 : 10}
+      pb={10}
     >
-      {page === "home" ? (
-        <Home
-          onLessonsClick={() => setPage("lessons")}
-          onProfileClick={() => setPage("profile")}
-          otpCode={otpCode}
-          otpStatus={otpStatus}
-          onReloadOtp={fetchOtp}
-        />
-      ) : null}
       {page === "lessons" ? (
         <LessonsPage
           lessons={lessons}
@@ -329,6 +369,10 @@ function App() {
           selectedLessonId={selectedLessonId}
           loading={loading}
           isAuthenticated={isAuthenticated}
+          onCreateLesson={handleCreateLesson}
+          onDuplicateLesson={() => setDuplicateOpen(true)}
+          onDeleteLesson={() => setDeleteOpen(true)}
+          showDelete={Boolean(selectedLesson) && !isSelectedPublished}
           onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           onUpdateTitle={handleUpdateTitle}
           onUpdateContent={handleUpdateContent}
@@ -345,12 +389,13 @@ function App() {
           }
         />
       ) : null}
-      {page === "profile" ? (
-        <Profile
+      {page === "students" ? (
+        <Students
           apiBaseUrl={apiBaseUrl}
           auth0Audience={auth0Audience}
           getAccessTokenSilently={getAccessTokenSilently}
           onNotify={notify}
+          addStudentSignal={addStudentSignal}
         />
       ) : null}
 
@@ -358,13 +403,17 @@ function App() {
         isAuthenticated={isAuthenticated}
         userAvatar={user?.picture}
         currentPage={page}
-        onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
-        onProfileClick={() => setPage("profile")}
-        onCreateLesson={handleCreateLesson}
-        onDuplicateLesson={() => setDuplicateOpen(true)}
+        onStudentsClick={() => setPage("students")}
+        onPrimaryAction={() => {
+          if (page === "students") {
+            setAddStudentSignal((current) => current + 1);
+            return;
+          }
+          void handleCreateLesson();
+        }}
+        showPrimaryAction={page === "lessons" || page === "students"}
         onDeleteLesson={() => setDeleteOpen(true)}
-        showDuplicate={page === "lessons" && Boolean(selectedLesson)}
         showDelete={page === "lessons" && Boolean(selectedLesson) && !isSelectedPublished}
         onAuthClick={() => loginWithRedirect()}
         onLogout={handleLogout}

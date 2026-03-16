@@ -147,7 +147,9 @@ export const useLessons = ({
     setError("");
     try {
       const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
-      const data = await createLesson(lessonsEndpoint, headers, { title: "New lesson" });
+      const data = await createLesson(lessonsEndpoint, headers, {
+        title: "New lesson template",
+      });
       const created = normalizeLesson(
         data as Record<string, unknown>,
         `lesson-${Date.now()}`

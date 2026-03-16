@@ -1,25 +1,21 @@
 import { useState } from "react";
 import { Avatar, Box, Button, Menu, MenuItem, Paper } from "@mui/material";
-import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
-import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
-import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 
 type BottomNavProps = {
   isAuthenticated: boolean;
   userAvatar?: string | null;
-  currentPage: "home" | "lessons" | "profile";
+  currentPage: "lessons" | "students";
   onLessonsClick: () => void;
-  onHomeClick: () => void;
-  onProfileClick: () => void;
+  onStudentsClick: () => void;
   onAuthClick: () => void;
   onLogout: () => void;
-  onCreateLesson: () => void;
-  onDuplicateLesson: () => void;
+  onPrimaryAction: () => void;
+  showPrimaryAction: boolean;
   onDeleteLesson: () => void;
-  showDuplicate: boolean;
   showDelete: boolean;
 };
 
@@ -28,19 +24,16 @@ const BottomNav = ({
   userAvatar,
   currentPage,
   onLessonsClick,
-  onHomeClick,
-  onProfileClick,
+  onStudentsClick,
   onAuthClick,
   onLogout,
-  onCreateLesson,
-  onDuplicateLesson,
+  onPrimaryAction,
+  showPrimaryAction,
   onDeleteLesson,
-  showDuplicate,
   showDelete,
 }: BottomNavProps) => {
-  const isHome = currentPage === "home";
   const isLessons = currentPage === "lessons";
-  const isProfile = currentPage === "profile";
+  const isStudents = currentPage === "students";
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const menuOpen = Boolean(menuAnchor);
 
@@ -66,19 +59,6 @@ const BottomNav = ({
     >
       <Box display="flex" alignItems="stretch" width="100%" justifyContent="space-around">
         <Button
-          onClick={onHomeClick}
-          sx={{
-            minWidth: 0,
-            px: 2,
-            borderRadius: 999,
-            color: "primary.main",
-            backgroundColor: isHome ? "rgba(230,81,0,0.18)" : "transparent",
-            height: "100%",
-          }}
-        >
-          <HomeRoundedIcon />
-        </Button>
-        <Button
           onClick={onLessonsClick}
           sx={{
             minWidth: 0,
@@ -92,21 +72,21 @@ const BottomNav = ({
           <DescriptionRoundedIcon />
         </Button>
         <Button
-          onClick={onProfileClick}
+          onClick={onStudentsClick}
           sx={{
             minWidth: 0,
             px: 2,
             borderRadius: 999,
             color: "primary.main",
-            backgroundColor: isProfile ? "rgba(230,81,0,0.18)" : "transparent",
+            backgroundColor: isStudents ? "rgba(230,81,0,0.18)" : "transparent",
             height: "100%",
           }}
         >
-          <PersonRoundedIcon />
+          <GroupsRoundedIcon />
         </Button>
-        {isLessons ? (
+        {showPrimaryAction ? (
           <Button
-            onClick={onCreateLesson}
+            onClick={onPrimaryAction}
             sx={{
               minWidth: 0,
               px: 2,
@@ -129,20 +109,6 @@ const BottomNav = ({
             >
               <AddRoundedIcon />
             </Box>
-          </Button>
-        ) : null}
-        {isLessons && showDuplicate ? (
-          <Button
-            onClick={onDuplicateLesson}
-            sx={{
-              minWidth: 0,
-              px: 2,
-              borderRadius: 999,
-              color: "primary.main",
-              height: "100%",
-            }}
-          >
-            <ContentCopyRoundedIcon />
           </Button>
         ) : null}
         {isLessons && showDelete ? (

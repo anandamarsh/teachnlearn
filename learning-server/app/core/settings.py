@@ -20,7 +20,31 @@ class Settings:
             Path(__file__).resolve().parents[2] / "lesson_sections.json"
         )
         self.custom_gpt_api_key = os.getenv("CUSTOM_GPT_API_KEY", "")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.openai_project_id = os.getenv("OPENAI_PROJECT_ID", "")
+        self.openai_question_extraction_model = os.getenv(
+            "OPENAI_QUESTION_EXTRACTION_MODEL", "gpt-5.4"
+        )
+        self.openai_question_extraction_input_price_per_million = float(
+            os.getenv("OPENAI_QUESTION_EXTRACTION_INPUT_PRICE_PER_MILLION", "0.40")
+        )
+        self.openai_question_extraction_cached_input_price_per_million = float(
+            os.getenv(
+                "OPENAI_QUESTION_EXTRACTION_CACHED_INPUT_PRICE_PER_MILLION", "0.10"
+            )
+        )
+        self.openai_question_extraction_output_price_per_million = float(
+            os.getenv("OPENAI_QUESTION_EXTRACTION_OUTPUT_PRICE_PER_MILLION", "1.60")
+        )
+        self.openai_timeout_seconds = int(os.getenv("OPENAI_TIMEOUT_SECONDS", "90"))
         self.otp_ttl_seconds = int(os.getenv("OTP_TTL_SECONDS", "600"))
+        self.student_session_secret = os.getenv("STUDENT_SESSION_SECRET", "")
+        self.student_session_ttl_seconds = int(
+            os.getenv("STUDENT_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30))
+        )
+        self.student_response_upload_limit_bytes = int(
+            os.getenv("STUDENT_RESPONSE_UPLOAD_LIMIT_BYTES", str(2 * 1024 * 1024))
+        )
         self.lesson_sections, self.lesson_section_descriptions = _load_lesson_sections(
             self.lesson_sections_path
         )

@@ -2,6 +2,7 @@ import json
 from io import BytesIO
 import base64
 import binascii
+from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
 from PIL import Image
@@ -12,14 +13,24 @@ from starlette.responses import JSONResponse, Response
 from app.core.auth import get_request_email, is_auth0_bearer_request
 from app.core.settings import Settings
 from app.services.lesson_events import LessonEventHub
+from app.services.openai_question_extractor import (
+    extract_questions_from_pdf_file,
+)
 from app.services.lesson_store import LessonStore, sanitize_email
 
 from .common import json_error, public_object_url
 
 
 def register_lesson_routes(
-    mcp, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
+    mcp,
+    store: LessonStore,
+    settings: Settings,
+    events: LessonEventHub | None = None,
 ) -> None:
+    print(
+        "[PUBLISH][DEBUG] register_lesson_routes: mounting POST /lesson/id/{lesson_id}/publish-approved-questions"
+    )
+
     @mcp.custom_route("/lesson", methods=["GET"])
     async def list_lessons(request: Request) -> JSONResponse:
         email = get_request_email(request, None, settings)
@@ -126,6 +137,52 @@ def register_lesson_routes(
                 },
             )
         return JSONResponse(meta, status_code=201)
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/question-extraction", methods=["POST"])
+    async def extract_page_questions(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        if not lesson_id:
+            return json_error("lesson_id is required", 400)
+        try:
+            lesson = store.get(email, lesson_id)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        if lesson is None:
+            return json_error("lesson not found", 404)
+        try:
+            form = await request.form()
+        except Exception:
+            return json_error("invalid multipart form data", 400)
+        uploaded_file = form.get("file")
+        if not isinstance(uploaded_file, UploadFile):
+            return json_error("file is required", 400)
+        page_number_raw = form.get("pageCount")
+        try:
+            page_count = int(page_number_raw)
+        except (TypeError, ValueError):
+            return json_error("pageCount must be an integer", 400)
+        if page_count < 1:
+            return json_error("pageCount must be at least 1", 400)
+        pdf_bytes = await uploaded_file.read()
+        if not pdf_bytes:
+            return json_error("uploaded file is empty", 400)
+        try:
+            extraction = extract_questions_from_pdf_file(
+                pdf_bytes=pdf_bytes,
+                filename=uploaded_file.filename or "document.pdf",
+                page_count=page_count,
+                email=email,
+                settings=settings,
+            )
+        except RuntimeError as exc:
+            return json_error(str(exc), 502)
+        except Exception as exc:
+            return json_error(f"Unexpected OpenAI extraction error: {exc}", 500)
+        extraction["extractedAt"] = datetime.now(timezone.utc).isoformat()
+        return JSONResponse(extraction)
 
     @mcp.custom_route("/lesson", methods=["POST"])
     async def create_lesson(request: Request) -> JSONResponse:
@@ -451,6 +508,62 @@ def register_lesson_routes(
                 {"type": "lesson.updated", "lessonId": lesson_id},
             )
         return JSONResponse(lesson)
+
+    @mcp.custom_route("/lesson/id/{lesson_id}/publish-approved-questions", methods=["POST"])
+    async def publish_approved_questions(request: Request) -> JSONResponse:
+        lesson_id = request.path_params.get("lesson_id", "").strip()
+        print(f"[PUBLISH][DEBUG] request start: lesson_id={lesson_id!r}")
+        if not lesson_id:
+            print("[PUBLISH][DEBUG] request rejected: missing lesson_id")
+            return json_error("lesson_id is required", 400)
+        email = get_request_email(request, None, settings)
+        if not email:
+            print("[PUBLISH][DEBUG] request rejected: missing email")
+            return json_error("email is required", 400)
+        print(f"[PUBLISH][DEBUG] auth ok: email={email}")
+        if store.is_protected_lesson(email, lesson_id) and not is_auth0_bearer_request(
+            request, settings
+        ):
+            print("[PUBLISH][DEBUG] request rejected: protected lesson")
+            return json_error("lesson is protected", 403)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            print("[PUBLISH][DEBUG] request rejected: invalid JSON")
+            return json_error("invalid JSON body", 400)
+        if not isinstance(payload, dict):
+            print(f"[PUBLISH][DEBUG] request rejected: payload type={type(payload).__name__}")
+            return json_error("invalid JSON body", 400)
+        title = payload.get("title")
+        pages = payload.get("pages")
+        if not isinstance(pages, list):
+            print(f"[PUBLISH][DEBUG] request rejected: pages type={type(pages).__name__}")
+            return json_error("pages must be an array", 400)
+        print(
+            f"[PUBLISH][DEBUG] payload parsed: title={str(title or '')[:120]!r} pages={len(pages)}"
+        )
+        try:
+            lesson = store.publish_approved_questions(
+                email,
+                lesson_id,
+                title=str(title).strip() if title is not None else None,
+                pages=pages,
+            )
+        except (RuntimeError, ClientError) as exc:
+            print(f"[PUBLISH][DEBUG] store error: {exc}")
+            return json_error(str(exc), 500)
+        if lesson is None:
+            print("[PUBLISH][DEBUG] store returned None: lesson not found")
+            return json_error("lesson not found", 404)
+        if events:
+            events.publish(
+                email,
+                {"type": "lesson.updated", "lessonId": lesson_id},
+            )
+        print(
+            f"[PUBLISH][DEBUG] publish complete: lesson_id={lesson_id} status={lesson.get('status')}"
+        )
+        return JSONResponse({"lesson": lesson}, status_code=200)
 
     @mcp.custom_route("/lesson/id/{lesson_id}/icon", methods=["POST"])
     async def upload_lesson_icon(request: Request) -> JSONResponse:
