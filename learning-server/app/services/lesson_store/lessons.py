@@ -112,22 +112,11 @@ class LessonStoreLessons:
                 ensure_lesson_prefix(sanitized, lesson_id, self._settings)
 
             retained_entries: list[dict[str, Any]] = []
-            deleted_lesson_ids: list[str] = []
             for entry in entries:
                 entry_id = str(entry.get("id") or "").strip()
                 if not entry_id:
                     continue
-                if entry_id == lesson_id:
-                    retained_entries.append(entry)
-                    continue
-                if self.is_protected_lesson(email, entry_id):
-                    retained_entries.append(entry)
-                    continue
-                delete_lesson_prefix(sanitized, entry_id, self._settings)
-                deleted_lesson_ids.append(entry_id)
-            print(
-                f"[PUBLISH][DEBUG] store.publish_approved_questions: deleted_old_lessons={deleted_lesson_ids}"
-            )
+                retained_entries.append(entry)
 
             now = datetime.now(timezone.utc).isoformat()
             next_title = str(title or lesson.get("title") or "Approved Questions").strip()
@@ -294,7 +283,7 @@ class LessonStoreLessons:
         with self._lock:
             self._ensure_bucket()
             entries = self._load_index(sanitized)
-            lesson_id = self._generate_id(entries)
+            lesson_id = self._generate_id(sanitized, entries)
             sections = {key: self._section_filename(key) for key in self._sections}
             sections_meta = {}
             for key in sections:
@@ -497,7 +486,7 @@ class LessonStoreLessons:
             if lesson is None:
                 return None
             entries = self._load_index(sanitized)
-            new_id = self._generate_id(entries)
+            new_id = self._generate_id(sanitized, entries)
             now = datetime.now(timezone.utc).isoformat()
             title = lesson.get("title") or "Untitled lesson"
             if not str(title).lower().endswith("(copy)"):

@@ -109,12 +109,21 @@ class LessonStoreBase:
             ContentType="application/json",
         )
 
-    def _generate_id(self, entries: list[dict[str, Any]]) -> str:
+    def _generate_id(self, sanitized_email: str, entries: list[dict[str, Any]]) -> str:
         existing = {entry.get("id") for entry in entries}
         for _ in range(100):
             candidate = f"{secrets.randbelow(1_000_000):06d}"
-            if candidate not in existing:
-                return candidate
+            if candidate in existing:
+                continue
+            try:
+                self._s3_client.head_object(
+                    Bucket=self._settings.s3_bucket,
+                    Key=self._lesson_key(sanitized_email, candidate),
+                )
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                    return candidate
+                raise
         raise RuntimeError("Unable to generate unique lesson id")
 
     def list_account_prefixes(self) -> list[str]:

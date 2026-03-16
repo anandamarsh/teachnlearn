@@ -105,6 +105,7 @@ const LessonsPage = ({
             }}
           >
             <LessonWorkspace
+              key={selectedLesson?.id || "empty-lesson"}
               lesson={selectedLesson}
               hasLessons={lessons.length > 0}
               isAuthenticated={isAuthenticated}

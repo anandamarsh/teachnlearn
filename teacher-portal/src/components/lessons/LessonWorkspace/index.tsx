@@ -3620,6 +3620,7 @@ const LessonWorkspace = ({
         stepNumber={3}
         label="View Progress"
         summaryNode={
+          stepEnabled.progress ? (
           <Typography
             component="span"
             sx={{ fontSize: "1rem", color: "text.secondary", fontWeight: 700 }}
@@ -3640,6 +3641,7 @@ const LessonWorkspace = ({
               {progressSummaryStats.unansweredCount} unanswered
             </Box>
           </Typography>
+          ) : null
         }
         expanded={expandedStep === "progress"}
         complete={isPublicLesson}
