@@ -20,7 +20,7 @@ def register_routes(
 ) -> None:
     skill_store = SkillStore(settings)
     register_health(mcp)
-    register_auth_routes(mcp, settings)
+    register_auth_routes(mcp, store, settings)
     register_catalog_routes(mcp, store, settings)
     register_lesson_routes(mcp, store, settings, events, skill_store)
     register_section_routes(mcp, store, settings, events)

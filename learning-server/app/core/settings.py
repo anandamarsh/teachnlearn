@@ -38,6 +38,10 @@ class Settings:
         )
         self.openai_timeout_seconds = int(os.getenv("OPENAI_TIMEOUT_SECONDS", "90"))
         self.otp_ttl_seconds = int(os.getenv("OTP_TTL_SECONDS", "600"))
+        self.student_session_secret = os.getenv("STUDENT_SESSION_SECRET", "")
+        self.student_session_ttl_seconds = int(
+            os.getenv("STUDENT_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30))
+        )
         self.lesson_sections, self.lesson_section_descriptions = _load_lesson_sections(
             self.lesson_sections_path
         )

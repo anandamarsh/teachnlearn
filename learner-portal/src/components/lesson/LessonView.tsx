@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
   Stack,
   Tab,
   Tabs,
@@ -16,8 +10,6 @@ import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useLessonSections } from "../../hooks/useLessonSections";
 import ExercisesSection from "../exercises/ExercisesSection";
 import { getSectionLabel, isExercisesSection } from "../../utils/lessonSections";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
-import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CenteredLoader from "../common/CenteredLoader";
 import { AuthedFetch } from "../../api/client";
@@ -29,19 +21,11 @@ type LessonViewProps = {
 
 const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
   const progressKey = `learner-lesson-progress-${lesson.teacher}-${lesson.id}`;
-  const lastSectionKey = `learner-lesson-last-section-${lesson.teacher}-${lesson.id}`;
-  const appliedLastSectionRef = useRef(false);
   const tabsContainerRef = useRef<HTMLDivElement | null>(null);
   const initialTabScrollRef = useRef(false);
   const userTabSelectRef = useRef(false);
-  const [restartPromptOpen, setRestartPromptOpen] = useState(false);
-  const [pendingRestartSection, setPendingRestartSection] =
-    useState<LessonSectionKey | null>(null);
   const [showCompleteNotice, setShowCompleteNotice] = useState(false);
   const completeNoticeTimeoutRef = useRef<number | null>(null);
-  const [regenerateSignal, setRegenerateSignal] = useState(0);
-  const [regenerateSectionKey, setRegenerateSectionKey] =
-    useState<LessonSectionKey | null>(null);
 
   const {
     sectionHtml,
@@ -50,7 +34,6 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     loading,
     indexLoading,
     loadSection,
-    setExercisesForSection,
   } = useLessonSections({ lesson, fetchWithAuth });
 
   const exerciseCountsBySection = useMemo(
@@ -81,7 +64,6 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     setMcqSelections,
     scoreSnapshot,
     setScoreSnapshot,
-    resetExerciseSection,
   } = useLessonProgress(progressKey, sectionKeys, exerciseCountsBySection);
 
   const activeExerciseSectionKey = isExercisesSection(openSection)
@@ -103,17 +85,6 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
     }
     loadSection(openSection);
   }, [loadSection, openSection, sectionKeys]);
-
-  useEffect(() => {
-    if (!sectionKeys.length || appliedLastSectionRef.current) {
-      return;
-    }
-    const saved = window.sessionStorage.getItem(lastSectionKey);
-    if (saved && sectionKeys.includes(saved)) {
-      setOpenSection(saved);
-    }
-    appliedLastSectionRef.current = true;
-  }, [lastSectionKey, sectionKeys, setOpenSection]);
 
   useEffect(() => {
     if (!tabsContainerRef.current) {
@@ -239,17 +210,8 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
           className="lesson-tabs-bar"
           display="flex"
           alignItems="center"
-          justifyContent="space-between"
+          justifyContent="center"
         >
-          <IconButton
-            aria-label="Refresh page"
-            onClick={() => {
-              window.sessionStorage.setItem(lastSectionKey, openSection);
-              window.location.reload();
-            }}
-          >
-            <RefreshRoundedIcon />
-          </IconButton>
           <Box
             flex={1}
             display="flex"
@@ -295,19 +257,9 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
               ))}
             </Tabs>
           </Box>
-          {isExercisesSection(openSection) ? (
-            <IconButton
-              aria-label="Restart exercises"
-              onClick={() => {
-                setPendingRestartSection(openSection);
-                setRestartPromptOpen(true);
-              }}
-            >
-              <RestartAltRoundedIcon />
-            </IconButton>
-          ) : (
-            <Box width={40} />
-          )}
+          <Box className="lesson-title-tag-overlay">
+            <Box className="lesson-title-tag">{lesson.title}</Box>
+          </Box>
         </Box>
         {isExercisesSection(openSection) && activePromptTitle ? (
           <Box className="exercise-prompt-title">{activePromptTitle}</Box>
@@ -341,11 +293,11 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
                   generatorUpdatedAt={lesson.exerciseGenerator?.updatedAt}
                   questionsPerExercise={lesson.exerciseConfig?.questionsPerExercise}
                   autoStart={isExercisesSection(openSection)}
-                  regenerateSignal={regenerateSignal}
-                  regenerateSectionKey={regenerateSectionKey}
+                  regenerateSignal={0}
+                  regenerateSectionKey={null}
                   fetchWithAuth={fetchWithAuth}
-                  setExercisesForSection={setExercisesForSection}
-                  resetExerciseSection={resetExerciseSection}
+                  setExercisesForSection={() => {}}
+                  resetExerciseSection={() => {}}
                   lessonTitle={lesson.title}
                   lessonSubject={lesson.subject}
                   lessonLevel={lesson.level}
@@ -371,39 +323,6 @@ const LessonView = ({ lesson, fetchWithAuth }: LessonViewProps) => {
           )}
         </Box>
       </Stack>
-      <Dialog
-        open={restartPromptOpen}
-        onClose={() => setRestartPromptOpen(false)}
-      >
-        <DialogTitle>Restart exercises?</DialogTitle>
-        <DialogContent>
-          This will clear your answers for this exercise section.
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRestartPromptOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={() => {
-              if (pendingRestartSection) {
-                resetExerciseSection(pendingRestartSection);
-                if (
-                  isExercisesSection(pendingRestartSection) &&
-                  lesson.exerciseGenerator?.updatedAt
-                ) {
-                  setExercisesForSection(pendingRestartSection, []);
-                  setRegenerateSectionKey(pendingRestartSection);
-                  setRegenerateSignal((prev) => prev + 1);
-                }
-              }
-              setRestartPromptOpen(false);
-              setPendingRestartSection(null);
-            }}
-          >
-            Restart
-          </Button>
-        </DialogActions>
-      </Dialog>
       {showCompleteNotice ? (
         <Box className="lesson-complete-notice">
           You have already finished this exercise, so try another one.

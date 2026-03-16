@@ -832,7 +832,7 @@ self.onmessage = async (event) => {
   const ensureSnsSession = () => {
     if (!snsSessionRef.current) {
       snsSessionRef.current = createSnsSession({
-        skillTitle: lessonTitle || "Lesson practice",
+        skillTitle: lessonTitle || "Exercise practice",
         skillRef: lessonId || "unknown",
         subject: lessonSubject,
         level: lessonLevel,
@@ -901,7 +901,7 @@ self.onmessage = async (event) => {
         score,
         ended: true,
         skillTitle: `${
-          lessonTitle || "Lesson practice"
+          lessonTitle || "Exercise practice"
         } - Exercise ${exerciseNumber}`,
       })
     );
@@ -1165,7 +1165,7 @@ self.onmessage = async (event) => {
           score,
           correct: isCorrect,
           skillTitle: `${
-            lessonTitle || "Lesson practice"
+            lessonTitle || "Exercise practice"
           } - Exercise ${getExerciseNumber()}`,
         })
       );
@@ -1224,7 +1224,7 @@ self.onmessage = async (event) => {
           score,
           correct: isCorrect,
           skillTitle: `${
-            lessonTitle || "Lesson practice"
+            lessonTitle || "Exercise practice"
           } - Exercise ${getExerciseNumber()}`,
         })
       );
@@ -1727,7 +1727,7 @@ self.onmessage = async (event) => {
                     score,
                     correct: false,
                     skillTitle: `${
-                      lessonTitle || "Lesson practice"
+                      lessonTitle || "Exercise practice"
                     } - Exercise ${getExerciseNumber()}`,
                   })
                 );

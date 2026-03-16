@@ -2,7 +2,7 @@ from botocore.exceptions import ClientError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.core.auth import get_request_email
+from app.core.student_auth import get_student_session
 from app.core.settings import Settings
 from app.services.lesson_store import LessonStore
 
@@ -10,6 +10,11 @@ from .common import json_error
 
 
 def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None:
+    def ensure_student_authenticated(request: Request) -> JSONResponse | None:
+        if get_student_session(request, settings):
+            return None
+        return json_error("student authentication required", 401)
+
     def is_exercise_key(value: str) -> bool:
         return "exercise" in value.lower()
 
@@ -28,6 +33,9 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         return candidate
     @mcp.custom_route("/catalog/lessons", methods=["GET"])
     async def list_catalog_lessons(request: Request) -> JSONResponse:
+        auth_error = ensure_student_authenticated(request)
+        if auth_error is not None:
+            return auth_error
         try:
             lessons = store.list_published_catalog()
         except (RuntimeError, ClientError) as exc:
@@ -48,9 +56,9 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         lesson = store.get_sanitized(teacher_id, lesson_id)
         if not lesson:
             return json_error("lesson not found", 404)
-        requires_login = bool(lesson.get("requires_login"))
-        if requires_login and not get_request_email(request, None, settings):
-            return json_error("authentication required", 401)
+        auth_error = ensure_student_authenticated(request)
+        if auth_error is not None:
+            return auth_error
         try:
             index = store.get_sections_index_sanitized(teacher_id, lesson_id)
         except (RuntimeError, ClientError) as exc:
@@ -80,9 +88,9 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         lesson = store.get_sanitized(teacher_id, lesson_id)
         if not lesson:
             return json_error("lesson not found", 404)
-        requires_login = bool(lesson.get("requires_login"))
-        if requires_login and not get_request_email(request, None, settings):
-            return json_error("authentication required", 401)
+        auth_error = ensure_student_authenticated(request)
+        if auth_error is not None:
+            return auth_error
         try:
             section = store.get_section_sanitized(teacher_id, lesson_id, section_key)
         except (RuntimeError, ClientError) as exc:
@@ -111,9 +119,9 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         lesson = store.get_sanitized(teacher_id, lesson_id)
         if not lesson:
             return json_error("lesson not found", 404)
-        requires_login = bool(lesson.get("requires_login"))
-        if requires_login and not get_request_email(request, None, settings):
-            return json_error("authentication required", 401)
+        auth_error = ensure_student_authenticated(request)
+        if auth_error is not None:
+            return auth_error
         try:
             section = store.get_section_sanitized(teacher_id, lesson_id, section_key)
         except (RuntimeError, ClientError) as exc:
@@ -136,9 +144,9 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         lesson = store.get_sanitized(teacher_id, lesson_id)
         if not lesson:
             return json_error("lesson not found", 404)
-        requires_login = bool(lesson.get("requires_login"))
-        if requires_login and not get_request_email(request, None, settings):
-            return json_error("authentication required", 401)
+        auth_error = ensure_student_authenticated(request)
+        if auth_error is not None:
+            return auth_error
         try:
             payload = store.get_exercise_generator_sanitized(teacher_id, lesson_id)
         except (RuntimeError, ClientError) as exc:

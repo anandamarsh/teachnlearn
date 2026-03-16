@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
 import { Box, Container, Paper, Typography } from "@mui/material";
 import "./App.css";
 import BottomNav from "./components/BottomNav";
@@ -8,28 +7,29 @@ import HomeView from "./components/home/HomeView";
 import LessonView from "./components/lesson/LessonView";
 import { useApiClient } from "./hooks/useApiClient";
 import { useCatalog } from "./hooks/useCatalog";
+import { useStudentAuth } from "./hooks/useStudentAuth";
 import { CatalogLesson } from "./state/types";
-import { apiBaseUrl, auth0Audience } from "./auth/config";
+import { apiBaseUrl } from "./auth/config";
 
 type PageKey = "home" | "lesson";
 
 function App() {
-  const {
-    isAuthenticated,
-    isLoading,
-    loginWithRedirect,
-    logout,
-    user,
-  } = useAuth0();
-  const configError = !apiBaseUrl || !auth0Audience;
+  const configError = !apiBaseUrl;
 
   const [page, setPage] = useState<PageKey>("home");
   const [selectedLesson, setSelectedLesson] = useState<CatalogLesson | null>(
     null
   );
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  const fetchWithAuth = useApiClient(apiBaseUrl, auth0Audience);
-  const { lessons, loading, error } = useCatalog({ fetchWithAuth });
+  const fetchWithAuth = useApiClient(apiBaseUrl);
+  const { student, isAuthenticated, loading: authLoading, login, logout } =
+    useStudentAuth(apiBaseUrl);
+  const { lessons, loading, error } = useCatalog({
+    fetchWithAuth,
+    enabled: isAuthenticated,
+  });
 
   const slugify = (value: string) =>
     value
@@ -47,8 +47,6 @@ function App() {
     }
     return `/lesson/${lesson.id}`;
   };
-
-  const pendingLessonKey = "lp-pending-lesson-path";
 
   const findLessonByPath = useCallback(
     (path: string) => {
@@ -86,39 +84,19 @@ function App() {
   );
 
   useEffect(() => {
-    if (!isAuthenticated || !lessons.length) {
+    if (!isAuthenticated) {
+      setSelectedLesson(null);
+      setPage("home");
       return;
     }
-    const pendingPath = localStorage.getItem(pendingLessonKey);
-    if (!pendingPath) {
-      return;
-    }
-    localStorage.removeItem(pendingLessonKey);
-    const pendingLesson = findLessonByPath(pendingPath);
-    if (pendingLesson) {
-      setSelectedLesson(pendingLesson);
-      setPage("lesson");
-      if (window.location.pathname !== pendingPath) {
-        window.history.pushState({}, "", pendingPath);
-      }
-    }
-  }, [findLessonByPath, isAuthenticated, lessons.length]);
-
-  useEffect(() => {
     if (!lessons.length) {
       return;
     }
     if (lessonFromPath) {
-      if (lessonFromPath.requiresLogin && !isAuthenticated) {
-        const nextPath = buildLessonPath(lessonFromPath);
-        localStorage.setItem(pendingLessonKey, nextPath);
-        loginWithRedirect();
-        return;
-      }
       setSelectedLesson(lessonFromPath);
       setPage("lesson");
     }
-  }, [isAuthenticated, lessonFromPath, lessons.length, loginWithRedirect]);
+  }, [isAuthenticated, lessonFromPath, lessons.length]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -150,12 +128,6 @@ function App() {
           }) || null;
       }
       if (nextLesson) {
-        if (nextLesson.requiresLogin && !isAuthenticated) {
-          const nextPath = buildLessonPath(nextLesson);
-          localStorage.setItem(pendingLessonKey, nextPath);
-          loginWithRedirect();
-          return;
-        }
         setSelectedLesson(nextLesson);
         setPage("lesson");
       } else {
@@ -166,7 +138,7 @@ function App() {
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [isAuthenticated, lessons, loginWithRedirect]);
+  }, [isAuthenticated, lessons]);
 
   if (configError) {
     return (
@@ -177,13 +149,13 @@ function App() {
         justifyContent="center"
       >
         <Typography color="error">
-          Missing VITE_TEACHNLEARN_API or VITE_AUTH0_AUDIENCE.
+          Missing VITE_TEACHNLEARN_API.
         </Typography>
       </Box>
     );
   }
 
-  if (isLoading) {
+  if (authLoading) {
     return <CenteredLoader />;
   }
 
@@ -206,13 +178,22 @@ function App() {
         {page === "home" ? (
           <HomeView
             lessons={lessons}
-            onSelectLesson={(lesson) => {
-              if (lesson.requiresLogin && !isAuthenticated) {
-                const nextPath = buildLessonPath(lesson);
-                localStorage.setItem(pendingLessonKey, nextPath);
-                loginWithRedirect();
-                return;
+            isAuthenticated={isAuthenticated}
+            studentName={student?.name}
+            loginLoading={loginLoading}
+            loginError={loginError}
+            onLogin={async (name, passcode) => {
+              setLoginError(null);
+              setLoginLoading(true);
+              try {
+                await login(name, passcode);
+              } catch (err) {
+                setLoginError("Name or passcode is incorrect");
+              } finally {
+                setLoginLoading(false);
               }
+            }}
+            onSelectLesson={(lesson) => {
               setSelectedLesson(lesson);
               setPage("lesson");
               const nextPath = buildLessonPath(lesson);
@@ -229,7 +210,7 @@ function App() {
           ) : (
             <Paper className="card" elevation={0}>
               <Typography color="text.secondary">
-                Select a lesson from Home to begin.
+                Select an exercise set from Home to begin.
               </Typography>
             </Paper>
           )
@@ -237,7 +218,7 @@ function App() {
       </Container>
         <BottomNav
           isAuthenticated={isAuthenticated}
-          userAvatar={user?.picture}
+          studentName={student?.name}
           currentPage={page}
           onHomeClick={() => {
             setPage("home");
@@ -245,9 +226,19 @@ function App() {
               window.history.pushState({}, "", "/");
             }
           }}
-          onLessonsClick={() => setPage("lesson")}
-          onAuthClick={() => loginWithRedirect()}
-          onLogout={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          onLessonsClick={() => {
+            if (selectedLesson) {
+              setPage("lesson");
+            }
+          }}
+          onLogout={() => {
+            logout();
+            setSelectedLesson(null);
+            setPage("home");
+            if (window.location.pathname !== "/") {
+              window.history.pushState({}, "", "/");
+            }
+          }}
         />
     </Box>
   );

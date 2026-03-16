@@ -140,7 +140,11 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
       const ordered = normalizeSectionOrder(payload.sections);
       const filtered = ordered.filter((key) => {
         const baseKey = getSectionBaseKey(key);
-        return baseKey !== "references" && baseKey !== "samples";
+        return (
+          baseKey !== "references" &&
+          baseKey !== "samples" &&
+          baseKey !== "lesson"
+        );
       });
       const orderedAfterBackground = getSectionsAfterBackground(filtered);
       const useGeneratorTabs =
@@ -162,30 +166,13 @@ export const useLessonSections = ({ lesson, fetchWithAuth }: UseLessonSectionsOp
         useGeneratorTabs && exercisesCount > 0
           ? Array.from({ length: exercisesCount }, (_, idx) => `exercise-${idx + 1}`)
           : [];
-      const lessonIndex = baseKeys.findIndex(
-        (key) => getSectionBaseKey(key) === "lesson"
-      );
-      const nextKeys =
-        lessonIndex >= 0
-          ? [
-              ...baseKeys.slice(0, lessonIndex + 1),
-              ...exerciseTabs,
-              ...(!useGeneratorTabs &&
-              !hasStoredExercises &&
-              hasApprovedQuestionExercises
-                ? ["exercises"]
-                : []),
-              ...baseKeys.slice(lessonIndex + 1),
-            ]
-          : [
-              ...baseKeys,
-              ...exerciseTabs,
-              ...(!useGeneratorTabs &&
-              !hasStoredExercises &&
-              hasApprovedQuestionExercises
-                ? ["exercises"]
-                : []),
-            ];
+      const nextKeys = [
+        ...baseKeys,
+        ...exerciseTabs,
+        ...(!useGeneratorTabs && !hasStoredExercises && hasApprovedQuestionExercises
+          ? ["exercises"]
+          : []),
+      ];
       setSectionKeys(Array.from(new Set(nextKeys)));
     } finally {
       setIndexLoading(false);
