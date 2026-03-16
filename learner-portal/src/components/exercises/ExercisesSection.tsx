@@ -22,12 +22,20 @@ import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import {
+  ExerciseResponseRecord,
+  ExerciseResponseSaveState,
   ExerciseScoreSnapshot,
   ExerciseGuideState,
   ExerciseItem,
   ExerciseStatus,
   ExerciseStepProgress,
 } from "../../state/types";
+import {
+  ExerciseResponseDraft,
+  ResponseAttachmentDraft,
+  fetchSectionResponses,
+  saveSectionResponses,
+} from "../../api/responses";
 import {
   buildSnsExerciseData,
   createSnsSession,
@@ -37,6 +45,7 @@ import {
 import ExerciseDots from "./ExerciseDots";
 import ExerciseSlide from "./ExerciseSlide";
 import { AuthedFetch } from "../../api/client";
+import { apiBaseUrl } from "../../auth/config";
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
@@ -109,6 +118,7 @@ const ExercisesSection = ({
   onComplete,
   showCompleteButton,
 }: ExercisesSectionProps) => {
+  const MAX_TOTAL_UPLOAD_BYTES = 2 * 1024 * 1024;
   const [exercises, setExercises] = useState<ExerciseItem[]>([]);
   const [stableExercises, setStableExercises] = useState<ExerciseItem[]>(rawExercises);
   const [generatorLoading, setGeneratorLoading] = useState(false);
@@ -140,6 +150,12 @@ const ExercisesSection = ({
   const retryPromptShownRef = useRef(false);
   const [showMagicFab, setShowMagicFab] = useState(false);
   const [autoPilotActive, setAutoPilotActive] = useState(false);
+  const [responseDrafts, setResponseDrafts] = useState<ExerciseResponseDraft[]>([]);
+  const [responseSaveStates, setResponseSaveStates] = useState<ExerciseResponseSaveState[]>([]);
+  const [responseSavingIndex, setResponseSavingIndex] = useState<number | null>(null);
+  const [responseErrorByIndex, setResponseErrorByIndex] = useState<Record<number, string | null>>(
+    {}
+  );
   const magicPin = useMemo(
     () =>
       String(lessonId || "")
@@ -159,6 +175,28 @@ const ExercisesSection = ({
   const freeResponseMode = useMemo(
     () => rawExercises.length > 0 && rawExercises.every((item) => item.freeResponse),
     [rawExercises]
+  );
+
+  const buildDefaultResponseDraft = useCallback(
+    (exercise: ExerciseItem, index: number): ExerciseResponseDraft => ({
+      exerciseIndex: index,
+      promptTitle: exercise.promptTitle || "",
+      questionHtml: exercise.question_html || "",
+      answerMarkdown: "",
+      teacherComment: "",
+      attachments: [],
+    }),
+    []
+  );
+
+  const buildResponseSignature = useCallback(
+    (promptTitle?: string, questionHtml?: string) =>
+      `${String(promptTitle || "")
+        .trim()
+        .replace(/\s+/g, " ")}::${String(questionHtml || "")
+        .trim()
+        .replace(/\s+/g, " ")}`,
+    []
   );
 
   const getExerciseNumber = () => {
@@ -188,6 +226,205 @@ const ExercisesSection = ({
     autoStartedRef.current = false;
     setGenerationProgress(0);
   }, [exerciseSectionKey]);
+
+  useEffect(() => {
+    if (!freeResponseMode || !exercisesSource.length || !apiBaseUrl) {
+      setResponseDrafts([]);
+      setResponseSaveStates([]);
+      setResponseErrorByIndex({});
+      return;
+    }
+    let active = true;
+    const loadResponses = async () => {
+      try {
+        const payload = await fetchSectionResponses(
+          apiBaseUrl,
+          lessonTeacher,
+          lessonId,
+          exerciseSectionKey
+        );
+        if (!active) {
+          return;
+        }
+        const savedByIndex = new Map<number, ExerciseResponseRecord>();
+        const savedBySignature = new Map<string, ExerciseResponseRecord>();
+        payload.responses.forEach((item) => {
+          savedByIndex.set(item.exerciseIndex, item);
+          const signature = buildResponseSignature(
+            item.promptTitle || "",
+            item.questionHtml || ""
+          );
+          if (signature !== "::") {
+            savedBySignature.set(signature, item);
+          }
+        });
+        const nextDrafts = exercisesSource.map((exercise, index) => {
+          const signature = buildResponseSignature(
+            exercise.promptTitle || "",
+            exercise.question_html || ""
+          );
+          const saved =
+            savedBySignature.get(signature) ||
+            savedByIndex.get(index);
+          if (!saved) {
+            return buildDefaultResponseDraft(exercise, index);
+          }
+          return {
+            exerciseIndex: index,
+            promptTitle: saved.promptTitle || exercise.promptTitle || "",
+            questionHtml: saved.questionHtml || exercise.question_html || "",
+            answerMarkdown: saved.answerMarkdown || "",
+            teacherComment: saved.teacherComment || "",
+            attachments: (saved.attachments || []).map((attachment) => ({
+              ...attachment,
+            })),
+          };
+        });
+        setResponseDrafts(nextDrafts);
+        setResponseSaveStates(
+          nextDrafts.map((draft) =>
+            draft.answerMarkdown.trim() || draft.attachments.length ? "saved" : "default"
+          )
+        );
+      } catch {
+        if (!active) {
+          return;
+        }
+        const nextDrafts = exercisesSource.map((exercise, index) =>
+          buildDefaultResponseDraft(exercise, index)
+        );
+        setResponseDrafts(nextDrafts);
+        setResponseSaveStates(nextDrafts.map(() => "default"));
+      }
+    };
+    void loadResponses();
+    return () => {
+      active = false;
+    };
+  }, [
+    buildDefaultResponseDraft,
+    buildResponseSignature,
+    exerciseSectionKey,
+    exercisesSource,
+    freeResponseMode,
+    lessonId,
+    lessonTeacher,
+  ]);
+
+  const setResponseDirty = useCallback((index: number) => {
+    setResponseSaveStates((prev) => {
+      const next = [...prev];
+      next[index] = "dirty";
+      return next;
+    });
+  }, []);
+
+  const updateResponseDraft = useCallback(
+    (index: number, updater: (draft: ExerciseResponseDraft) => ExerciseResponseDraft) => {
+      setResponseDrafts((prev) => {
+        const current =
+          prev[index] ||
+          buildDefaultResponseDraft(exercises[index] || ({} as ExerciseItem), index);
+        const nextDraft = updater(current);
+        const next = [...prev];
+        next[index] = nextDraft;
+        return next;
+      });
+      setResponseDirty(index);
+      setResponseErrorByIndex((prev) => ({ ...prev, [index]: null }));
+    },
+    [buildDefaultResponseDraft, exercises, setResponseDirty]
+  );
+
+  const totalResponseAttachmentBytes = useMemo(
+    () =>
+      responseDrafts.reduce(
+        (sum, draft) =>
+          sum +
+          draft.attachments.reduce((attachmentSum, attachment) => attachmentSum + attachment.size, 0),
+        0
+      ),
+    [responseDrafts]
+  );
+
+  const saveResponseDrafts = useCallback(
+    async (focusIndex: number) => {
+      if (!apiBaseUrl) {
+        return;
+      }
+      setResponseSavingIndex(focusIndex);
+      setResponseErrorByIndex((prev) => ({ ...prev, [focusIndex]: null }));
+      try {
+        const saved = await saveSectionResponses(
+          apiBaseUrl,
+          lessonTeacher,
+          lessonId,
+          exerciseSectionKey,
+          responseDrafts
+        );
+        const savedByIndex = new Map<number, ExerciseResponseRecord>();
+        const savedBySignature = new Map<string, ExerciseResponseRecord>();
+        saved.responses.forEach((item) => {
+          savedByIndex.set(item.exerciseIndex, item);
+          const signature = buildResponseSignature(
+            item.promptTitle || "",
+            item.questionHtml || ""
+          );
+          if (signature !== "::") {
+            savedBySignature.set(signature, item);
+          }
+        });
+        setResponseDrafts((prev) =>
+          prev.map((draft, index) => {
+            const signature = buildResponseSignature(
+              draft.promptTitle || "",
+              draft.questionHtml || ""
+            );
+            const savedDraft =
+              savedBySignature.get(signature) ||
+              savedByIndex.get(index);
+            if (!savedDraft) {
+              return draft;
+            }
+            return {
+              ...draft,
+              answerMarkdown: savedDraft.answerMarkdown || "",
+              teacherComment: savedDraft.teacherComment || "",
+              attachments: (savedDraft.attachments || []).map((attachment) => ({
+                ...attachment,
+              })),
+            };
+          })
+        );
+        setResponseSaveStates((prev) =>
+          prev.map((_, index) => {
+            const draft = responseDrafts[index];
+            return draft &&
+              (draft.answerMarkdown.trim() || draft.attachments.length > 0)
+              ? "saved"
+              : "default";
+          })
+        );
+      } catch (err) {
+        setResponseErrorByIndex((prev) => ({
+          ...prev,
+          [focusIndex]:
+            err instanceof Error ? err.message : "Failed to save response",
+        }));
+      } finally {
+        setResponseSavingIndex(null);
+      }
+    },
+    [
+      apiBaseUrl,
+      buildResponseSignature,
+      exerciseSectionKey,
+      exercises.length,
+      lessonId,
+      lessonTeacher,
+      responseDrafts,
+    ]
+  );
 
   const runGenerator = useCallback((source: string, count: number) => {
     return new Promise<ExerciseItem[]>((resolve, reject) => {
@@ -365,7 +602,9 @@ self.onmessage = async (event) => {
     }
     const clampedIndex = allowBeyond
       ? index
-      : Math.min(index, Math.max(maxExerciseIndex, 0));
+      : freeResponseMode
+        ? Math.min(index, Math.max(exercises.length - 1, 0))
+        : Math.min(index, Math.max(maxExerciseIndex, 0));
     const width = carouselRef.current.clientWidth;
     const targetSlide = carouselRef.current.querySelector<HTMLElement>(
       `[data-slide-index="${clampedIndex}"]`
@@ -408,7 +647,7 @@ self.onmessage = async (event) => {
           { index: 0, distance: Number.POSITIVE_INFINITY }
         ).index
       : Math.round(scrollLeft / width);
-    if (nextIndex > maxExerciseIndex) {
+    if (!freeResponseMode && nextIndex > maxExerciseIndex) {
       scrollToIndex(maxExerciseIndex, "auto", true);
       pendingIndexRef.current = maxExerciseIndex;
       if (scrollTimeoutRef.current !== null) {
@@ -436,7 +675,9 @@ self.onmessage = async (event) => {
       }
       return;
     }
-    const clampedIndex = Math.min(nextIndex, Math.max(maxExerciseIndex, 0));
+    const clampedIndex = freeResponseMode
+      ? Math.min(nextIndex, Math.max(exercises.length - 1, 0))
+      : Math.min(nextIndex, Math.max(maxExerciseIndex, 0));
     if (nextIndex !== clampedIndex) {
       scrollToIndex(clampedIndex, "auto", true);
     }
@@ -554,11 +795,14 @@ self.onmessage = async (event) => {
   }, [exercises.length]);
 
   useEffect(() => {
+    if (freeResponseMode) {
+      return;
+    }
     if (exerciseIndex > maxExerciseIndex) {
       setExerciseIndex(maxExerciseIndex);
       scrollToIndex(maxExerciseIndex, "auto");
     }
-  }, [exerciseIndex, maxExerciseIndex, setExerciseIndex]);
+  }, [exerciseIndex, freeResponseMode, maxExerciseIndex, scrollToIndex, setExerciseIndex]);
 
   useEffect(() => {
     exerciseIndexRef.current = exerciseIndex;
@@ -590,6 +834,9 @@ self.onmessage = async (event) => {
       return;
     }
     const handleWheel = (event: WheelEvent) => {
+      if (freeResponseMode) {
+        return;
+      }
       if (exerciseIndex < maxExerciseIndex) {
         return;
       }
@@ -602,6 +849,9 @@ self.onmessage = async (event) => {
       touchStartXRef.current = event.touches[0]?.clientX ?? null;
     };
     const handleTouchMove = (event: TouchEvent) => {
+      if (freeResponseMode) {
+        return;
+      }
       if (exerciseIndex < maxExerciseIndex) {
         return;
       }
@@ -633,7 +883,7 @@ self.onmessage = async (event) => {
       container.removeEventListener("touchmove", handleTouchMove);
       container.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [exerciseIndex, maxExerciseIndex]);
+  }, [exerciseIndex, freeResponseMode, maxExerciseIndex, scrollToIndex]);
 
   useEffect(() => {
     magicKeyBufferRef.current = "";
@@ -1489,20 +1739,30 @@ self.onmessage = async (event) => {
     });
   };
 
-  const goToIndex = (nextIndex: number) => {
-    const unlockLimit = freeResponseMode
-      ? exercises.length - 1
-      : Math.max(maxExerciseIndex, exerciseIndex);
-    if (
-      nextIndex >= 0 &&
-      nextIndex < exercises.length &&
-      nextIndex <= unlockLimit
-    ) {
-      programmaticScrollRef.current = { active: true, target: nextIndex };
-      setExerciseIndex(nextIndex);
-      scrollToIndex(nextIndex);
-    }
-  };
+  const goToIndex = useCallback(
+    (nextIndex: number) => {
+      const unlockLimit = freeResponseMode
+        ? exercises.length - 1
+        : Math.max(maxExerciseIndex, exerciseIndex);
+      if (
+        nextIndex >= 0 &&
+        nextIndex < exercises.length &&
+        nextIndex <= unlockLimit
+      ) {
+        programmaticScrollRef.current = { active: true, target: nextIndex };
+        setExerciseIndex(nextIndex);
+        scrollToIndex(nextIndex);
+      }
+    },
+    [
+      exerciseIndex,
+      exercises.length,
+      freeResponseMode,
+      maxExerciseIndex,
+      scrollToIndex,
+      setExerciseIndex,
+    ]
+  );
 
   const handleMainRecheck = (index: number) => {
     const exercise = exercises[index];
@@ -1777,7 +2037,7 @@ self.onmessage = async (event) => {
                 const guide = exerciseGuides[idx] || buildDefaultGuide(false);
                 return (
                   <ExerciseSlide
-                    key={idx}
+                    key={`${exerciseSectionKey}-${idx}-${exercise.promptTitle || ""}`}
                     exercise={exercise}
                     guide={guide}
                     fibValue={fibValue}
@@ -1818,6 +2078,58 @@ self.onmessage = async (event) => {
                     onStepWrongReset={(stepIdx) =>
                       handleStepWrongReset(idx, stepIdx)
                     }
+                    responseRecord={responseDrafts[idx]}
+                    responseDirty={responseSaveStates[idx] === "dirty"}
+                    responseSaving={responseSavingIndex === idx}
+                    responseError={responseErrorByIndex[idx]}
+                    onResponseChange={(value) =>
+                      updateResponseDraft(idx, (draft) => ({
+                        ...draft,
+                        promptTitle: exercise.promptTitle || "",
+                        questionHtml: exercise.question_html || "",
+                        answerMarkdown: value,
+                      }))
+                    }
+                    onResponseSave={() => void saveResponseDrafts(idx)}
+                    onResponseAttachFiles={(files) => {
+                      if (!files?.length) {
+                        return;
+                      }
+                      const incoming = Array.from(files);
+                      const incomingBytes = incoming.reduce(
+                        (sum, file) => sum + file.size,
+                        0
+                      );
+                      if (totalResponseAttachmentBytes + incomingBytes > MAX_TOTAL_UPLOAD_BYTES) {
+                        setResponseErrorByIndex((prev) => ({
+                          ...prev,
+                          [idx]: "Total uploaded files exceed 2 MB",
+                        }));
+                        return;
+                      }
+                      updateResponseDraft(idx, (draft) => ({
+                        ...draft,
+                        attachments: [
+                          ...draft.attachments,
+                          ...incoming.map((file) => ({
+                            id: crypto.randomUUID(),
+                            name: file.name,
+                            size: file.size,
+                            contentType: file.type,
+                            file,
+                            uploadRef: crypto.randomUUID(),
+                          })),
+                        ],
+                      }));
+                    }}
+                    onResponseRemoveAttachment={(attachmentId) =>
+                      updateResponseDraft(idx, (draft) => ({
+                        ...draft,
+                        attachments: draft.attachments.filter(
+                          (attachment) => attachment.id !== attachmentId
+                        ),
+                      }))
+                    }
                   />
                 );
               })}
@@ -1845,6 +2157,7 @@ self.onmessage = async (event) => {
             count={exercises.length}
             currentIndex={exerciseIndex}
             statuses={exerciseStatuses}
+            responseSaveStates={freeResponseMode ? responseSaveStates : undefined}
             maxUnlockedIndex={
               freeResponseMode ? Math.max(exercises.length - 1, 0) : maxExerciseIndex
             }

@@ -28,7 +28,6 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
-import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import DocumentScannerRoundedIcon from "@mui/icons-material/DocumentScannerRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -41,10 +40,7 @@ import FullscreenRoundedIcon from "@mui/icons-material/FullscreenRounded";
 import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
 import FormatQuoteRoundedIcon from "@mui/icons-material/FormatQuoteRounded";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
-import MemoryRoundedIcon from "@mui/icons-material/MemoryRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
-import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
-import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
 import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
@@ -54,6 +50,7 @@ import type {
   ApprovedQuestionPage as StoredApprovedQuestionPage,
   Lesson,
 } from "../../../state/lessonTypes";
+import ViewProgressStep from "./components/ViewProgressStep";
 import {
   buildAuthHeaders,
   type GetAccessTokenSilently,
@@ -103,7 +100,7 @@ type WorkflowState =
   | "sections"
   | "review"
   | "published";
-type StepKey = "source" | "concepts";
+type StepKey = "source" | "concepts" | "progress";
 type QuestionReviewState = "untouched" | "accepted" | "rejected";
 
 type SourceDocument = {
@@ -154,7 +151,6 @@ type BuilderDraft = {
   sourceDocuments: SourceDocument[];
   concepts: ConceptDraft[];
   sections: SectionDraft[];
-  lastSkillRunAt?: string | null;
 };
 
 type ApprovedQuestionPage = {
@@ -165,12 +161,6 @@ type ApprovedQuestionPage = {
   questions: string[];
   questionIndexes: number[];
   states: QuestionReviewState[];
-};
-
-type SkillRef = {
-  id: string;
-  label: string;
-  kind: "compute" | "ai_driven";
 };
 
 type PageQuestionUsageRecord = LessonPageQuestionUsage & {
@@ -193,7 +183,6 @@ const emptyDraft = (): BuilderDraft => ({
   sourceDocuments: [],
   concepts: [],
   sections: [],
-  lastSkillRunAt: null,
 });
 
 const getStorageKey = (lessonId: string) =>
@@ -1539,29 +1528,6 @@ const loadDraft = (lessonId: string): BuilderDraft => {
   }
 };
 
-const stepSkills: Record<StepKey, SkillRef[]> = {
-  source: [
-    {
-      id: "upload_source_document",
-      label: "Upload Source Document",
-      kind: "compute",
-    },
-    {
-      id: "extract_document_structure",
-      label: "Extract Document Structure",
-      kind: "compute",
-    },
-    {
-      id: "extract_page_questions_ai",
-      label: "Extract Page Questions AI",
-      kind: "ai_driven",
-    },
-  ],
-  concepts: [
-    { id: "confirm_questions", label: "Confirm Questions", kind: "compute" },
-  ],
-};
-
 const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
   <Box
     sx={{
@@ -1586,45 +1552,11 @@ const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
   </Box>
 );
 
-const SkillLinks = ({ skills }: { skills: SkillRef[] }) => (
-  <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-    {skills.map((skill) => (
-      <Box
-        key={skill.id}
-        component="a"
-        href={`/skill?skill=${skill.id}`}
-        onClick={(event: MouseEvent<HTMLAnchorElement>) =>
-          event.stopPropagation()
-        }
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 0.5,
-          borderRadius: "999px",
-          border: "1px solid rgba(0,0,0,0.12)",
-          px: 1,
-          py: 0.35,
-          fontSize: "0.75rem",
-          fontWeight: 700,
-          color: "text.secondary",
-          textDecoration: "none",
-          backgroundColor: "transparent",
-        }}
-      >
-        {skill.kind === "ai_driven" ? (
-          <PsychologyRoundedIcon sx={{ fontSize: 14 }} />
-        ) : (
-          <MemoryRoundedIcon sx={{ fontSize: 14 }} />
-        )}
-        <span>{skill.label}</span>
-      </Box>
-    ))}
-  </Stack>
-);
-
 const StepShell = ({
   stepNumber,
   label,
+  summaryText,
+  summaryNode,
   expanded,
   complete,
   inProgress = false,
@@ -1633,13 +1565,15 @@ const StepShell = ({
   showExpandIcon = true,
   showRerun = true,
   showDivider = true,
+  keepMounted = false,
   onToggle,
   onRerun,
-  skills,
   children,
 }: {
   stepNumber: number;
   label: string;
+  summaryText?: string;
+  summaryNode?: ReactNode;
   expanded: boolean;
   complete: boolean;
   inProgress?: boolean;
@@ -1648,9 +1582,9 @@ const StepShell = ({
   showExpandIcon?: boolean;
   showRerun?: boolean;
   showDivider?: boolean;
+  keepMounted?: boolean;
   onToggle: () => void;
   onRerun: () => void;
-  skills: SkillRef[];
   children: ReactNode;
 }) => {
   const circleColor = complete ? "#2e7d32" : inProgress ? "#ef6c00" : "#bdbdbd";
@@ -1728,9 +1662,22 @@ const StepShell = ({
             >
               {label}
             </Typography>
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <SkillLinks skills={skills} />
-            </Box>
+            {summaryNode ? (
+              <Box sx={{ display: "flex", alignItems: "center" }}>{summaryNode}</Box>
+            ) : null}
+            {!summaryNode && summaryText ? (
+              <Typography
+                sx={{
+                  fontSize: "1rem",
+                  color: "text.secondary",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {summaryText}
+              </Typography>
+            ) : null}
+            <Box sx={{ minWidth: 0, flex: 1 }} />
             {showExpandIcon ? (
               <ExpandMoreRoundedIcon
                 sx={{
@@ -1741,17 +1688,8 @@ const StepShell = ({
               />
             ) : null}
           </Box>
-          {showRerun ? (
-            <IconButton
-              onClick={onRerun}
-              disabled={!enabled}
-              sx={{ color: enabled ? "text.secondary" : "text.disabled" }}
-            >
-              <RefreshRoundedIcon />
-            </IconButton>
-          ) : null}
         </Box>
-        <Collapse in={expanded} timeout={320} unmountOnExit>
+        <Collapse in={expanded} timeout={320} unmountOnExit={!keepMounted}>
           <Box sx={{ pt: 2.5 }}>
             <Box sx={{ pt: 0.5 }}>{children}</Box>
           </Box>
@@ -2237,6 +2175,16 @@ const LessonWorkspace = ({
   const [publishing, setPublishing] = useState(false);
   const [expandedStep, setExpandedStep] = useState<StepKey | null>(null);
   const [rerunNotice, setRerunNotice] = useState("");
+  const [progressSummaryText, setProgressSummaryText] = useState(
+    "0 students - 0 answered, 0 part-answered, 0 unanswered",
+  );
+  const [progressSummaryStats, setProgressSummaryStats] = useState({
+    studentCount: 0,
+    answeredCount: 0,
+    partAnsweredCount: 0,
+    unansweredCount: 0,
+  });
+  const previousLessonIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!lesson) {
@@ -2250,8 +2198,20 @@ const LessonWorkspace = ({
       setUsageDialogOpen(false);
       setExpandedStep(null);
       setRerunNotice("");
+      setProgressSummaryText(
+        "0 students - 0 answered, 0 part-answered, 0 unanswered",
+      );
+      setProgressSummaryStats({
+        studentCount: 0,
+        answeredCount: 0,
+        partAnsweredCount: 0,
+        unansweredCount: 0,
+      });
+      previousLessonIdRef.current = null;
       return;
     }
+    const lessonChanged = previousLessonIdRef.current !== lesson.id;
+    previousLessonIdRef.current = lesson.id;
     previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrlsRef.current = [];
     setDraft(loadDraft(lesson.id));
@@ -2263,6 +2223,15 @@ const LessonWorkspace = ({
     setUsageDialogOpen(false);
     setExpandedStep(null);
     setRerunNotice("");
+    if (lessonChanged) {
+      setProgressSummaryText("0 students - 0 answered, 0 part-answered, 0 unanswered");
+      setProgressSummaryStats({
+        studentCount: 0,
+        answeredCount: 0,
+        partAnsweredCount: 0,
+        unansweredCount: 0,
+      });
+    }
   }, [lesson]);
 
   useEffect(() => {
@@ -2434,6 +2403,7 @@ const LessonWorkspace = ({
   const stepEnabled: Record<StepKey, boolean> = {
     source: true,
     concepts: sourceComplete || isPublicLesson,
+    progress: conceptsComplete || isPublicLesson,
   };
 
   const saveTitle = async () => {
@@ -2491,7 +2461,6 @@ const LessonWorkspace = ({
       ...current,
       workflowState: "concepts",
       concepts,
-      lastSkillRunAt: new Date().toISOString(),
     }));
     if (!titleDraft.trim()) {
       const suggestedTitle =
@@ -2513,7 +2482,6 @@ const LessonWorkspace = ({
       ...current,
       workflowState: "sections",
       sections,
-      lastSkillRunAt: new Date().toISOString(),
     }));
   };
 
@@ -2528,7 +2496,6 @@ const LessonWorkspace = ({
         sections: [],
         overview: "",
         workflowState: current.sourceDocuments.length ? "source" : "source",
-        lastSkillRunAt: new Date().toISOString(),
       }));
       setExpandedStep("source");
       setRerunNotice(
@@ -2542,7 +2509,6 @@ const LessonWorkspace = ({
         sections: [],
         overview: "",
         workflowState: "concepts",
-        lastSkillRunAt: new Date().toISOString(),
       }));
       setExpandedStep("concepts");
       setRerunNotice(
@@ -2574,7 +2540,6 @@ const LessonWorkspace = ({
         ...current,
         workflowState: "source",
         sourceDocuments: [...current.sourceDocuments, ...uploaded],
-        lastSkillRunAt: new Date().toISOString(),
       }));
       previewUrlsRef.current.push(...previews.map((preview) => preview.url));
       setPreviewDocuments((current) => [...current, ...previews]);
@@ -2937,7 +2902,6 @@ const LessonWorkspace = ({
     updateDraft((current) => ({
       ...current,
       workflowState: "concepts",
-      lastSkillRunAt: new Date().toISOString(),
     }));
     setExpandedStep("concepts");
     setRerunNotice("");
@@ -3391,12 +3355,6 @@ const LessonWorkspace = ({
         </Box>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Stack direction="row" spacing={0.25} alignItems="center">
-            <IconButton
-              onClick={onDuplicateLesson}
-              sx={{ color: "primary.main" }}
-            >
-              <ContentCopyRoundedIcon />
-            </IconButton>
             {showDelete ? (
               <IconButton onClick={onDeleteLesson} sx={{ color: "error.main" }}>
                 <DeleteRoundedIcon />
@@ -3449,7 +3407,6 @@ const LessonWorkspace = ({
             );
           }}
           onRerun={() => rerunStep("source")}
-          skills={stepSkills.source}
         >
           {renderSourceWorkspace()}
           {activeSourceDocument ? (
@@ -3594,15 +3551,14 @@ const LessonWorkspace = ({
         complete={conceptsComplete}
         inProgress={approvedQuestionsCount > 0 && !conceptsComplete}
         enabled={stepEnabled.concepts}
-        showConnector={false}
-        showDivider={false}
+        showConnector
+        showDivider
         onToggle={() =>
           setExpandedStep((current) =>
             current === "concepts" ? null : "concepts",
           )
         }
         onRerun={() => rerunStep("concepts")}
-        skills={stepSkills.concepts}
       >
         <Stack spacing={2}>
           <ApprovedQuestionsReview
@@ -3658,6 +3614,58 @@ const LessonWorkspace = ({
             ) : null}
           </Stack>
         </Stack>
+      </StepShell>
+
+      <StepShell
+        stepNumber={3}
+        label="View Progress"
+        summaryNode={
+          <Typography
+            component="span"
+            sx={{ fontSize: "1rem", color: "text.secondary", fontWeight: 700 }}
+          >
+            <Box component="span" sx={{ color: "#1565c0", fontWeight: 800 }}>
+              {progressSummaryStats.studentCount} students
+            </Box>
+            {" - "}
+            <Box component="span" sx={{ color: "#2e7d32", fontWeight: 800 }}>
+              {progressSummaryStats.answeredCount} answered
+            </Box>
+            {", "}
+            <Box component="span" sx={{ color: "#ef6c00", fontWeight: 800 }}>
+              {progressSummaryStats.partAnsweredCount} part-answered
+            </Box>
+            {", "}
+            <Box component="span" sx={{ color: "#c62828", fontWeight: 800 }}>
+              {progressSummaryStats.unansweredCount} unanswered
+            </Box>
+          </Typography>
+        }
+        expanded={expandedStep === "progress"}
+        complete={isPublicLesson}
+        enabled={stepEnabled.progress}
+        showConnector={false}
+        showRerun={false}
+        showDivider={false}
+        keepMounted
+        onToggle={() =>
+          setExpandedStep((current) =>
+            current === "progress" ? null : "progress",
+          )
+        }
+        onRerun={() => {}}
+      >
+        <ViewProgressStep
+          apiBaseUrl={apiBaseUrl}
+          auth0Audience={auth0Audience}
+          lessonId={lesson.id}
+          getAccessTokenSilently={getAccessTokenSilently}
+          expanded={expandedStep === "progress"}
+          enabled={stepEnabled.progress}
+          onNotify={onNotify}
+          onSummaryChange={setProgressSummaryText}
+          onSummaryStatsChange={setProgressSummaryStats}
+        />
       </StepShell>
 
     </Box>

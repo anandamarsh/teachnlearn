@@ -10,10 +10,12 @@ import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ClearRoundedIcon from "@mui/icons-material/ClearRounded";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ExerciseResponseRecord,
   ExerciseGuideState,
   ExerciseItem,
   ExerciseStep,
 } from "../../state/types";
+import ResponseMarkdownEditor from "./ResponseMarkdownEditor";
 
 const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "");
 
@@ -33,6 +35,14 @@ type ExerciseSlideProps = {
   onStepOptionSelect: (stepIndex: number, option: string) => void;
   onStepRevealComplete: (stepIndex: number) => void;
   onStepWrongReset: (stepIndex: number) => void;
+  responseRecord?: ExerciseResponseRecord;
+  responseDirty?: boolean;
+  responseSaving?: boolean;
+  responseError?: string | null;
+  onResponseChange: (value: string) => void;
+  onResponseSave: () => void;
+  onResponseAttachFiles: (files: FileList | null) => void;
+  onResponseRemoveAttachment: (attachmentId: string) => void;
 };
 
 const ExerciseSlide = ({
@@ -51,6 +61,14 @@ const ExerciseSlide = ({
   onStepOptionSelect,
   onStepRevealComplete,
   onStepWrongReset,
+  responseRecord,
+  responseDirty,
+  responseSaving,
+  responseError,
+  onResponseChange,
+  onResponseSave,
+  onResponseAttachFiles,
+  onResponseRemoveAttachment,
 }: ExerciseSlideProps) => {
   const steps = exercise.steps ?? [];
   const stepCount = steps.length;
@@ -531,68 +549,75 @@ const ExerciseSlide = ({
             ) : null}
             {exercise.type === "fib" ? (
               <Box className="exercise-options">
-                <Box className="fib-row">
-                  <TextField
-                    className="fib-textfield"
-                    variant="outlined"
-                    size="medium"
-                    value={displayFibValue}
-                    onChange={(event) => onMainFibChange(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (isFreeResponse || event.key !== "Enter") {
-                        return;
-                      }
-                      if (!fibDisabled) {
-                        onMainFibSubmit();
-                      }
-                    }}
-                    placeholder="Type your answer"
-                    error={
-                      !isFreeResponse &&
-                      (guide.mainPending === "incorrectPending" ||
-                        guide.mainLastIncorrect)
-                    }
-                    multiline={isFreeResponse}
-                    minRows={isFreeResponse ? 5 : undefined}
-                    helperText={
-                      isFreeResponse
-                        ? "Write your answer here."
-                        : guide.mainPending === "incorrectPending" ||
-                          guide.mainLastIncorrect
-                        ? "Sorry, that's not correct. Lets work it out together"
-                        : " "
-                    }
-                    FormHelperTextProps={{ className: "fib-helper-text" }}
-                    inputProps={{
-                      readOnly:
-                        !isFreeResponse &&
-                        (isMainLocked ||
-                          guide.mainPending === "incorrectPending"),
-                    }}
-                    disabled={
-                      !isFreeResponse &&
-                      (isMainLocked || guide.mainPending === "incorrectPending")
-                    }
-                    InputProps={{
-                      endAdornment: !isFreeResponse && displayFibValue ? (
-                        <InputAdornment position="end">
-                          <IconButton
-                            size="small"
-                            aria-label="Clear answer"
-                            onClick={() => onMainFibChange("")}
-                            edge="end"
-                            disabled={
-                              isMainLocked ||
-                              guide.mainPending === "incorrectPending"
-                            }
-                          >
-                            <ClearRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </InputAdornment>
-                      ) : null,
-                    }}
+                {isFreeResponse ? (
+                  <ResponseMarkdownEditor
+                    key={`response-${slideIndex}-${responseRecord?.exerciseIndex ?? slideIndex}`}
+                    value={responseRecord?.answerMarkdown || ""}
+                    teacherComment={responseRecord?.teacherComment || ""}
+                    attachments={responseRecord?.attachments || []}
+                    dirty={Boolean(responseDirty)}
+                    saving={Boolean(responseSaving)}
+                    error={responseError}
+                    onChange={onResponseChange}
+                    onSave={onResponseSave}
+                    onAttachFiles={onResponseAttachFiles}
+                    onRemoveAttachment={onResponseRemoveAttachment}
                   />
-                  {!isFreeResponse ? (
+                ) : (
+                  <Box className="fib-row">
+                    <TextField
+                      className="fib-textfield"
+                      variant="outlined"
+                      size="medium"
+                      value={displayFibValue}
+                      onChange={(event) => onMainFibChange(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") {
+                          return;
+                        }
+                        if (!fibDisabled) {
+                          onMainFibSubmit();
+                        }
+                      }}
+                      placeholder="Type your answer"
+                      error={
+                        guide.mainPending === "incorrectPending" ||
+                        guide.mainLastIncorrect
+                      }
+                      helperText={
+                        guide.mainPending === "incorrectPending" ||
+                        guide.mainLastIncorrect
+                          ? "Sorry, that's not correct. Lets work it out together"
+                          : " "
+                      }
+                      FormHelperTextProps={{ className: "fib-helper-text" }}
+                      inputProps={{
+                        readOnly:
+                          isMainLocked ||
+                          guide.mainPending === "incorrectPending",
+                      }}
+                      disabled={
+                        isMainLocked || guide.mainPending === "incorrectPending"
+                      }
+                      InputProps={{
+                        endAdornment: displayFibValue ? (
+                          <InputAdornment position="end">
+                            <IconButton
+                              size="small"
+                              aria-label="Clear answer"
+                              onClick={() => onMainFibChange("")}
+                              edge="end"
+                              disabled={
+                                isMainLocked ||
+                                guide.mainPending === "incorrectPending"
+                              }
+                            >
+                              <ClearRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </InputAdornment>
+                        ) : null,
+                      }}
+                    />
                     <IconButton
                       className="fib-check"
                       color="primary"
@@ -630,8 +655,8 @@ const ExerciseSlide = ({
                     >
                       <CheckRoundedIcon />
                     </IconButton>
-                  ) : null}
-                </Box>
+                  </Box>
+                )}
               </Box>
             ) : (
               <>

@@ -11,19 +11,15 @@ from .lessons import register_lesson_routes
 from .profile import register_profile_routes
 from .reports import register_report_routes
 from .sections import register_section_routes
-from .skills import register_skill_routes
-from app.services.skill_store import SkillStore
 
 
 def register_routes(
     mcp: Any, store: LessonStore, settings: Settings, events: LessonEventHub | None = None
 ) -> None:
-    skill_store = SkillStore(settings)
     register_health(mcp)
     register_auth_routes(mcp, store, settings)
     register_catalog_routes(mcp, store, settings)
-    register_lesson_routes(mcp, store, settings, events, skill_store)
+    register_lesson_routes(mcp, store, settings, events)
     register_section_routes(mcp, store, settings, events)
     register_profile_routes(mcp, store, settings)
     register_report_routes(mcp, store, settings)
-    register_skill_routes(mcp, settings, skill_store)

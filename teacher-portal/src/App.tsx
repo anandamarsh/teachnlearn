@@ -14,44 +14,35 @@ import {
   Typography,
 } from "@mui/material";
 import "./App.css";
-import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
 import LessonsPage from "./components/lessons/LessonsPage";
 import Students from "./components/Students";
-import SkillsPage from "./components/skills/SkillsPage";
 import { useLessons } from "./hooks/useLessons";
-import { useSkills } from "./hooks/useSkills";
 import { buildAuthHeaders } from "./auth/buildAuthHeaders";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
 
-type PageKey = "home" | "lessons" | "skills" | "students";
+type PageKey = "lessons" | "students";
 
 const getPageFromPath = (pathname: string): PageKey => {
-  if (pathname === "/skill") {
-    return "skills";
-  }
   if (pathname === "/lessons") {
     return "lessons";
   }
   if (pathname === "/students" || pathname === "/profile") {
     return "students";
   }
-  return "home";
+  return "lessons";
 };
 
 const getPathFromPage = (page: PageKey) => {
-  if (page === "skills") {
-    return "/skill";
-  }
   if (page === "lessons") {
     return "/lessons";
   }
   if (page === "students") {
     return "/students";
   }
-  return "/";
+  return "/lessons";
 };
 
 const isAuthCallbackUrl = (search: string) => {
@@ -75,24 +66,6 @@ function App() {
 
   const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
   const configError = !apiBaseUrl || !auth0Audience;
-  const {
-    skills,
-    selectedSkillId,
-    setSelectedSkillId,
-    createSkill,
-    updateSkill,
-    duplicateSkill: duplicateSkillDefinition,
-    deleteSkill: deleteSkillDefinition,
-    resetSkills,
-    error: skillsError,
-    setError: setSkillsError,
-  } = useSkills({
-    apiBaseUrl,
-    auth0Audience,
-    isAuthenticated,
-    getAccessTokenSilently,
-  });
-
   const [wsPulse, setWsPulse] = useState<{ id: number; color: "success" | "error" } | null>(
     null
   );
@@ -140,6 +113,7 @@ function App() {
   const [otpCode, setOtpCode] = useState("");
   const [otpStatus, setOtpStatus] = useState<"idle" | "loading" | "error">("idle");
   const otpStorageKey = "tp_otp_cache_v1";
+  const [addStudentSignal, setAddStudentSignal] = useState(0);
 
   const notify = useCallback((message: string, severity: "success" | "error") => {
     setSnackbar({ open: true, message, severity });
@@ -263,13 +237,6 @@ function App() {
     }
   }, [error, notify, setError]);
 
-  useEffect(() => {
-    if (skillsError) {
-      notify(skillsError, "error");
-      setSkillsError("");
-    }
-  }, [notify, setSkillsError, skillsError]);
-
   if (configError) {
     return (
       <Box display="flex" minHeight="100vh" alignItems="center" justifyContent="center">
@@ -309,25 +276,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (page !== "skills" || !skills.length) {
-      return;
-    }
-    const skillId = new URLSearchParams(window.location.search).get("skill");
-    if (skillId && skills.some((skill) => skill.id === skillId) && selectedSkillId !== skillId) {
-      setSelectedSkillId(skillId);
-    }
-  }, [page, selectedSkillId, setSelectedSkillId, skills]);
-
-  useEffect(() => {
     if (isLoading || isAuthCallbackUrl(window.location.search)) {
       return;
     }
     const nextPath = getPathFromPage(page);
     const current = `${window.location.pathname}${window.location.search}`;
-    const next =
-      page === "skills"
-        ? `${nextPath}${window.location.search || ""}`
-        : nextPath;
+    const next = nextPath;
     if (current !== next) {
       window.history.replaceState({}, "", next);
     }
@@ -406,18 +360,8 @@ function App() {
       className="app-shell"
       minHeight="100vh"
       bgcolor="background.default"
-      pb={page === "home" ? 0 : 10}
+      pb={10}
     >
-      {page === "home" ? (
-        <Home
-          onLessonsClick={() => setPage("lessons")}
-          onSkillsClick={() => setPage("skills")}
-          onStudentsClick={() => setPage("students")}
-          otpCode={otpCode}
-          otpStatus={otpStatus}
-          onReloadOtp={fetchOtp}
-        />
-      ) : null}
       {page === "lessons" ? (
         <LessonsPage
           lessons={lessons}
@@ -451,22 +395,7 @@ function App() {
           auth0Audience={auth0Audience}
           getAccessTokenSilently={getAccessTokenSilently}
           onNotify={notify}
-        />
-      ) : null}
-      {page === "skills" ? (
-        <SkillsPage
-          skills={skills}
-          selectedSkillId={selectedSkillId}
-          onSelectSkill={(skillId) => setSelectedSkillId(skillId)}
-          onCreateSkill={() => {
-            createSkill();
-            notify("Skill created", "success");
-          }}
-          onUpdateSkill={updateSkill}
-          onDuplicateSkill={duplicateSkillDefinition}
-          onDeleteSkill={deleteSkillDefinition}
-          onResetSkills={resetSkills}
-          onNotify={notify}
+          addStudentSignal={addStudentSignal}
         />
       ) : null}
 
@@ -474,14 +403,17 @@ function App() {
         isAuthenticated={isAuthenticated}
         userAvatar={user?.picture}
         currentPage={page}
-        onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
-        onSkillsClick={() => setPage("skills")}
         onStudentsClick={() => setPage("students")}
-        onCreateLesson={handleCreateLesson}
-        onDuplicateLesson={() => setDuplicateOpen(true)}
+        onPrimaryAction={() => {
+          if (page === "students") {
+            setAddStudentSignal((current) => current + 1);
+            return;
+          }
+          void handleCreateLesson();
+        }}
+        showPrimaryAction={page === "lessons" || page === "students"}
         onDeleteLesson={() => setDeleteOpen(true)}
-        showDuplicate={page === "lessons" && Boolean(selectedLesson)}
         showDelete={page === "lessons" && Boolean(selectedLesson) && !isSelectedPublished}
         onAuthClick={() => loginWithRedirect()}
         onLogout={handleLogout}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -7,16 +7,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Fab,
   IconButton,
   LinearProgress,
   Stack,
   Typography,
   Button,
 } from "@mui/material";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
-import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import {
   buildAuthHeaders,
   type GetAccessTokenSilently,
@@ -32,6 +29,7 @@ type StudentsProps = {
   auth0Audience: string;
   getAccessTokenSilently: GetAccessTokenSilently;
   onNotify: (message: string, severity: "success" | "error") => void;
+  addStudentSignal: number;
 };
 
 const NAME_FIRST_PARTS = [
@@ -125,13 +123,15 @@ const Students = ({
   auth0Audience,
   getAccessTokenSilently,
   onNotify,
+  addStudentSignal,
 }: StudentsProps) => {
   const [students, setStudents] = useState<TeacherStudent[]>([]);
-  const [savedStudents, setSavedStudents] = useState<TeacherStudent[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<TeacherStudent | null>(null);
+  const persistedStudentsRef = useRef<TeacherStudent[]>([]);
+  const lastAddSignalRef = useRef(addStudentSignal);
 
   const endpoint = useMemo(
     () => (apiBaseUrl ? `${apiBaseUrl}/teacher/students` : ""),
@@ -157,7 +157,7 @@ const Students = ({
           return;
         }
         setStudents(normalized);
-        setSavedStudents(normalized);
+        persistedStudentsRef.current = normalized;
       } catch (err) {
         if (!active) {
           return;
@@ -178,23 +178,10 @@ const Students = ({
     };
   }, [auth0Audience, endpoint, getAccessTokenSilently, onNotify]);
 
-  const isDirty = JSON.stringify(students) !== JSON.stringify(savedStudents);
-
-  const handleAddStudent = useCallback(() => {
-    const existingNames = new Set(
-      students.map((student) => student.name.toLowerCase())
-    );
-    setStudents((current) => [
-      ...current,
-      {
-        id: createStudentId(),
-        name: createStudentName(existingNames),
-        passcode: createStudentPasscode(),
-      },
-    ]);
-  }, [students]);
-
-  const handleSave = useCallback(async () => {
+  const persistStudents = useCallback(async (
+    nextStudents: TeacherStudent[],
+    successMessage: string
+  ) => {
     if (!endpoint) {
       return;
     }
@@ -205,29 +192,60 @@ const Students = ({
         getAccessTokenSilently,
         auth0Audience
       );
-      const data = await updateTeacherStudents(endpoint, headers, { students });
+      const data = await updateTeacherStudents(endpoint, headers, {
+        students: nextStudents,
+      });
       const normalized = normalizeStudents(data.students);
       setStudents(normalized);
-      setSavedStudents(normalized);
-      onNotify("Students saved", "success");
+      persistedStudentsRef.current = normalized;
+      onNotify(successMessage, "success");
     } catch (err) {
       const detail =
         err instanceof Error ? err.message : "Failed to save students";
       setError(detail);
+      setStudents(persistedStudentsRef.current);
       onNotify(detail, "error");
     } finally {
       setSaving(false);
     }
-  }, [auth0Audience, endpoint, getAccessTokenSilently, onNotify, students]);
+  }, [auth0Audience, endpoint, getAccessTokenSilently, onNotify]);
+
+  const handleAddStudent = useCallback(() => {
+    const existingNames = new Set(
+      persistedStudentsRef.current.map((student: TeacherStudent) =>
+        student.name.toLowerCase()
+      )
+    );
+    const nextStudents = [
+      ...persistedStudentsRef.current,
+      {
+        id: createStudentId(),
+        name: createStudentName(existingNames),
+        passcode: createStudentPasscode(),
+      },
+    ];
+    setStudents(nextStudents);
+    void persistStudents(nextStudents, "Student added");
+  }, [persistStudents]);
+
+  useEffect(() => {
+    if (addStudentSignal === lastAddSignalRef.current) {
+      return;
+    }
+    lastAddSignalRef.current = addStudentSignal;
+    handleAddStudent();
+  }, [addStudentSignal, handleAddStudent]);
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) {
       return;
     }
-    setStudents((current) =>
-      current.filter((student) => student.id !== deleteTarget.id)
+    const nextStudents = persistedStudentsRef.current.filter(
+      (student: TeacherStudent) => student.id !== deleteTarget.id
     );
+    setStudents(nextStudents);
     setDeleteTarget(null);
+    void persistStudents(nextStudents, "Student deleted");
   };
 
   return (
@@ -292,38 +310,6 @@ const Students = ({
           </Stack>
         )}
 
-        <Fab
-          color="secondary"
-          aria-label="Add student"
-          onClick={handleAddStudent}
-          disabled={saving || loading}
-          sx={{
-            position: "fixed",
-            right: 20,
-            bottom: "calc(96px + 56px)",
-            width: "4rem",
-            height: "4rem",
-            boxShadow: "0 12px 24px rgba(0,0,0,0.2)",
-          }}
-        >
-          <AddRoundedIcon />
-        </Fab>
-        <Fab
-          color="primary"
-          aria-label="Save students"
-          onClick={handleSave}
-          disabled={!isDirty || saving || loading}
-          sx={{
-            position: "fixed",
-            right: 20,
-            bottom: "calc(20px + 56px)",
-            width: "4rem",
-            height: "4rem",
-            boxShadow: "0 12px 24px rgba(0,0,0,0.2)",
-          }}
-        >
-          <SaveRoundedIcon />
-        </Fab>
       </Stack>
 
       <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>

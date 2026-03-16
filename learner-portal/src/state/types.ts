@@ -57,6 +57,25 @@ export type ExerciseItem = {
 };
 
 export type ExerciseStatus = "unattempted" | "correct" | "incorrect";
+export type ExerciseResponseSaveState = "default" | "dirty" | "saved";
+
+export type ResponseAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  contentType?: string;
+  storageKey?: string;
+  url?: string;
+};
+
+export type ExerciseResponseRecord = {
+  exerciseIndex: number;
+  promptTitle?: string;
+  questionHtml: string;
+  answerMarkdown: string;
+  teacherComment?: string;
+  attachments: ResponseAttachment[];
+};
 
 export type ExerciseStepProgress = {
   status: "unanswered" | "correct" | "correctPending" | "revealed";

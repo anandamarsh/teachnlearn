@@ -17,7 +17,6 @@ from app.services.openai_question_extractor import (
     extract_questions_from_pdf_file,
 )
 from app.services.lesson_store import LessonStore, sanitize_email
-from app.services.skill_store import SkillStore
 
 from .common import json_error, public_object_url
 
@@ -27,7 +26,6 @@ def register_lesson_routes(
     store: LessonStore,
     settings: Settings,
     events: LessonEventHub | None = None,
-    skill_store: SkillStore | None = None,
 ) -> None:
     print(
         "[PUBLISH][DEBUG] register_lesson_routes: mounting POST /lesson/id/{lesson_id}/publish-approved-questions"
@@ -171,11 +169,6 @@ def register_lesson_routes(
         pdf_bytes = await uploaded_file.read()
         if not pdf_bytes:
             return json_error("uploaded file is empty", 400)
-        skill_prompt = None
-        if skill_store is not None:
-            skill = skill_store.get_skill(email, "extract_page_questions_ai")
-            if skill:
-                skill_prompt = str(skill.get("prompt") or "").strip() or None
         try:
             extraction = extract_questions_from_pdf_file(
                 pdf_bytes=pdf_bytes,
@@ -183,7 +176,6 @@ def register_lesson_routes(
                 page_count=page_count,
                 email=email,
                 settings=settings,
-                skill_prompt=skill_prompt,
             )
         except RuntimeError as exc:
             return json_error(str(exc), 502)

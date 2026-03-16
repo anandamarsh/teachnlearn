@@ -13,7 +13,7 @@ import {
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import { CatalogLesson } from "../../state/types";
-import { formatTeacherEmail, withCacheBuster } from "../../util/format";
+import { withCacheBuster } from "../../util/format";
 
 type HomeViewProps = {
   lessons: CatalogLesson[];
@@ -222,12 +222,6 @@ const HomeView = ({
                 </Typography>
               ) : null}
             </Box>
-            <Typography variant="body2" color="text.secondary">
-              by{" "}
-              <span className="popup-teacher">
-                {formatTeacherEmail(hoverLesson?.teacher || "")}
-              </span>
-            </Typography>
             <Typography variant="body2">
               {hoverLesson?.content || "No description provided."}
             </Typography>

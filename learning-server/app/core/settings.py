@@ -42,6 +42,9 @@ class Settings:
         self.student_session_ttl_seconds = int(
             os.getenv("STUDENT_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30))
         )
+        self.student_response_upload_limit_bytes = int(
+            os.getenv("STUDENT_RESPONSE_UPLOAD_LIMIT_BYTES", str(2 * 1024 * 1024))
+        )
         self.lesson_sections, self.lesson_section_descriptions = _load_lesson_sections(
             self.lesson_sections_path
         )
