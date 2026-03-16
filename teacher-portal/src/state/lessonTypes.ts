@@ -5,6 +5,13 @@ export type LessonWorkflowState =
   | "review"
   | "published";
 
+export type ApprovedQuestionPage = {
+  title?: string | null;
+  detectedPageNumber?: number | null;
+  pageNumber?: number | null;
+  questions?: string[] | null;
+};
+
 export type LessonTemplate = {
   id: string;
   title: string;
@@ -28,6 +35,7 @@ export type LessonTemplate = {
   exerciseGenerator?: ExerciseGeneratorMeta | null;
   exerciseMode?: string | null;
   exerciseConfig?: ExerciseConfig | null;
+  approvedQuestions?: ApprovedQuestionPage[] | null;
 };
 
 export type Lesson = LessonTemplate;
@@ -96,6 +104,9 @@ export const normalizeLesson = (
     null;
   const exerciseConfig = (item.exerciseConfig ||
     item.exercise_config) as ExerciseConfig | undefined;
+  const approvedQuestions = item.approvedQuestions as
+    | ApprovedQuestionPage[]
+    | undefined;
   return {
     id: String(id),
     title,
@@ -112,5 +123,6 @@ export const normalizeLesson = (
     exerciseGenerator,
     exerciseMode,
     exerciseConfig: exerciseConfig ?? null,
+    approvedQuestions: approvedQuestions ?? null,
   };
 };

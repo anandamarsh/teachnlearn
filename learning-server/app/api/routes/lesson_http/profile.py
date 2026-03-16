@@ -13,6 +13,35 @@ from .common import json_error
 
 
 def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None:
+    @mcp.custom_route("/teacher/students", methods=["GET"])
+    async def get_students(request: Request) -> JSONResponse:
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        try:
+            students = store.get_students(email)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        return JSONResponse(students)
+
+    @mcp.custom_route("/teacher/students", methods=["PUT"])
+    async def put_students(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            return json_error("invalid JSON body", 400)
+        email = get_request_email(request, None, settings)
+        if not email:
+            return json_error("email is required", 400)
+        students = payload.get("students") if isinstance(payload, dict) else []
+        if not isinstance(students, list):
+            return json_error("students must be a list", 400)
+        try:
+            saved = store.put_students(email, students)
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        return JSONResponse(saved)
+
     @mcp.custom_route("/teacher/profile", methods=["GET"])
     async def get_profile(request: Request) -> JSONResponse:
         email = get_request_email(request, None, settings)

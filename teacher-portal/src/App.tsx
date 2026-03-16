@@ -17,7 +17,7 @@ import "./App.css";
 import Home from "./components/Home";
 import BottomNav from "./components/BottomNav";
 import LessonsPage from "./components/lessons/LessonsPage";
-import Profile from "./components/Profile";
+import Students from "./components/Students";
 import SkillsPage from "./components/skills/SkillsPage";
 import { useLessons } from "./hooks/useLessons";
 import { useSkills } from "./hooks/useSkills";
@@ -26,7 +26,7 @@ import { buildAuthHeaders } from "./auth/buildAuthHeaders";
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
 
-type PageKey = "home" | "lessons" | "skills" | "profile";
+type PageKey = "home" | "lessons" | "skills" | "students";
 
 const getPageFromPath = (pathname: string): PageKey => {
   if (pathname === "/skill") {
@@ -35,8 +35,8 @@ const getPageFromPath = (pathname: string): PageKey => {
   if (pathname === "/lessons") {
     return "lessons";
   }
-  if (pathname === "/profile") {
-    return "profile";
+  if (pathname === "/students" || pathname === "/profile") {
+    return "students";
   }
   return "home";
 };
@@ -48,10 +48,19 @@ const getPathFromPage = (page: PageKey) => {
   if (page === "lessons") {
     return "/lessons";
   }
-  if (page === "profile") {
-    return "/profile";
+  if (page === "students") {
+    return "/students";
   }
   return "/";
+};
+
+const isAuthCallbackUrl = (search: string) => {
+  const params = new URLSearchParams(search);
+  return (
+    (params.has("code") && params.has("state")) ||
+    params.has("error") ||
+    params.has("error_description")
+  );
 };
 
 function App() {
@@ -270,6 +279,9 @@ function App() {
   }
 
   useEffect(() => {
+    if (isAuthCallbackUrl(window.location.search)) {
+      return;
+    }
     if (!isLoading && !isAuthenticated) {
       loginWithRedirect();
     }
@@ -307,6 +319,9 @@ function App() {
   }, [page, selectedSkillId, setSelectedSkillId, skills]);
 
   useEffect(() => {
+    if (isLoading || isAuthCallbackUrl(window.location.search)) {
+      return;
+    }
     const nextPath = getPathFromPage(page);
     const current = `${window.location.pathname}${window.location.search}`;
     const next =
@@ -316,7 +331,7 @@ function App() {
     if (current !== next) {
       window.history.replaceState({}, "", next);
     }
-  }, [page]);
+  }, [isLoading, page]);
 
   const fetchOtp = useCallback(async () => {
     if (!apiBaseUrl || !auth0Audience) {
@@ -397,7 +412,7 @@ function App() {
         <Home
           onLessonsClick={() => setPage("lessons")}
           onSkillsClick={() => setPage("skills")}
-          onProfileClick={() => setPage("profile")}
+          onStudentsClick={() => setPage("students")}
           otpCode={otpCode}
           otpStatus={otpStatus}
           onReloadOtp={fetchOtp}
@@ -430,8 +445,8 @@ function App() {
           }
         />
       ) : null}
-      {page === "profile" ? (
-        <Profile
+      {page === "students" ? (
+        <Students
           apiBaseUrl={apiBaseUrl}
           auth0Audience={auth0Audience}
           getAccessTokenSilently={getAccessTokenSilently}
@@ -462,7 +477,7 @@ function App() {
         onHomeClick={() => setPage("home")}
         onLessonsClick={() => setPage("lessons")}
         onSkillsClick={() => setPage("skills")}
-        onProfileClick={() => setPage("profile")}
+        onStudentsClick={() => setPage("students")}
         onCreateLesson={handleCreateLesson}
         onDuplicateLesson={() => setDuplicateOpen(true)}
         onDeleteLesson={() => setDeleteOpen(true)}

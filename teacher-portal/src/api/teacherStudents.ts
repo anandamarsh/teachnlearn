@@ -10,27 +10,32 @@ const extractError = (data: unknown, fallback: string) => {
   return fallback;
 };
 
-export type TeacherProfile = {
+export type TeacherStudent = {
+  id: string;
   name: string;
-  school: string;
+  passcode: string;
 };
 
-export const fetchTeacherProfile = async (
+export type TeacherStudentsPayload = {
+  students: TeacherStudent[];
+};
+
+export const fetchTeacherStudents = async (
   endpoint: string,
   headers: Record<string, string>
 ) => {
   const response = await fetch(endpoint, { headers });
   const data = await parseJson(response);
   if (!response.ok) {
-    throw new Error(extractError(data, "Failed to load profile"));
+    throw new Error(extractError(data, "Failed to load students"));
   }
-  return data as TeacherProfile;
+  return data as TeacherStudentsPayload;
 };
 
-export const updateTeacherProfile = async (
+export const updateTeacherStudents = async (
   endpoint: string,
   headers: Record<string, string>,
-  payload: TeacherProfile
+  payload: TeacherStudentsPayload
 ) => {
   const response = await fetch(endpoint, {
     method: "PUT",
@@ -39,7 +44,7 @@ export const updateTeacherProfile = async (
   });
   const data = await parseJson(response);
   if (!response.ok) {
-    throw new Error(extractError(data, "Failed to update profile"));
+    throw new Error(extractError(data, "Failed to save students"));
   }
-  return data as TeacherProfile;
+  return data as TeacherStudentsPayload;
 };

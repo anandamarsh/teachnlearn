@@ -11,6 +11,32 @@ from .s3 import delete_lesson_prefix, ensure_lesson_prefix, sanitize_email
 
 
 class LessonStoreLessons:
+    def _build_approved_questions_summary(
+        self,
+        pages: list[dict[str, Any]],
+        max_questions: int = 3,
+        max_chars: int = 320,
+    ) -> str | None:
+        previews: list[str] = []
+        for page in pages:
+            for question in page.get("questions") or []:
+                text = " ".join(
+                    str(question or "").replace("\r", "\n").splitlines()
+                ).strip()
+                if not text:
+                    continue
+                previews.append(text)
+                if len(previews) >= max_questions:
+                    break
+            if len(previews) >= max_questions:
+                break
+        if not previews:
+            return None
+        summary = " ".join(previews)
+        if len(summary) <= max_chars:
+            return summary
+        return f"{summary[: max_chars - 3].rstrip()}..."
+
     def _render_approved_questions_html(
         self, pages: list[dict[str, Any]]
     ) -> str:
@@ -111,7 +137,7 @@ class LessonStoreLessons:
             )
             lesson["title"] = next_title
             lesson["status"] = "published"
-            lesson["summary"] = f"{len(pages)} page group(s) of approved questions"
+            lesson["summary"] = self._build_approved_questions_summary(pages)
             lesson["approvedQuestions"] = pages
             lesson["updated_at"] = now
 

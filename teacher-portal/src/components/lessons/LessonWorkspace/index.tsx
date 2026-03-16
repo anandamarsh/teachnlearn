@@ -50,7 +50,10 @@ import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
 import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
-import type { Lesson } from "../../../state/lessonTypes";
+import type {
+  ApprovedQuestionPage as StoredApprovedQuestionPage,
+  Lesson,
+} from "../../../state/lessonTypes";
 import {
   buildAuthHeaders,
   type GetAccessTokenSilently,
@@ -379,9 +382,48 @@ const buildApprovedQuestionPages = (
     }),
   );
 
+const normalizeStoredApprovedQuestionPages = (
+  pages: StoredApprovedQuestionPage[] | null | undefined,
+): ApprovedQuestionPage[] =>
+  Array.isArray(pages)
+    ? pages
+        .map<ApprovedQuestionPage | null>((page, index) => {
+          const questions = Array.isArray(page?.questions)
+            ? page.questions
+                .map((question) => cleanLine(String(question || "")))
+                .filter(Boolean)
+            : [];
+          if (questions.length === 0) {
+            return null;
+          }
+          const rawPageNumber = Number(page?.pageNumber);
+          const rawDetectedPageNumber = Number(page?.detectedPageNumber);
+          return {
+            sourceDocumentId: `published_${index + 1}`,
+            pageNumber:
+              Number.isFinite(rawPageNumber) && rawPageNumber > 0
+                ? rawPageNumber
+                : index + 1,
+            title: page?.title ?? null,
+            detectedPageNumber:
+              Number.isFinite(rawDetectedPageNumber) &&
+              rawDetectedPageNumber > 0
+                ? rawDetectedPageNumber
+                : null,
+            questions,
+            questionIndexes: questions.map((_, questionIndex) => questionIndex),
+            states: questions.map(
+              (): QuestionReviewState => "accepted",
+            ),
+          };
+        })
+        .filter((page): page is ApprovedQuestionPage => Boolean(page))
+    : [];
+
 const QuestionsAccordionList = ({
   page,
   fullscreen = false,
+  readOnly = false,
   onUpdateQuestion,
   onUpdateQuestionState,
   onUpdatePageTitle,
@@ -397,6 +439,7 @@ const QuestionsAccordionList = ({
     states: QuestionReviewState[];
   } | null;
   fullscreen?: boolean;
+  readOnly?: boolean;
   onUpdateQuestion?: (
     pageNumber: number,
     questionIndex: number,
@@ -549,7 +592,7 @@ const QuestionsAccordionList = ({
                 px: 0.5,
               }}
             >
-              {isEditingTitle ? (
+              {isEditingTitle && !readOnly ? (
                 <TextField
                   fullWidth
                   autoFocus
@@ -614,13 +657,15 @@ const QuestionsAccordionList = ({
                   >
                     {page.title || "-"}
                   </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => setIsEditingTitle(true)}
-                    sx={{ p: 0.35 }}
-                  >
-                    <EditRoundedIcon fontSize="small" />
-                  </IconButton>
+                  {!readOnly ? (
+                    <IconButton
+                      size="small"
+                      onClick={() => setIsEditingTitle(true)}
+                      sx={{ p: 0.35 }}
+                    >
+                      <EditRoundedIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
                 </Box>
               )}
             </Box>
@@ -722,59 +767,61 @@ const QuestionsAccordionList = ({
                           >
                             {summarizeQuestion(question, summaryMaxChars)}
                           </Typography>
-                          <Stack
-                            direction="row"
-                            spacing={0}
-                            alignItems="center"
-                            sx={{
-                              position: "absolute",
-                              right: 36,
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              zIndex: 1,
-                            }}
-                          >
-                            <IconButton
-                              size="small"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onUpdateQuestionState?.(
-                                  page.pageNumber,
-                                  sourceQuestionIndex,
-                                  reviewState === "accepted"
-                                    ? "untouched"
-                                    : "accepted",
-                                );
-                              }}
+                          {!readOnly ? (
+                            <Stack
+                              direction="row"
+                              spacing={0}
+                              alignItems="center"
                               sx={{
-                                color:
-                                  reviewState === "accepted"
-                                    ? "#2e7d32"
-                                    : "#bdbdbd",
-                                p: 0.35,
+                                position: "absolute",
+                                right: 36,
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                zIndex: 1,
                               }}
                             >
-                              <CheckRoundedIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setEditingKey((current) =>
-                                  current === questionKey ? null : questionKey,
-                                );
-                              }}
-                              disabled={isEditing}
-                              sx={{
-                                color: isEditing
-                                  ? "action.disabled"
-                                  : "text.secondary",
-                                p: 0.35,
-                              }}
-                            >
-                              <EditRoundedIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
+                              <IconButton
+                                size="small"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onUpdateQuestionState?.(
+                                    page.pageNumber,
+                                    sourceQuestionIndex,
+                                    reviewState === "accepted"
+                                      ? "untouched"
+                                      : "accepted",
+                                  );
+                                }}
+                                sx={{
+                                  color:
+                                    reviewState === "accepted"
+                                      ? "#2e7d32"
+                                      : "#bdbdbd",
+                                  p: 0.35,
+                                }}
+                              >
+                                <CheckRoundedIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setEditingKey((current) =>
+                                    current === questionKey ? null : questionKey,
+                                  );
+                                }}
+                                disabled={isEditing}
+                                sx={{
+                                  color: isEditing
+                                    ? "action.disabled"
+                                    : "text.secondary",
+                                  p: 0.35,
+                                }}
+                              >
+                                <EditRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          ) : null}
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
@@ -955,7 +1002,7 @@ const QuestionsAccordionList = ({
         ) : null}
         {page ? (
           <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 0.5 }}>
-            {isEditingPageNumber ? (
+            {isEditingPageNumber && !readOnly ? (
               <TextField
                 autoFocus
                 variant="standard"
@@ -1028,13 +1075,15 @@ const QuestionsAccordionList = ({
                     ? page.detectedPageNumber
                     : "-"}
                 </Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => setIsEditingPageNumber(true)}
-                  sx={{ color: "#fff", p: 0.2 }}
-                >
-                  <EditRoundedIcon sx={{ fontSize: "0.95rem" }} />
-                </IconButton>
+                {!readOnly ? (
+                  <IconButton
+                    size="small"
+                    onClick={() => setIsEditingPageNumber(true)}
+                    sx={{ color: "#fff", p: 0.2 }}
+                  >
+                    <EditRoundedIcon sx={{ fontSize: "0.95rem" }} />
+                  </IconButton>
+                ) : null}
               </Box>
             )}
           </Box>
@@ -1046,12 +1095,16 @@ const QuestionsAccordionList = ({
 
 const ApprovedQuestionsReview = ({
   pages,
+  emptyStateMessage = "Approve questions in the source step to review them here.",
+  readOnly = false,
   onUpdateQuestion,
   onUpdateQuestionState,
   onUpdatePageTitle,
   onUpdatePageNumber,
 }: {
   pages: ApprovedQuestionPage[];
+  emptyStateMessage?: string;
+  readOnly?: boolean;
   onUpdateQuestion: (
     documentId: string,
     pageNumber: number,
@@ -1076,11 +1129,7 @@ const ApprovedQuestionsReview = ({
   ) => void;
 }) => {
   if (pages.length === 0) {
-    return (
-      <Alert severity="info">
-        Approve questions in the source step to review them here.
-      </Alert>
-    );
+    return <Alert severity="info">{emptyStateMessage}</Alert>;
   }
 
   return (
@@ -1089,6 +1138,7 @@ const ApprovedQuestionsReview = ({
         <Box key={`${page.sourceDocumentId}_${page.pageNumber}`}>
           <QuestionsAccordionList
             page={page}
+            readOnly={readOnly}
             summaryMaxChars={150}
             onUpdateQuestion={(pageNumber, questionIndex, nextValue) =>
               onUpdateQuestion(
@@ -1580,6 +1630,9 @@ const StepShell = ({
   inProgress = false,
   enabled,
   showConnector,
+  showExpandIcon = true,
+  showRerun = true,
+  showDivider = true,
   onToggle,
   onRerun,
   skills,
@@ -1592,6 +1645,9 @@ const StepShell = ({
   inProgress?: boolean;
   enabled: boolean;
   showConnector: boolean;
+  showExpandIcon?: boolean;
+  showRerun?: boolean;
+  showDivider?: boolean;
   onToggle: () => void;
   onRerun: () => void;
   skills: SkillRef[];
@@ -1675,28 +1731,32 @@ const StepShell = ({
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <SkillLinks skills={skills} />
             </Box>
-            <ExpandMoreRoundedIcon
-              sx={{
-                transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.18s ease",
-                color: enabled ? "text.primary" : "text.disabled",
-              }}
-            />
+            {showExpandIcon ? (
+              <ExpandMoreRoundedIcon
+                sx={{
+                  transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.18s ease",
+                  color: enabled ? "text.primary" : "text.disabled",
+                }}
+              />
+            ) : null}
           </Box>
-          <IconButton
-            onClick={onRerun}
-            disabled={!enabled}
-            sx={{ color: enabled ? "text.secondary" : "text.disabled" }}
-          >
-            <RefreshRoundedIcon />
-          </IconButton>
+          {showRerun ? (
+            <IconButton
+              onClick={onRerun}
+              disabled={!enabled}
+              sx={{ color: enabled ? "text.secondary" : "text.disabled" }}
+            >
+              <RefreshRoundedIcon />
+            </IconButton>
+          ) : null}
         </Box>
         <Collapse in={expanded} timeout={320} unmountOnExit>
           <Box sx={{ pt: 2.5 }}>
             <Box sx={{ pt: 0.5 }}>{children}</Box>
           </Box>
         </Collapse>
-        <Divider sx={{ mt: 2.5, mb: 2.5 }} />
+        {showDivider ? <Divider sx={{ mt: 2.5, mb: 2.5 }} /> : null}
       </Box>
     </Box>
   );
@@ -2299,9 +2359,20 @@ const LessonWorkspace = ({
     }
   };
 
-  const approvedQuestionPages = useMemo(
+  const draftApprovedQuestionPages = useMemo(
     () => buildApprovedQuestionPages(draft.sourceDocuments),
     [draft.sourceDocuments],
+  );
+  const storedApprovedQuestionPages = useMemo(
+    () => normalizeStoredApprovedQuestionPages(lesson?.approvedQuestions),
+    [lesson?.approvedQuestions],
+  );
+  const approvedQuestionPages = useMemo(
+    () =>
+      draftApprovedQuestionPages.length > 0
+        ? draftApprovedQuestionPages
+        : storedApprovedQuestionPages,
+    [draftApprovedQuestionPages, storedApprovedQuestionPages],
   );
   const approvedQuestionsCount = useMemo(
     () =>
@@ -2316,6 +2387,9 @@ const LessonWorkspace = ({
     draft.workflowState === "review" ||
     draft.workflowState === "published" ||
     draft.sections.length > 0 ||
+    String(lesson?.status || "").toLowerCase().includes("publish");
+  const isPublicLesson =
+    draft.workflowState === "published" ||
     String(lesson?.status || "").toLowerCase().includes("publish");
 
   const activePreview =
@@ -2359,7 +2433,7 @@ const LessonWorkspace = ({
 
   const stepEnabled: Record<StepKey, boolean> = {
     source: true,
-    concepts: sourceComplete,
+    concepts: sourceComplete || isPublicLesson,
   };
 
   const saveTitle = async () => {
@@ -3336,10 +3410,7 @@ const LessonWorkspace = ({
               px: 1.5,
               borderRadius: "999px",
               backgroundColor:
-                draft.workflowState === "published" ||
-                String(lesson.status || "").toLowerCase().includes("publish")
-                  ? "#2e7d32"
-                  : "#ef6c00",
+                isPublicLesson ? "#2e7d32" : "#ef6c00",
               color: "common.white",
               display: "inline-flex",
               alignItems: "center",
@@ -3349,12 +3420,7 @@ const LessonWorkspace = ({
               textTransform: "lowercase",
             }}
           >
-            {draft.workflowState === "published" ||
-            String(lesson.status || "")
-              .toLowerCase()
-              .includes("publish")
-              ? "public"
-              : "draft"}
+            {isPublicLesson ? "public" : "draft"}
           </Box>
         </Stack>
       </Box>
@@ -3367,16 +3433,21 @@ const LessonWorkspace = ({
         <StepShell
           stepNumber={1}
           label="Upload Source"
-          expanded={expandedStep === "source"}
+          expanded={!isPublicLesson && expandedStep === "source"}
           complete={sourceComplete}
           inProgress={draft.sourceDocuments.length > 0 && !sourceComplete}
-          enabled
+          enabled={stepEnabled.source}
           showConnector
-          onToggle={() =>
+          showExpandIcon={!isPublicLesson}
+          showRerun={!isPublicLesson}
+          onToggle={() => {
+            if (isPublicLesson) {
+              return;
+            }
             setExpandedStep((current) =>
               current === "source" ? null : "source",
-            )
-          }
+            );
+          }}
           onRerun={() => rerunStep("source")}
           skills={stepSkills.source}
         >
@@ -3524,6 +3595,7 @@ const LessonWorkspace = ({
         inProgress={approvedQuestionsCount > 0 && !conceptsComplete}
         enabled={stepEnabled.concepts}
         showConnector={false}
+        showDivider={false}
         onToggle={() =>
           setExpandedStep((current) =>
             current === "concepts" ? null : "concepts",
@@ -3535,6 +3607,12 @@ const LessonWorkspace = ({
         <Stack spacing={2}>
           <ApprovedQuestionsReview
             pages={approvedQuestionPages}
+            readOnly={isPublicLesson}
+            emptyStateMessage={
+              isPublicLesson
+                ? "No approved questions were saved with this published lesson."
+                : "Approve questions in the source step to review them here."
+            }
             onUpdateQuestion={(
               documentId,
               pageNumber,
@@ -3569,13 +3647,15 @@ const LessonWorkspace = ({
             }}
           />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Button
-              variant="contained"
-              onClick={handlePublishApprovedQuestions}
-              disabled={publishing || approvedQuestionsCount === 0}
-            >
-              Publish
-            </Button>
+            {!isPublicLesson ? (
+              <Button
+                variant="contained"
+                onClick={handlePublishApprovedQuestions}
+                disabled={publishing || approvedQuestionsCount === 0}
+              >
+                Publish
+              </Button>
+            ) : null}
           </Stack>
         </Stack>
       </StepShell>

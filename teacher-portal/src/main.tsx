@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { Fragment, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Auth0Provider } from "@auth0/auth0-react";
 import { CssBaseline, ThemeProvider } from "@mui/material";
@@ -15,8 +15,13 @@ if (!auth0Domain || !auth0ClientId || !auth0Audience) {
   console.error("Missing Auth0 environment variables.");
 }
 
+const RootWrapper = import.meta.env.DEV ? Fragment : StrictMode;
+const handleRedirectCallback = () => {
+  window.history.replaceState({}, document.title, window.location.pathname);
+};
+
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
+  <RootWrapper>
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Auth0Provider
@@ -27,9 +32,10 @@ createRoot(document.getElementById("root")!).render(
           audience: auth0Audience,
           scope: "openid profile email",
         }}
+        onRedirectCallback={handleRedirectCallback}
       >
         <App />
       </Auth0Provider>
     </ThemeProvider>
-  </StrictMode>
+  </RootWrapper>
 );

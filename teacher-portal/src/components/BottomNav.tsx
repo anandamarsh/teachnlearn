@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Avatar, Box, Button, Menu, MenuItem, Paper } from "@mui/material";
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import HubRoundedIcon from "@mui/icons-material/HubRounded";
-import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
@@ -11,11 +11,11 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 type BottomNavProps = {
   isAuthenticated: boolean;
   userAvatar?: string | null;
-  currentPage: "home" | "lessons" | "skills" | "profile";
+  currentPage: "home" | "lessons" | "skills" | "students";
   onLessonsClick: () => void;
   onHomeClick: () => void;
   onSkillsClick: () => void;
-  onProfileClick: () => void;
+  onStudentsClick: () => void;
   onAuthClick: () => void;
   onLogout: () => void;
   onCreateLesson: () => void;
@@ -32,7 +32,7 @@ const BottomNav = ({
   onLessonsClick,
   onHomeClick,
   onSkillsClick,
-  onProfileClick,
+  onStudentsClick,
   onAuthClick,
   onLogout,
   onCreateLesson,
@@ -44,7 +44,7 @@ const BottomNav = ({
   const isHome = currentPage === "home";
   const isLessons = currentPage === "lessons";
   const isSkills = currentPage === "skills";
-  const isProfile = currentPage === "profile";
+  const isStudents = currentPage === "students";
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const menuOpen = Boolean(menuAnchor);
 
@@ -109,17 +109,17 @@ const BottomNav = ({
           <HubRoundedIcon />
         </Button>
         <Button
-          onClick={onProfileClick}
+          onClick={onStudentsClick}
           sx={{
             minWidth: 0,
             px: 2,
             borderRadius: 999,
             color: "primary.main",
-            backgroundColor: isProfile ? "rgba(230,81,0,0.18)" : "transparent",
+            backgroundColor: isStudents ? "rgba(230,81,0,0.18)" : "transparent",
             height: "100%",
           }}
         >
-          <PersonRoundedIcon />
+          <GroupsRoundedIcon />
         </Button>
         {isLessons ? (
           <Button
