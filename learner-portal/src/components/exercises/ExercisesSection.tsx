@@ -2173,13 +2173,6 @@ self.onmessage = async (event) => {
               scrollToIndex(idx, "auto");
             }}
           />
-          {freeResponseMode && exerciseIndex === exercises.length - 1 ? (
-            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-              <Button variant="contained" size="large">
-                Submit
-              </Button>
-            </Box>
-          ) : null}
         </>
       ) : generatorAvailable ? (
         <Box

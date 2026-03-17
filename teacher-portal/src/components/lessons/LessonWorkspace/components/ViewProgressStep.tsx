@@ -538,7 +538,8 @@ const StudentResponsesDialog = ({
         >
           <Box
             sx={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "1fr auto 1fr",
               alignItems: "center",
               justifyContent: "space-between",
               gap: 2,
@@ -547,6 +548,20 @@ const StudentResponsesDialog = ({
             <Typography sx={{ fontSize: "1.4rem", fontWeight: 800 }}>
               {student?.name || "Student"}
             </Typography>
+            <Typography
+              sx={{
+                fontSize: "1.1rem",
+                fontWeight: 800,
+                textAlign: "center",
+                maxWidth: "min(42rem, 55vw)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {activeResponse?.promptTitle || ""}
+            </Typography>
+            <Box sx={{ justifySelf: "end", width: 36, height: 36 }} />
             <IconButton
               onClick={onClose}
               sx={{
@@ -706,11 +721,6 @@ const StudentResponsesDialog = ({
                       p: 3,
                     }}
                   >
-                    {activeResponse.promptTitle ? (
-                      <Typography sx={{ fontWeight: 800, mb: 1.5 }}>
-                        {activeResponse.promptTitle}
-                      </Typography>
-                    ) : null}
                     <Box
                       sx={{
                         "& table": {
