@@ -26,7 +26,7 @@ const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
 type PageKey = "lessons" | "students";
 
 const getPageFromPath = (pathname: string): PageKey => {
-  if (pathname === "/lessons") {
+  if (pathname === "/lessons" || /^\/lesson\/[^/]+$/.test(pathname)) {
     return "lessons";
   }
   if (pathname === "/students" || pathname === "/profile") {
@@ -35,8 +35,16 @@ const getPageFromPath = (pathname: string): PageKey => {
   return "lessons";
 };
 
-const getPathFromPage = (page: PageKey) => {
+const getLessonIdFromPath = (pathname: string) => {
+  const match = pathname.match(/^\/lesson\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+const getPathFromPage = (page: PageKey, lessonId?: string | null) => {
   if (page === "lessons") {
+    if (lessonId) {
+      return `/lesson/${encodeURIComponent(lessonId)}`;
+    }
     return "/lessons";
   }
   if (page === "students") {
@@ -84,6 +92,7 @@ function App() {
     updateLessonContent,
     updateLessonStatus,
     updateLessonMeta,
+    updateApprovedQuestions,
     deleteLesson,
     uploadLessonIcon,
   } = useLessons({
@@ -114,6 +123,9 @@ function App() {
   const [otpStatus, setOtpStatus] = useState<"idle" | "loading" | "error">("idle");
   const otpStorageKey = "tp_otp_cache_v1";
   const [addStudentSignal, setAddStudentSignal] = useState(0);
+  const initialLessonIdFromPathRef = useRef<string | null>(
+    getLessonIdFromPath(window.location.pathname)
+  );
 
   const notify = useCallback((message: string, severity: "success" | "error") => {
     setSnackbar({ open: true, message, severity });
@@ -266,22 +278,42 @@ function App() {
   }, [isAuthenticated, isLoading]);
 
   useEffect(() => {
-    const onPopState = () => setPage(getPageFromPath(window.location.pathname));
+    const onPopState = () => {
+      const pathname = window.location.pathname;
+      setPage(getPageFromPath(pathname));
+      const lessonId = getLessonIdFromPath(pathname);
+      if (lessonId) {
+        setSelectedLessonId(lessonId);
+      }
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [setSelectedLessonId]);
+
+  useEffect(() => {
+    const lessonIdFromPath = initialLessonIdFromPathRef.current;
+    if (
+      page === "lessons" &&
+      lessonIdFromPath &&
+      lessons.some((lesson) => lesson.id === lessonIdFromPath) &&
+      selectedLessonId !== lessonIdFromPath
+    ) {
+      setSelectedLessonId(lessonIdFromPath);
+      initialLessonIdFromPathRef.current = null;
+    }
+  }, [lessons, page, selectedLessonId, setSelectedLessonId]);
 
   useEffect(() => {
     if (isLoading || isAuthCallbackUrl(window.location.search)) {
       return;
     }
-    const nextPath = getPathFromPage(page);
+    const nextPath = getPathFromPage(page, page === "lessons" ? selectedLesson?.id : null);
     const current = `${window.location.pathname}${window.location.search}`;
     const next = nextPath;
     if (current !== next) {
       window.history.replaceState({}, "", next);
     }
-  }, [isLoading, page]);
+  }, [isLoading, page, selectedLesson?.id]);
 
   const fetchOtp = useCallback(async () => {
     if (!apiBaseUrl || !auth0Audience) {
@@ -375,6 +407,7 @@ function App() {
           onUpdateContent={handleUpdateContent}
           onUpdateStatus={handleUpdateStatus}
           onUpdateMeta={handleUpdateMeta}
+          onUpdateApprovedQuestions={updateApprovedQuestions}
           onUploadIcon={handleUploadIcon}
           onNotify={notify}
           getAccessTokenSilently={getAccessTokenSilently}

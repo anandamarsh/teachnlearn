@@ -429,6 +429,7 @@ def register_lesson_routes(
         if requires_login is None:
             requires_login = payload.get("requiresLogin")
         exercise_config = payload.get("exerciseConfig")
+        approved_questions = payload.get("approvedQuestions")
         if exercise_config is None:
             questions_per = payload.get("questionsPerExercise")
             exercises_count = payload.get("exercisesCount")
@@ -437,6 +438,8 @@ def register_lesson_routes(
                     "questionsPerExercise": questions_per,
                     "exercisesCount": exercises_count,
                 }
+        if approved_questions is not None and not isinstance(approved_questions, list):
+            return json_error("approvedQuestions must be a list", 400)
         try:
             lesson = store.update(
                 email,
@@ -448,6 +451,7 @@ def register_lesson_routes(
                 level=level,
                 requires_login=requires_login,
                 exercise_config=exercise_config,
+                approved_questions=approved_questions,
             )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)

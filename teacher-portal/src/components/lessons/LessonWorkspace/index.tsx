@@ -28,6 +28,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import DocumentScannerRoundedIcon from "@mui/icons-material/DocumentScannerRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -64,6 +65,7 @@ import { extractPageColumns } from "../../../lib/extractPageQuestions";
 
 type LessonWorkspaceProps = {
   lesson: Lesson | null;
+  lessonStorageId?: string | null;
   hasLessons: boolean;
   isAuthenticated: boolean;
   onCreateLesson: () => void;
@@ -77,6 +79,15 @@ type LessonWorkspaceProps = {
   ) => Promise<Lesson | null>;
   onUpdateStatus: (lessonId: string, status: string) => Promise<Lesson | null>;
   getAccessTokenSilently?: GetAccessTokenSilently;
+  onUpdateApprovedQuestions: (
+    lessonId: string,
+    approvedQuestions: Array<{
+      title?: string | null;
+      detectedPageNumber?: number | null;
+      pageNumber?: number | null;
+      questions?: string[] | null;
+    }>,
+  ) => Promise<Lesson | null>;
   onUpdateMeta: (
     lessonId: string,
     updates: {
@@ -125,6 +136,15 @@ type PreviewDocument = {
   name: string;
   url: string;
   file: File;
+};
+
+type StoredPdfRecord = {
+  cacheKey: string;
+  lessonId: string;
+  documentId: string;
+  name: string;
+  file: Blob;
+  storedAt: string;
 };
 
 type ConceptDraft = {
@@ -180,9 +200,163 @@ const emptyDraft = (): BuilderDraft => ({
 const getStorageKey = (lessonId: string) =>
   `tp_teacher_lesson_builder_v2_${lessonId}`;
 const SOURCE_SPLIT_STORAGE_KEY = "tp_teacher_source_split_pct_v1";
+const PDF_CACHE_DB_NAME = "tp_teacher_pdf_cache_v1";
+const PDF_CACHE_STORE_NAME = "lessonPdfs";
+const PDF_CACHE_LESSON_INDEX = "byLessonId";
 
 const createId = (prefix: string) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const getPdfCacheKey = (lessonId: string, documentId: string) =>
+  `${lessonId}::${documentId}`;
+
+const openPdfCacheDatabase = (): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !("indexedDB" in window)) {
+      reject(new Error("IndexedDB is unavailable in this browser."));
+      return;
+    }
+    const request = window.indexedDB.open(PDF_CACHE_DB_NAME, 1);
+    request.onerror = () => {
+      reject(request.error || new Error("Failed to open PDF cache."));
+    };
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      const store = database.objectStoreNames.contains(PDF_CACHE_STORE_NAME)
+        ? request.transaction?.objectStore(PDF_CACHE_STORE_NAME)
+        : database.createObjectStore(PDF_CACHE_STORE_NAME, {
+            keyPath: "cacheKey",
+          });
+      if (store && !store.indexNames.contains(PDF_CACHE_LESSON_INDEX)) {
+        store.createIndex(PDF_CACHE_LESSON_INDEX, "lessonId", {
+          unique: false,
+        });
+      }
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+  });
+
+const withPdfCacheStore = async <Result,>(
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => Promise<Result>,
+): Promise<Result> => {
+  const database = await openPdfCacheDatabase();
+  try {
+    const transaction = database.transaction(PDF_CACHE_STORE_NAME, mode);
+    const store = transaction.objectStore(PDF_CACHE_STORE_NAME);
+    const result = await run(store);
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(transaction.error || new Error("PDF cache transaction failed."));
+      transaction.onabort = () =>
+        reject(transaction.error || new Error("PDF cache transaction aborted."));
+    });
+    return result;
+  } finally {
+    database.close();
+  }
+};
+
+const storePdfFile = async (
+  lessonId: string,
+  documentId: string,
+  name: string,
+  file: File,
+) => {
+  const record: StoredPdfRecord = {
+    cacheKey: getPdfCacheKey(lessonId, documentId),
+    lessonId,
+    documentId,
+    name,
+    file,
+    storedAt: new Date().toISOString(),
+  };
+  await withPdfCacheStore("readwrite", async (store) => {
+    await new Promise<void>((resolve, reject) => {
+      const request = store.put(record);
+      request.onsuccess = () => resolve();
+      request.onerror = () =>
+        reject(request.error || new Error("Failed to persist PDF locally."));
+    });
+  });
+};
+
+const loadPdfFile = async (
+  lessonId: string,
+  documentId: string,
+): Promise<StoredPdfRecord | null> =>
+  withPdfCacheStore("readonly", async (store) => {
+    const record = await new Promise<StoredPdfRecord | null>((resolve, reject) => {
+      const request = store.get(getPdfCacheKey(lessonId, documentId));
+      request.onsuccess = () => {
+        resolve((request.result as StoredPdfRecord | undefined) ?? null);
+      };
+      request.onerror = () =>
+        reject(request.error || new Error("Failed to load cached PDF."));
+    });
+    return record;
+  });
+
+const deletePdfFile = async (lessonId: string, documentId: string) => {
+  await withPdfCacheStore("readwrite", async (store) => {
+    await new Promise<void>((resolve, reject) => {
+      const request = store.delete(getPdfCacheKey(lessonId, documentId));
+      request.onsuccess = () => resolve();
+      request.onerror = () =>
+        reject(request.error || new Error("Failed to delete cached PDF."));
+    });
+  });
+};
+
+const prunePdfFiles = async (lessonId: string, validDocumentIds: string[]) => {
+  const validIds = new Set(validDocumentIds);
+  await withPdfCacheStore("readwrite", async (store) => {
+    const index = store.index(PDF_CACHE_LESSON_INDEX);
+    await new Promise<void>((resolve, reject) => {
+      const request = index.openCursor(IDBKeyRange.only(lessonId));
+      request.onerror = () =>
+        reject(request.error || new Error("Failed to inspect cached PDFs."));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const record = cursor.value as StoredPdfRecord;
+        if (!validIds.has(record.documentId)) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+    });
+  });
+};
+
+const restoreCachedPreview = (
+  document: SourceDocument,
+  record: StoredPdfRecord,
+): PreviewDocument => {
+  const cachedFile =
+    record.file instanceof File
+      ? record.file
+      : new File([record.file], record.name || document.name, {
+          type: record.file.type || "application/pdf",
+          lastModified: Date.parse(record.storedAt) || Date.now(),
+        });
+  return {
+    id: document.id,
+    name: document.name,
+    url: URL.createObjectURL(cachedFile),
+    file: cachedFile,
+  };
+};
+
+const revokePreviewUrls = (previews: PreviewDocument[]) => {
+  previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+};
 
 const loadStoredSourcePaneSplit = () => {
   if (typeof window === "undefined") {
@@ -400,6 +574,7 @@ const QuestionsAccordionList = ({
   page,
   fullscreen = false,
   readOnly = false,
+  allowQuestionStateEdit = true,
   onUpdateQuestion,
   onUpdateQuestionState,
   onUpdatePageTitle,
@@ -416,6 +591,7 @@ const QuestionsAccordionList = ({
   } | null;
   fullscreen?: boolean;
   readOnly?: boolean;
+  allowQuestionStateEdit?: boolean;
   onUpdateQuestion?: (
     pageNumber: number,
     questionIndex: number,
@@ -432,6 +608,7 @@ const QuestionsAccordionList = ({
 }) => {
   const hasQuestions = Boolean(page?.questions.length);
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingPageNumber, setIsEditingPageNumber] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -445,6 +622,7 @@ const QuestionsAccordionList = ({
       page?.detectedPageNumber != null ? String(page.detectedPageNumber) : "",
     );
     setQuestionDrafts({});
+    setExpandedKeys({});
     setIsEditingTitle(false);
     setIsEditingPageNumber(false);
   }, [page?.pageNumber, page?.title, page?.detectedPageNumber]);
@@ -692,6 +870,13 @@ const QuestionsAccordionList = ({
                   return (
                     <Accordion
                       key={questionKey}
+                      expanded={Boolean(expandedKeys[questionKey])}
+                      onChange={(_, expanded) => {
+                        setExpandedKeys((current) => ({
+                          ...current,
+                          [questionKey]: expanded,
+                        }));
+                      }}
                       disableGutters
                       elevation={0}
                       sx={{
@@ -787,32 +972,38 @@ const QuestionsAccordionList = ({
                                 zIndex: 1,
                               }}
                             >
+                              {allowQuestionStateEdit ? (
+                                <IconButton
+                                  size="small"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onUpdateQuestionState?.(
+                                      page.pageNumber,
+                                      sourceQuestionIndex,
+                                      reviewState === "accepted"
+                                        ? "untouched"
+                                        : "accepted",
+                                    );
+                                  }}
+                                  sx={{
+                                    color:
+                                      reviewState === "accepted"
+                                        ? "#2e7d32"
+                                        : "#bdbdbd",
+                                    p: 0.35,
+                                  }}
+                                >
+                                  <CheckRoundedIcon fontSize="small" />
+                                </IconButton>
+                              ) : null}
                               <IconButton
                                 size="small"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  onUpdateQuestionState?.(
-                                    page.pageNumber,
-                                    sourceQuestionIndex,
-                                    reviewState === "accepted"
-                                      ? "untouched"
-                                      : "accepted",
-                                  );
-                                }}
-                                sx={{
-                                  color:
-                                    reviewState === "accepted"
-                                      ? "#2e7d32"
-                                      : "#bdbdbd",
-                                  p: 0.35,
-                                }}
-                              >
-                                <CheckRoundedIcon fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                onClick={(event) => {
-                                  event.stopPropagation();
+                                  setExpandedKeys((current) => ({
+                                    ...current,
+                                    [questionKey]: true,
+                                  }));
                                   setEditingKey((current) =>
                                     current === questionKey
                                       ? null
@@ -1130,6 +1321,7 @@ const ApprovedQuestionsReview = ({
   pages,
   emptyStateMessage = "Approve questions in the source step to review them here.",
   readOnly = false,
+  allowQuestionStateEdit = true,
   onUpdateQuestion,
   onUpdateQuestionState,
   onUpdatePageTitle,
@@ -1138,6 +1330,7 @@ const ApprovedQuestionsReview = ({
   pages: ApprovedQuestionPage[];
   emptyStateMessage?: string;
   readOnly?: boolean;
+  allowQuestionStateEdit?: boolean;
   onUpdateQuestion: (
     documentId: string,
     pageNumber: number,
@@ -1172,6 +1365,7 @@ const ApprovedQuestionsReview = ({
           <QuestionsAccordionList
             page={page}
             readOnly={readOnly}
+            allowQuestionStateEdit={allowQuestionStateEdit}
             summaryMaxChars={150}
             onUpdateQuestion={(pageNumber, questionIndex, nextValue) =>
               onUpdateQuestion(
@@ -2182,6 +2376,7 @@ const PdfPreviewCanvas = ({
 
 const LessonWorkspace = ({
   lesson,
+  lessonStorageId,
   hasLessons,
   onCreateLesson,
   onDuplicateLesson,
@@ -2190,11 +2385,13 @@ const LessonWorkspace = ({
   onUpdateTitle,
   onUpdateContent,
   onUpdateStatus,
+  onUpdateApprovedQuestions,
   getAccessTokenSilently,
   onNotify,
 }: LessonWorkspaceProps) => {
   const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
   const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
+  const storageLessonId = lessonStorageId || lesson?.id || null;
   const previewUrlsRef = useRef<string[]>([]);
   const sourcePaneRef = useRef<HTMLDivElement | null>(null);
   const sourceFullscreenRef = useRef<HTMLDivElement | null>(null);
@@ -2230,12 +2427,16 @@ const LessonWorkspace = ({
     partAnsweredCount: 0,
     unansweredCount: 0,
   });
+  const [publishedApprovedQuestionPages, setPublishedApprovedQuestionPages] =
+    useState<ApprovedQuestionPage[]>([]);
   const previousLessonIdRef = useRef<string | null>(null);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
   useEffect(() => {
     if (!lesson) {
       previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       previewUrlsRef.current = [];
+      setDraftHydrated(false);
       setDraft(emptyDraft());
       setTitleDraft("");
       setPreviewDocuments([]);
@@ -2254,11 +2455,13 @@ const LessonWorkspace = ({
       previousLessonIdRef.current = null;
       return;
     }
-    const lessonChanged = previousLessonIdRef.current !== lesson.id;
-    previousLessonIdRef.current = lesson.id;
+    const lessonChanged = previousLessonIdRef.current !== storageLessonId;
+    previousLessonIdRef.current = storageLessonId;
     previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewUrlsRef.current = [];
-    setDraft(loadDraft(lesson.id));
+    setDraftHydrated(false);
+    setDraft(storageLessonId ? loadDraft(storageLessonId) : emptyDraft());
+    setDraftHydrated(true);
     setTitleDraft(lesson.title || "");
     setPreviewDocuments([]);
     setActivePreviewId(null);
@@ -2276,7 +2479,7 @@ const LessonWorkspace = ({
         unansweredCount: 0,
       });
     }
-  }, [lesson]);
+  }, [lesson, storageLessonId]);
 
   useEffect(() => {
     setActivePreviewPage(1);
@@ -2321,14 +2524,14 @@ const LessonWorkspace = ({
   }, [resizingSourcePane]);
 
   useEffect(() => {
-    if (!lesson) {
+    if (!storageLessonId || !draftHydrated) {
       return;
     }
     window.localStorage.setItem(
-      getStorageKey(lesson.id),
+      getStorageKey(storageLessonId),
       JSON.stringify(draft),
     );
-  }, [draft, lesson]);
+  }, [draft, draftHydrated, storageLessonId]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -2336,6 +2539,75 @@ const LessonWorkspace = ({
       String(sourcePaneSplit),
     );
   }, [sourcePaneSplit]);
+
+  useEffect(() => {
+    if (!storageLessonId || !draftHydrated) {
+      return;
+    }
+    void prunePdfFiles(
+      storageLessonId,
+      draft.sourceDocuments.map((document) => document.id),
+    ).catch((error) => {
+      console.error("Failed to prune cached PDFs", error);
+    });
+  }, [draft.sourceDocuments, draftHydrated, storageLessonId]);
+
+  useEffect(() => {
+    if (!storageLessonId || !draftHydrated || !draft.sourceDocuments.length) {
+      return;
+    }
+    const previewIds = new Set(previewDocuments.map((document) => document.id));
+    const missingDocuments = draft.sourceDocuments.filter(
+      (document) => !previewIds.has(document.id),
+    );
+    if (!missingDocuments.length) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const restored = (
+        await Promise.all(
+          missingDocuments.map(async (document) => {
+            try {
+              const record = await loadPdfFile(storageLessonId, document.id);
+              return record ? restoreCachedPreview(document, record) : null;
+            } catch (error) {
+              console.error("Failed to restore cached PDF", error);
+              return null;
+            }
+          }),
+        )
+      ).filter((document): document is PreviewDocument => Boolean(document));
+
+      if (cancelled || !restored.length) {
+        if (cancelled) {
+          revokePreviewUrls(restored);
+        }
+        return;
+      }
+
+      setPreviewDocuments((current) => {
+        const currentIds = new Set(current.map((document) => document.id));
+        const uniqueRestored = restored.filter(
+          (document) => !currentIds.has(document.id),
+        );
+        if (!uniqueRestored.length) {
+          revokePreviewUrls(restored);
+          return current;
+        }
+        previewUrlsRef.current.push(
+          ...uniqueRestored.map((document) => document.url),
+        );
+        return [...current, ...uniqueRestored];
+      });
+      setActivePreviewId((current) => current || restored[0]?.id || null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.sourceDocuments, draftHydrated, previewDocuments, storageLessonId]);
 
   useEffect(() => {
     if (!sourceFullscreenOpen) {
@@ -2380,12 +2652,17 @@ const LessonWorkspace = ({
     () => normalizeStoredApprovedQuestionPages(lesson?.approvedQuestions),
     [lesson?.approvedQuestions],
   );
+
+  useEffect(() => {
+    setPublishedApprovedQuestionPages(storedApprovedQuestionPages);
+  }, [storedApprovedQuestionPages]);
+
   const approvedQuestionPages = useMemo(
     () =>
       draftApprovedQuestionPages.length > 0
         ? draftApprovedQuestionPages
-        : storedApprovedQuestionPages,
-    [draftApprovedQuestionPages, storedApprovedQuestionPages],
+        : publishedApprovedQuestionPages,
+    [draftApprovedQuestionPages, publishedApprovedQuestionPages],
   );
   const approvedQuestionsCount = useMemo(
     () =>
@@ -2444,6 +2721,88 @@ const LessonWorkspace = ({
 
   const updateDraft = (updater: (current: BuilderDraft) => BuilderDraft) => {
     setDraft((current) => updater(current));
+  };
+
+  const serializeApprovedQuestionPages = (pages: ApprovedQuestionPage[]) =>
+    pages.map((page) => ({
+      title: page.title ?? null,
+      detectedPageNumber: page.detectedPageNumber ?? null,
+      pageNumber: page.pageNumber,
+      questions: page.questions,
+    }));
+
+  const persistPublishedApprovedQuestionPages = async (
+    nextPages: ApprovedQuestionPage[],
+  ) => {
+    setPublishedApprovedQuestionPages(nextPages);
+    const updated = await onUpdateApprovedQuestions(
+      lesson.id,
+      serializeApprovedQuestionPages(nextPages),
+    );
+    if (!updated) {
+      setPublishedApprovedQuestionPages(storedApprovedQuestionPages);
+      onNotify("Failed to update published questions", "error");
+      return;
+    }
+    onNotify("Published questions updated", "success");
+  };
+
+  const updatePublishedApprovedQuestion = (
+    documentId: string,
+    pageNumber: number,
+    questionIndex: number,
+    nextQuestion: string,
+  ) => {
+    const nextPages = publishedApprovedQuestionPages.map((page) =>
+      page.sourceDocumentId !== documentId || page.pageNumber !== pageNumber
+        ? page
+        : {
+            ...page,
+            questions: page.questions.map((question, innerIndex) =>
+              innerIndex === questionIndex ? nextQuestion : question,
+            ),
+          },
+    );
+    void persistPublishedApprovedQuestionPages(nextPages);
+  };
+
+  const updatePublishedApprovedPageTitle = (
+    documentId: string,
+    pageNumber: number,
+    nextTitle: string,
+  ) => {
+    const nextPages = publishedApprovedQuestionPages.map((page) =>
+      page.sourceDocumentId !== documentId || page.pageNumber !== pageNumber
+        ? page
+        : {
+            ...page,
+            title: nextTitle.trim() ? nextTitle : null,
+          },
+    );
+    void persistPublishedApprovedQuestionPages(nextPages);
+  };
+
+  const updatePublishedApprovedPageNumber = (
+    documentId: string,
+    pageNumber: number,
+    nextValue: string,
+  ) => {
+    const trimmed = nextValue.trim();
+    const normalized =
+      trimmed === ""
+        ? null
+        : /^[0-9]{1,3}$/.test(trimmed)
+          ? Number(trimmed)
+          : null;
+    const nextPages = publishedApprovedQuestionPages.map((page) =>
+      page.sourceDocumentId !== documentId || page.pageNumber !== pageNumber
+        ? page
+        : {
+            ...page,
+            detectedPageNumber: normalized,
+          },
+    );
+    void persistPublishedApprovedQuestionPages(nextPages);
   };
 
   const stepEnabled: Record<StepKey, boolean> = {
@@ -2566,6 +2925,9 @@ const LessonWorkspace = ({
       const previews: PreviewDocument[] = [];
       for (const file of Array.from(files)) {
         const extracted = await inspectPdfDocument(file);
+        if (storageLessonId) {
+          await storePdfFile(storageLessonId, extracted.id, file.name, file);
+        }
         uploaded.push(extracted);
         previews.push({
           id: extracted.id,
@@ -2619,6 +2981,11 @@ const LessonWorkspace = ({
         ? current.workflowState
         : "source",
     }));
+    if (storageLessonId) {
+      void deletePdfFile(storageLessonId, activePreview.id).catch((error) => {
+        console.error("Failed to delete cached PDF", error);
+      });
+    }
     onNotify("Source document removed", "success");
   };
 
@@ -2918,7 +3285,10 @@ const LessonWorkspace = ({
     }
   };
 
-  const buildPreviewToolbarControls = (fullscreen = false) => {
+  const buildPreviewToolbarControls = (
+    fullscreen = false,
+    readOnlySource = false,
+  ) => {
     if (!activePreview) {
       return null;
     }
@@ -2971,7 +3341,10 @@ const LessonWorkspace = ({
           size="small"
           onClick={() => void runLocalOcrOnCurrentDocument()}
           disabled={
-            !activePreview?.file || !activeSourceDocument || localOcringDocument
+            readOnlySource ||
+            !activePreview?.file ||
+            !activeSourceDocument ||
+            localOcringDocument
           }
           sx={{ color: "#fff", px: 0.75, borderRadius: "10px" }}
         >
@@ -3002,13 +3375,15 @@ const LessonWorkspace = ({
             >
               <FullscreenRoundedIcon />
             </IconButton>
-            <IconButton
-              size="small"
-              onClick={removeCurrentSourceDocument}
-              sx={{ color: "#fff" }}
-            >
-              <DeleteRoundedIcon />
-            </IconButton>
+            {!readOnlySource ? (
+              <IconButton
+                size="small"
+                onClick={removeCurrentSourceDocument}
+                sx={{ color: "#fff" }}
+              >
+                <DeleteRoundedIcon />
+              </IconButton>
+            ) : null}
           </>
         ) : (
           <IconButton
@@ -3023,7 +3398,10 @@ const LessonWorkspace = ({
     );
   };
 
-  const renderSourceWorkspace = (fullscreen = false) => (
+  const renderSourceWorkspace = (
+    fullscreen = false,
+    readOnlySource = false,
+  ) => (
     <Stack spacing={2}>
       <Box
         ref={sourcePaneRef}
@@ -3037,9 +3415,9 @@ const LessonWorkspace = ({
         }}
       >
         <Box
-          component={activePreview ? "div" : "label"}
+          component={activePreview || readOnlySource ? "div" : "label"}
           onDragOver={(event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
-            if (activePreview) {
+            if (activePreview || readOnlySource) {
               return;
             }
             event.preventDefault();
@@ -3047,7 +3425,7 @@ const LessonWorkspace = ({
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={(event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
-            if (activePreview) {
+            if (activePreview || readOnlySource) {
               return;
             }
             event.preventDefault();
@@ -3066,7 +3444,8 @@ const LessonWorkspace = ({
             backgroundColor: "#fff",
             color: "text.primary",
             overflow: "hidden",
-            cursor: activePreview ? "default" : "pointer",
+            cursor:
+              activePreview || readOnlySource ? "default" : "pointer",
             boxShadow: "none",
             outline: dragActive ? "3px solid rgba(76,175,80,0.55)" : "none",
             position: "relative",
@@ -3078,6 +3457,7 @@ const LessonWorkspace = ({
             multiple
             accept="application/pdf"
             type="file"
+            disabled={readOnlySource}
             onChange={(event) => void handleFilesUploaded(event.target.files)}
           />
           <Box sx={{ px: fullscreen ? 0 : 3, pb: 0, flex: 1, minHeight: 0 }}>
@@ -3088,7 +3468,10 @@ const LessonWorkspace = ({
                   title={activePreview.name}
                   pageNumber={activePreviewPage}
                   fullscreen={fullscreen}
-                  toolbarControls={buildPreviewToolbarControls(fullscreen)}
+                  toolbarControls={buildPreviewToolbarControls(
+                    fullscreen,
+                    readOnlySource,
+                  )}
                   fillHeight
                 />
               </Stack>
@@ -3117,10 +3500,14 @@ const LessonWorkspace = ({
                   {titleDraft || "Upload Source Material"}
                 </Typography>
                 <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                  Drag and drop PDF or click to upload
+                  {readOnlySource
+                    ? "No cached PDF is available in this browser."
+                    : "Drag and drop PDF or click to upload"}
                 </Typography>
                 <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                  No stored PDF found. Upload one to continue.
+                  {readOnlySource
+                    ? "The source PDF stays local, so it only appears here after this browser has cached it."
+                    : "No stored PDF found. Upload one to continue."}
                 </Typography>
               </Box>
             )}
@@ -3170,9 +3557,11 @@ const LessonWorkspace = ({
           <QuestionsAccordionList
             page={activeExtractedTextPreview}
             fullscreen={fullscreen}
+            readOnly={readOnlySource}
+            allowQuestionStateEdit={!readOnlySource}
             summaryMaxChars={fullscreen ? 24 : 80}
             onUpdatePageTitle={(pageNumber, nextTitle) => {
-              if (!activeSourceDocument) {
+              if (readOnlySource || !activeSourceDocument) {
                 return;
               }
               updateDocumentPageTitle(
@@ -3182,7 +3571,7 @@ const LessonWorkspace = ({
               );
             }}
             onUpdatePageNumber={(pageNumber, nextValue) => {
-              if (!activeSourceDocument) {
+              if (readOnlySource || !activeSourceDocument) {
                 return;
               }
               updateDocumentPageNumber(
@@ -3192,7 +3581,7 @@ const LessonWorkspace = ({
               );
             }}
             onUpdateQuestion={(pageNumber, questionIndex, nextValue) => {
-              if (!activeSourceDocument) {
+              if (readOnlySource || !activeSourceDocument) {
                 return;
               }
               updateDocumentPageQuestion(
@@ -3203,7 +3592,7 @@ const LessonWorkspace = ({
               );
             }}
             onUpdateQuestionState={(pageNumber, questionIndex, nextState) => {
-              if (!activeSourceDocument) {
+              if (readOnlySource || !activeSourceDocument) {
                 return;
               }
               updateDocumentQuestionState(
@@ -3242,7 +3631,7 @@ const LessonWorkspace = ({
           <Button
             variant="outlined"
             onClick={handleConceptGeneration}
-            disabled={!sourceComplete}
+            disabled={readOnlySource || !sourceComplete}
           >
             Continue
           </Button>
@@ -3297,6 +3686,11 @@ const LessonWorkspace = ({
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Stack direction="row" spacing={0.25} alignItems="center">
             {showDelete ? (
+              <IconButton onClick={onDuplicateLesson} sx={{ color: "#9a3412" }}>
+                <ContentCopyRoundedIcon />
+              </IconButton>
+            ) : null}
+            {showDelete ? (
               <IconButton onClick={onDeleteLesson} sx={{ color: "error.main" }}>
                 <DeleteRoundedIcon />
               </IconButton>
@@ -3331,24 +3725,21 @@ const LessonWorkspace = ({
         <StepShell
           stepNumber={1}
           label="Upload Source"
-          expanded={!isPublicLesson && expandedStep === "source"}
+          expanded={expandedStep === "source"}
           complete={sourceComplete}
           inProgress={draft.sourceDocuments.length > 0 && !sourceComplete}
           enabled={stepEnabled.source}
           showConnector
-          showExpandIcon={!isPublicLesson}
+          showExpandIcon
           showRerun={!isPublicLesson}
           onToggle={() => {
-            if (isPublicLesson) {
-              return;
-            }
             setExpandedStep((current) =>
               current === "source" ? null : "source",
             );
           }}
           onRerun={() => rerunStep("source")}
         >
-          {renderSourceWorkspace()}
+          {renderSourceWorkspace(false, isPublicLesson)}
           {activeSourceDocument ? (
             <Typography variant="body2" color="text.secondary">
               {activeSourceDocument.pageQuestions.filter((page) => page.trim())
@@ -3415,7 +3806,7 @@ const LessonWorkspace = ({
           >
             <CloseRoundedIcon />
           </IconButton>
-          {renderSourceWorkspace(true)}
+          {renderSourceWorkspace(true, isPublicLesson)}
         </Box>
       </Dialog>
 
@@ -3438,7 +3829,8 @@ const LessonWorkspace = ({
         <Stack spacing={2}>
           <ApprovedQuestionsReview
             pages={approvedQuestionPages}
-            readOnly={isPublicLesson}
+            readOnly={false}
+            allowQuestionStateEdit={!isPublicLesson}
             emptyStateMessage={
               isPublicLesson
                 ? "No approved questions were saved with this published lesson."
@@ -3450,12 +3842,21 @@ const LessonWorkspace = ({
               questionIndex,
               nextValue,
             ) => {
-              updateDocumentPageQuestion(
-                documentId,
-                pageNumber,
-                questionIndex,
-                nextValue,
-              );
+              if (isPublicLesson) {
+                updatePublishedApprovedQuestion(
+                  documentId,
+                  pageNumber,
+                  questionIndex,
+                  nextValue,
+                );
+              } else {
+                updateDocumentPageQuestion(
+                  documentId,
+                  pageNumber,
+                  questionIndex,
+                  nextValue,
+                );
+              }
             }}
             onUpdateQuestionState={(
               documentId,
@@ -3463,18 +3864,36 @@ const LessonWorkspace = ({
               questionIndex,
               nextState,
             ) => {
-              updateDocumentQuestionState(
-                documentId,
-                pageNumber,
-                questionIndex,
-                nextState,
-              );
+              if (!isPublicLesson) {
+                updateDocumentQuestionState(
+                  documentId,
+                  pageNumber,
+                  questionIndex,
+                  nextState,
+                );
+              }
             }}
             onUpdatePageTitle={(documentId, pageNumber, nextTitle) => {
-              updateDocumentPageTitle(documentId, pageNumber, nextTitle);
+              if (isPublicLesson) {
+                updatePublishedApprovedPageTitle(
+                  documentId,
+                  pageNumber,
+                  nextTitle,
+                );
+              } else {
+                updateDocumentPageTitle(documentId, pageNumber, nextTitle);
+              }
             }}
             onUpdatePageNumber={(documentId, pageNumber, nextValue) => {
-              updateDocumentPageNumber(documentId, pageNumber, nextValue);
+              if (isPublicLesson) {
+                updatePublishedApprovedPageNumber(
+                  documentId,
+                  pageNumber,
+                  nextValue,
+                );
+              } else {
+                updateDocumentPageNumber(documentId, pageNumber, nextValue);
+              }
             }}
           />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>

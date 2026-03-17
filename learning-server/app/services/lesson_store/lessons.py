@@ -386,6 +386,7 @@ class LessonStoreLessons:
         level: str | None,
         requires_login: bool | None,
         exercise_config: dict[str, int] | None,
+        approved_questions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         sanitized = sanitize_email(email)
         with self._lock:
@@ -408,6 +409,8 @@ class LessonStoreLessons:
                 lesson["requires_login"] = requires_login
             if exercise_config is not None:
                 lesson["exerciseConfig"] = exercise_config
+            if approved_questions is not None:
+                lesson["approvedQuestions"] = approved_questions
             lesson["updated_at"] = datetime.now(timezone.utc).isoformat()
             lesson_key = self._lesson_key(sanitized, lesson_id)
             self._s3_client.put_object(

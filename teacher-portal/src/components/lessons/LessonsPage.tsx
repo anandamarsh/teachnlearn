@@ -32,6 +32,15 @@ type LessonsPageProps = {
       } | null;
     }
   ) => Promise<Lesson | null>;
+  onUpdateApprovedQuestions: (
+    lessonId: string,
+    approvedQuestions: Array<{
+      title?: string | null;
+      detectedPageNumber?: number | null;
+      pageNumber?: number | null;
+      questions?: string[] | null;
+    }>
+  ) => Promise<Lesson | null>;
   onUploadIcon: (lessonId: string, file: File) => Promise<string | null>;
   onNotify: (message: string, severity: "success" | "error") => void;
   getAccessTokenSilently: GetAccessTokenSilently;
@@ -54,6 +63,7 @@ const LessonsPage = ({
   onUpdateContent,
   onUpdateStatus,
   onUpdateMeta,
+  onUpdateApprovedQuestions,
   onUploadIcon,
   onNotify,
   getAccessTokenSilently,
@@ -108,8 +118,9 @@ const LessonsPage = ({
             }}
           >
             <LessonWorkspace
-              key={selectedLesson?.id || "empty-lesson"}
+              key={selectedLessonId || selectedLesson?.id || "empty-lesson"}
               lesson={selectedLesson}
+              lessonStorageId={selectedLessonId}
               hasLessons={lessons.length > 0}
               isAuthenticated={isAuthenticated}
               onCreateLesson={onCreateLesson}
@@ -120,6 +131,7 @@ const LessonsPage = ({
               onUpdateContent={onUpdateContent}
               onUpdateStatus={onUpdateStatus}
               onUpdateMeta={onUpdateMeta}
+              onUpdateApprovedQuestions={onUpdateApprovedQuestions}
               onNotify={onNotify}
               getAccessTokenSilently={getAccessTokenSilently}
               onPulse={onPulse}
