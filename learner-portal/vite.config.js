@@ -1,11 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import ckeditor5 from "@ckeditor/vite-plugin-ckeditor5";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    ckeditor5({ theme: require.resolve("@ckeditor/ckeditor5-theme-lark") }),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "logo.png", "icons/pwa-192.png", "icons/pwa-512.png"],
@@ -38,12 +43,7 @@ export default defineConfig({
       "@codemirror/language",
       "@codemirror/lang-markdown",
       "@mui/icons-material/AttachFileRounded",
-      "@mui/icons-material/FormatBoldRounded",
-      "@mui/icons-material/FormatItalicRounded",
-      "@mui/icons-material/FormatListBulletedRounded",
-      "@mui/icons-material/FormatListNumberedRounded",
       "@mui/icons-material/SaveRounded",
-      "@mui/icons-material/TableChartRounded",
       "@mui/icons-material/CloseRounded",
       "@mui/icons-material/DescriptionRounded",
     ],

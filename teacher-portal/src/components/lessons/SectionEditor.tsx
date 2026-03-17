@@ -64,8 +64,15 @@ import { Image, ImageCaption, ImageResize, ImageStyle, ImageToolbar } from "@cke
 import { MediaEmbed } from "@ckeditor/ckeditor5-media-embed";
 import { Table, TableToolbar } from "@ckeditor/ckeditor5-table";
 import { RemoveFormat } from "@ckeditor/ckeditor5-remove-format";
-import { SpecialCharacters } from "@ckeditor/ckeditor5-special-characters";
-import { SpecialCharactersEssentials } from "@ckeditor/ckeditor5-special-characters";
+import {
+  SpecialCharacters,
+  SpecialCharactersArrows,
+  SpecialCharactersCurrency,
+  SpecialCharactersEssentials,
+  SpecialCharactersLatin,
+  SpecialCharactersMathematical,
+  SpecialCharactersText,
+} from "@ckeditor/ckeditor5-special-characters";
 import { Base64UploadAdapter } from "@ckeditor/ckeditor5-upload";
 import { GeneralHtmlSupport } from "@ckeditor/ckeditor5-html-support";
 import "@ckeditor/ckeditor5-theme-lark/theme/theme.css";
@@ -207,6 +214,39 @@ const stripEditorArtifacts = (value?: string) =>
 
 class LessonHtmlEditor extends ClassicEditor {}
 
+const chemistrySpecialCharacterItems = [
+  { title: "Reaction arrow", character: "→" },
+  { title: "Equilibrium arrow", character: "⇌" },
+  { title: "Reversible arrow", character: "↔" },
+  { title: "Delta", character: "Δ" },
+  { title: "Degree", character: "°" },
+  { title: "Plus-minus", character: "±" },
+  { title: "Middle dot", character: "·" },
+  { title: "Micro", character: "µ" },
+  { title: "Alpha", character: "α" },
+  { title: "Beta", character: "β" },
+  { title: "Gamma", character: "γ" },
+  { title: "Lambda", character: "λ" },
+  { title: "Omega", character: "Ω" },
+  { title: "Left arrow", character: "←" },
+  { title: "Up arrow", character: "↑" },
+  { title: "Down arrow", character: "↓" },
+  { title: "Approximately equal", character: "≈" },
+  { title: "Not equal", character: "≠" },
+  { title: "Less than or equal", character: "≤" },
+  { title: "Greater than or equal", character: "≥" },
+];
+
+const registerChemistrySpecialCharacters = (editor: ClassicEditor) => {
+  const specialCharacters = editor.plugins.get("SpecialCharacters") as {
+    addItems: (
+      category: string,
+      items: Array<{ title: string; character: string }>,
+    ) => void;
+  };
+  specialCharacters.addItems("Chemistry", chemistrySpecialCharacterItems);
+};
+
 LessonHtmlEditor.builtinPlugins = [
   Essentials,
   Paragraph,
@@ -237,7 +277,12 @@ LessonHtmlEditor.builtinPlugins = [
   TableToolbar,
   RemoveFormat,
   SpecialCharacters,
+  SpecialCharactersArrows,
+  SpecialCharactersCurrency,
   SpecialCharactersEssentials,
+  SpecialCharactersLatin,
+  SpecialCharactersMathematical,
+  SpecialCharactersText,
   Base64UploadAdapter,
   GeneralHtmlSupport,
 ];
@@ -245,6 +290,7 @@ LessonHtmlEditor.builtinPlugins = [
 LessonHtmlEditor.defaultConfig = {
   licenseKey: "GPL",
   toolbar: {
+    shouldNotGroupWhenFull: true,
     items: [
       "heading",
       "|",
@@ -254,6 +300,7 @@ LessonHtmlEditor.defaultConfig = {
       "underline",
       "subscript",
       "superscript",
+      "|",
       "fontSize",
       "fontFamily",
       "fontColor",
@@ -263,14 +310,16 @@ LessonHtmlEditor.defaultConfig = {
       "link",
       "bulletedList",
       "numberedList",
+      "todoList",
       "insertTable",
-      "alignment",
       "blockQuote",
       "codeBlock",
-      "imageUpload",
-      "mediaEmbed",
       "specialCharacters",
       "removeFormat",
+      "|",
+      "alignment",
+      "imageUpload",
+      "mediaEmbed",
       "|",
       "undo",
       "redo",
@@ -743,6 +792,7 @@ const SectionEditor = ({
                 data={htmlDraft || ""}
                 disabled={disabled}
                 onReady={(editor) => {
+                  registerChemistrySpecialCharacters(editor);
                   editorRef.current = editor;
                 }}
                 onChange={() => {

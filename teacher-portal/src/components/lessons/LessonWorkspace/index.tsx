@@ -7,17 +7,51 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { CKEditor } from "@ckeditor/ckeditor5-react";
+import { ClassicEditor } from "@ckeditor/ckeditor5-editor-classic";
+import { Essentials } from "@ckeditor/ckeditor5-essentials";
+import { Paragraph } from "@ckeditor/ckeditor5-paragraph";
+import {
+  Bold,
+  Italic,
+  Subscript,
+  Superscript,
+  Underline,
+} from "@ckeditor/ckeditor5-basic-styles";
+import { Heading } from "@ckeditor/ckeditor5-heading";
+import { Link } from "@ckeditor/ckeditor5-link";
+import { List } from "@ckeditor/ckeditor5-list";
+import { BlockQuote } from "@ckeditor/ckeditor5-block-quote";
+import { CodeBlock } from "@ckeditor/ckeditor5-code-block";
+import {
+  FontBackgroundColor,
+  FontColor,
+  FontFamily,
+  FontSize,
+} from "@ckeditor/ckeditor5-font";
+import { Highlight } from "@ckeditor/ckeditor5-highlight";
+import {
+  SpecialCharacters,
+  SpecialCharactersArrows,
+  SpecialCharactersCurrency,
+  SpecialCharactersEssentials,
+  SpecialCharactersLatin,
+  SpecialCharactersMathematical,
+  SpecialCharactersText,
+} from "@ckeditor/ckeditor5-special-characters";
+import { Markdown } from "@ckeditor/ckeditor5-markdown-gfm";
+import "@ckeditor/ckeditor5-theme-lark/theme/theme.css";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Dialog,
   Box,
   Button,
   Collapse,
   CircularProgress,
   Divider,
+  Dialog,
   IconButton,
   LinearProgress,
   Stack,
@@ -33,19 +67,9 @@ import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import DocumentScannerRoundedIcon from "@mui/icons-material/DocumentScannerRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
-import FormatBoldRoundedIcon from "@mui/icons-material/FormatBoldRounded";
-import FormatItalicRoundedIcon from "@mui/icons-material/FormatItalicRounded";
-import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
-import FormatListNumberedRoundedIcon from "@mui/icons-material/FormatListNumberedRounded";
 import FullscreenRoundedIcon from "@mui/icons-material/FullscreenRounded";
-import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
-import FormatQuoteRoundedIcon from "@mui/icons-material/FormatQuoteRounded";
-import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
-import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
-import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
-import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
 import type {
@@ -187,6 +211,111 @@ type JsonNodeProps = {
   depth?: number;
   expandAll: boolean;
   showKeys: boolean;
+};
+
+const QUESTION_EDITOR_SYMBOLS = [
+  "→",
+  "⇌",
+  "↔",
+  "Δ",
+  "°",
+  "±",
+  "·",
+  "µ",
+  "α",
+  "β",
+  "γ",
+  "λ",
+  "Ω",
+  "≤",
+  "≥",
+  "≠",
+  "≈",
+];
+
+class QuestionRichTextEditor extends ClassicEditor {}
+
+const registerQuestionEditorChemistryCharacters = (editor: ClassicEditor) => {
+  const specialCharacters = editor.plugins.get("SpecialCharacters") as {
+    addItems: (
+      category: string,
+      items: Array<{ title: string; character: string }>,
+    ) => void;
+  };
+  specialCharacters.addItems(
+    "Chemistry",
+    QUESTION_EDITOR_SYMBOLS.map((character) => ({
+      character,
+      title: character,
+    })),
+  );
+};
+
+QuestionRichTextEditor.builtinPlugins = [
+  Essentials,
+  Paragraph,
+  Bold,
+  Italic,
+  Underline,
+  Subscript,
+  Superscript,
+  Heading,
+  Link,
+  List,
+  BlockQuote,
+  CodeBlock,
+  FontColor,
+  FontBackgroundColor,
+  FontFamily,
+  FontSize,
+  Highlight,
+  SpecialCharacters,
+  SpecialCharactersArrows,
+  SpecialCharactersCurrency,
+  SpecialCharactersEssentials,
+  SpecialCharactersLatin,
+  SpecialCharactersMathematical,
+  SpecialCharactersText,
+  Markdown,
+];
+
+QuestionRichTextEditor.defaultConfig = {
+  licenseKey: "GPL",
+  toolbar: {
+    shouldNotGroupWhenFull: true,
+    items: [
+      "heading",
+      "|",
+      "bold",
+      "italic",
+      "strikethrough",
+      "underline",
+      "subscript",
+      "superscript",
+      "|",
+      "fontSize",
+      "fontFamily",
+      "fontColor",
+      "fontBackgroundColor",
+      "highlight",
+      "|",
+      "blockQuote",
+      "codeBlock",
+      "link",
+      "bulletedList",
+      "numberedList",
+      "todoList",
+      "insertTable",
+      "specialCharacters",
+      "removeFormat",
+      "|",
+      "undo",
+      "redo",
+    ],
+  },
+  table: {
+    contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"],
+  },
 };
 
 const emptyDraft = (): BuilderDraft => ({
@@ -614,7 +743,6 @@ const QuestionsAccordionList = ({
   const [titleDraft, setTitleDraft] = useState("");
   const [pageNumberDraft, setPageNumberDraft] = useState("");
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
-  const editorRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   useEffect(() => {
     setTitleDraft(page?.title || "");
@@ -662,74 +790,6 @@ const QuestionsAccordionList = ({
     }
     onUpdateQuestion?.(pageNumber, questionIndex, nextValue);
     clearQuestionDraft(key);
-  };
-
-  const runEditorCommand = (key: string, command: "undo" | "redo") => {
-    const editor = editorRefs.current[key];
-    if (!editor) {
-      return;
-    }
-    editor.focus();
-    document.execCommand(command);
-  };
-
-  const wrapSelection = (
-    key: string,
-    prefix: string,
-    suffix = prefix,
-    placeholder = "text",
-  ) => {
-    const editor = editorRefs.current[key];
-    if (!editor || !page) {
-      return;
-    }
-    const selectionStart = editor.selectionStart ?? 0;
-    const selectionEnd = editor.selectionEnd ?? 0;
-    const currentValue = editor.value;
-    const selectedText =
-      currentValue.slice(selectionStart, selectionEnd) || placeholder;
-    const nextValue =
-      currentValue.slice(0, selectionStart) +
-      prefix +
-      selectedText +
-      suffix +
-      currentValue.slice(selectionEnd);
-    setQuestionDraft(key, nextValue);
-    queueMicrotask(() => {
-      const nextEditor = editorRefs.current[key];
-      if (!nextEditor) {
-        return;
-      }
-      nextEditor.focus();
-      const cursorStart = selectionStart + prefix.length;
-      const cursorEnd = cursorStart + selectedText.length;
-      nextEditor.setSelectionRange(cursorStart, cursorEnd);
-    });
-  };
-
-  const prefixSelectionLines = (key: string, prefix: string) => {
-    const editor = editorRefs.current[key];
-    if (!editor || !page) {
-      return;
-    }
-    const selectionStart = editor.selectionStart ?? 0;
-    const selectionEnd = editor.selectionEnd ?? 0;
-    const currentValue = editor.value;
-    const start = currentValue.lastIndexOf("\n", selectionStart - 1) + 1;
-    const endBreak = currentValue.indexOf("\n", selectionEnd);
-    const end = endBreak === -1 ? currentValue.length : endBreak;
-    const block = currentValue.slice(start, end);
-    const nextBlock = block
-      .split("\n")
-      .map((line) => `${prefix}${line}`)
-      .join("\n");
-    const nextValue =
-      currentValue.slice(0, start) + nextBlock + currentValue.slice(end);
-    setQuestionDraft(key, nextValue);
-    queueMicrotask(() => {
-      const nextEditor = editorRefs.current[key];
-      nextEditor?.focus();
-    });
   };
 
   return (
@@ -1038,97 +1098,14 @@ const QuestionsAccordionList = ({
                                 direction="row"
                                 spacing={0.25}
                                 alignItems="center"
-                                justifyContent="space-between"
+                                justifyContent="flex-end"
                                 sx={{
                                   px: 1,
                                   py: 0.75,
-                                  borderBottom: "1px solid rgba(0,0,0,0.1)",
+                                  borderBottom: "1px solid #dbeafe",
                                   backgroundColor: "#f8fafc",
                                 }}
                               >
-                                <Stack
-                                  direction="row"
-                                  spacing={0.25}
-                                  alignItems="center"
-                                >
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      wrapSelection(questionKey, "**")
-                                    }
-                                  >
-                                    <FormatBoldRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      wrapSelection(questionKey, "_")
-                                    }
-                                  >
-                                    <FormatItalicRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      prefixSelectionLines(questionKey, "> ")
-                                    }
-                                  >
-                                    <FormatQuoteRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      wrapSelection(questionKey, "`")
-                                    }
-                                  >
-                                    <CodeRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      wrapSelection(
-                                        questionKey,
-                                        "[",
-                                        "](https://example.com)",
-                                        "link text",
-                                      )
-                                    }
-                                  >
-                                    <LinkRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      prefixSelectionLines(questionKey, "- ")
-                                    }
-                                  >
-                                    <FormatListBulletedRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      prefixSelectionLines(questionKey, "1. ")
-                                    }
-                                  >
-                                    <FormatListNumberedRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      runEditorCommand(questionKey, "undo")
-                                    }
-                                  >
-                                    <UndoRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      runEditorCommand(questionKey, "redo")
-                                    }
-                                  >
-                                    <RedoRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                </Stack>
                                 <Stack
                                   direction="row"
                                   spacing={0.25}
@@ -1164,29 +1141,17 @@ const QuestionsAccordionList = ({
                                   </IconButton>
                                 </Stack>
                               </Stack>
-                              <TextField
-                                multiline
-                                fullWidth
-                                minRows={8}
-                                value={questionDraft}
-                                onChange={(event) =>
-                                  setQuestionDraft(questionKey, event.target.value)
-                                }
-                                inputRef={(element) => {
-                                  editorRefs.current[questionKey] = element;
+                              <CKEditor
+                                key={questionKey}
+                                editor={QuestionRichTextEditor}
+                                data={questionDraft}
+                                onReady={(editor) => {
+                                  registerQuestionEditorChemistryCharacters(
+                                    editor,
+                                  );
                                 }}
-                                spellCheck={false}
-                                variant="standard"
-                                InputProps={{
-                                  disableUnderline: true,
-                                  sx: {
-                                    px: 1.5,
-                                    py: 1.25,
-                                    fontFamily:
-                                      '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
-                                    fontSize: "0.95rem",
-                                    alignItems: "flex-start",
-                                  },
+                                onChange={(_, editor) => {
+                                  setQuestionDraft(questionKey, editor.getData());
                                 }}
                               />
                             </Box>

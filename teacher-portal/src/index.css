@@ -27,6 +27,7 @@ button {
 .ck.ck-editor__top .ck-toolbar {
   flex-wrap: wrap !important;
   overflow: visible !important;
+  border-bottom: 1px solid #dbeafe !important;
 }
 
 .ck.ck-editor__top .ck-toolbar__items,

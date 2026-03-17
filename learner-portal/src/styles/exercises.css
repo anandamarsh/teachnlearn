@@ -338,42 +338,89 @@
   background: #ffffff;
 }
 
-.response-editor-box .toastui-editor-defaultUI {
-  border: none;
-}
-
-.response-editor-box .toastui-editor-toolbar {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+.response-editor-header {
+  border-bottom: 1px solid #dbeafe;
   background: #f8fafc;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.75rem 0.55rem 1rem;
 }
 
-.response-editor-box .toastui-editor-toolbar-icons {
+.response-editor-header-note {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.response-editor-box .ck.ck-editor {
+  border: none;
+}
+
+.response-editor-box .ck.ck-editor__main > .ck-editor__editable {
+  min-height: 260px;
+  border: none;
+  box-shadow: none;
+  padding: 0 0.25rem;
+}
+
+.response-editor-box .ck.ck-toolbar {
+  border: none;
+  border-bottom: 1px solid #dbeafe;
+  background: #f8fafc;
+  padding: 0.5rem 0.75rem;
+}
+
+.response-editor-box .ck.ck-toolbar .ck-toolbar__items,
+.response-editor-box .ck.ck-toolbar .ck-toolbar__group {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.response-editor-box .ck.ck-button,
+.response-editor-box .ck.ck-dropdown__button {
   border-radius: 10px;
 }
 
-.response-editor-box .toastui-editor-toolbar-icons.active,
-.response-editor-box .toastui-editor-toolbar-icons:hover.active,
-.response-editor-box button.active .toastui-editor-toolbar-icons,
-.response-editor-box [aria-pressed="true"] .toastui-editor-toolbar-icons {
+.response-editor-box .ck.ck-button.ck-on,
+.response-editor-box .ck.ck-button:active,
+.response-editor-box .ck.ck-button:hover,
+.response-editor-box .ck.ck-dropdown__button.ck-on,
+.response-editor-box .ck.ck-dropdown__button:hover {
   color: #c2410c;
 }
 
-.response-editor-box .toastui-editor-toolbar-icons.active svg,
-.response-editor-box .toastui-editor-toolbar-icons:hover.active svg,
-.response-editor-box button.active .toastui-editor-toolbar-icons svg,
-.response-editor-box [aria-pressed="true"] .toastui-editor-toolbar-icons svg {
-  color: #c2410c;
-  fill: #c2410c;
+.response-editor-box .ck.ck-content,
+.response-editor-box .ck.ck-content * {
+  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+}
+
+.response-editor-box .ck.ck-content {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.response-editor-box .ck.ck-content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.response-editor-box .ck.ck-content th,
+.response-editor-box .ck.ck-content td {
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  padding: 0.55rem 0.7rem;
+}
+
+.response-editor-box .ck.ck-content th {
+  background: #f8fafc;
+  color: #111827;
 }
 
 .response-editor-toolbar-actions {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding-right: 0.5rem;
 }
 
 .response-editor-toolbar-action {
@@ -405,54 +452,6 @@
 .response-editor-toolbar-action svg {
   width: 18px;
   height: 18px;
-}
-
-.response-editor-box .toastui-editor-md-tab-container,
-.response-editor-box .toastui-editor-mode-switch {
-  display: none !important;
-}
-
-.response-editor-box .toastui-editor-contents,
-.response-editor-box .toastui-editor-contents * {
-  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
-}
-
-.response-editor-box .toastui-editor-main {
-  min-height: 260px;
-}
-
-.response-editor-box .toastui-editor-ww-container {
-  background: #ffffff;
-}
-
-.response-editor-box .toastui-editor-ww-container .ProseMirror {
-  padding: 16px;
-  font-size: 1rem;
-  line-height: 1.55;
-}
-
-.response-editor-box .toastui-editor-ww-container .ProseMirror table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.response-editor-box .toastui-editor-ww-container .ProseMirror th,
-.response-editor-box .toastui-editor-ww-container .ProseMirror td {
-  border: 1px solid rgba(0, 0, 0, 0.16);
-  padding: 0.55rem 0.7rem;
-}
-
-.response-editor-box .toastui-editor-ww-container .ProseMirror th {
-  background: #f8fafc;
-  color: #111827;
-}
-
-.response-editor-box .toastui-editor-ww-container .ProseMirror th,
-.response-editor-box .toastui-editor-ww-container .ProseMirror th *,
-.response-editor-box .toastui-editor-ww-container .ProseMirror thead th,
-.response-editor-box .toastui-editor-ww-container .ProseMirror thead th * {
-  color: #111827 !important;
-  -webkit-text-fill-color: #111827;
 }
 
 .response-attachment-list {

@@ -4,10 +4,44 @@ import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
-import { renderToStaticMarkup } from "react-dom/server";
-import { Editor as ToastEditor } from "@toast-ui/editor";
-import type { EditorOptions } from "@toast-ui/editor";
-import "@toast-ui/editor/dist/toastui-editor.css";
+import { CKEditor } from "@ckeditor/ckeditor5-react";
+import { ClassicEditor } from "@ckeditor/ckeditor5-editor-classic";
+import { Essentials } from "@ckeditor/ckeditor5-essentials";
+import { Paragraph } from "@ckeditor/ckeditor5-paragraph";
+import {
+  Bold,
+  Italic,
+  Strikethrough,
+  Subscript,
+  Superscript,
+  Underline,
+} from "@ckeditor/ckeditor5-basic-styles";
+import { Heading } from "@ckeditor/ckeditor5-heading";
+import { Link } from "@ckeditor/ckeditor5-link";
+import { List } from "@ckeditor/ckeditor5-list";
+import { BlockQuote } from "@ckeditor/ckeditor5-block-quote";
+import { CodeBlock } from "@ckeditor/ckeditor5-code-block";
+import {
+  FontBackgroundColor,
+  FontColor,
+  FontFamily,
+  FontSize,
+} from "@ckeditor/ckeditor5-font";
+import { Highlight } from "@ckeditor/ckeditor5-highlight";
+import { Table, TableToolbar } from "@ckeditor/ckeditor5-table";
+import { RemoveFormat } from "@ckeditor/ckeditor5-remove-format";
+import {
+  SpecialCharacters,
+  SpecialCharactersArrows,
+  SpecialCharactersCurrency,
+  SpecialCharactersEssentials,
+  SpecialCharactersLatin,
+  SpecialCharactersMathematical,
+  SpecialCharactersText,
+} from "@ckeditor/ckeditor5-special-characters";
+import { GeneralHtmlSupport } from "@ckeditor/ckeditor5-html-support";
+import { Markdown } from "@ckeditor/ckeditor5-markdown-gfm";
+import "@ckeditor/ckeditor5-theme-lark/theme/theme.css";
 import type { ResponseAttachment } from "../../state/types";
 
 type ResponseMarkdownEditorProps = {
@@ -24,6 +58,132 @@ type ResponseMarkdownEditorProps = {
   error?: string | null;
 };
 
+class LessonResponseEditor extends ClassicEditor {}
+
+const chemistrySpecialCharacterItems = [
+  { title: "Reaction arrow", character: "→" },
+  { title: "Equilibrium arrow", character: "⇌" },
+  { title: "Reversible arrow", character: "↔" },
+  { title: "Delta", character: "Δ" },
+  { title: "Degree", character: "°" },
+  { title: "Plus-minus", character: "±" },
+  { title: "Middle dot", character: "·" },
+  { title: "Micro", character: "µ" },
+  { title: "Alpha", character: "α" },
+  { title: "Beta", character: "β" },
+  { title: "Gamma", character: "γ" },
+  { title: "Lambda", character: "λ" },
+  { title: "Omega", character: "Ω" },
+  { title: "Left arrow", character: "←" },
+  { title: "Up arrow", character: "↑" },
+  { title: "Down arrow", character: "↓" },
+  { title: "Approximately equal", character: "≈" },
+  { title: "Not equal", character: "≠" },
+  { title: "Less than or equal", character: "≤" },
+  { title: "Greater than or equal", character: "≥" },
+];
+
+const registerChemistrySpecialCharacters = (editor: ClassicEditor) => {
+  const specialCharacters = editor.plugins.get("SpecialCharacters") as {
+    addItems: (
+      category: string,
+      items: Array<{ title: string; character: string }>,
+    ) => void;
+  };
+  specialCharacters.addItems("Chemistry", chemistrySpecialCharacterItems);
+};
+
+LessonResponseEditor.builtinPlugins = [
+  Essentials,
+  Paragraph,
+  Bold,
+  Italic,
+  Strikethrough,
+  Underline,
+  Subscript,
+  Superscript,
+  Heading,
+  Link,
+  List,
+  BlockQuote,
+  CodeBlock,
+  FontColor,
+  FontBackgroundColor,
+  FontFamily,
+  FontSize,
+  Highlight,
+  Table,
+  TableToolbar,
+  RemoveFormat,
+  SpecialCharacters,
+  SpecialCharactersArrows,
+  SpecialCharactersCurrency,
+  SpecialCharactersEssentials,
+  SpecialCharactersLatin,
+  SpecialCharactersMathematical,
+  SpecialCharactersText,
+  GeneralHtmlSupport,
+  Markdown,
+];
+
+LessonResponseEditor.defaultConfig = {
+  licenseKey: "GPL",
+  toolbar: {
+    shouldNotGroupWhenFull: true,
+    items: [
+      "heading",
+      "|",
+      "bold",
+      "italic",
+      "strikethrough",
+      "underline",
+      "subscript",
+      "superscript",
+      "|",
+      "fontSize",
+      "fontFamily",
+      "fontColor",
+      "fontBackgroundColor",
+      "highlight",
+      "|",
+      "link",
+      "bulletedList",
+      "numberedList",
+      "todoList",
+      "insertTable",
+      "blockQuote",
+      "codeBlock",
+      "specialCharacters",
+      "removeFormat",
+      "|",
+      "undo",
+      "redo",
+    ],
+  },
+  table: {
+    contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"],
+  },
+  htmlSupport: {
+    allow: [
+      {
+        name: /.*/,
+        attributes: true,
+        classes: true,
+        styles: true,
+      },
+    ],
+  },
+  codeBlock: {
+    languages: [
+      { language: "plaintext", label: "Plain text" },
+      { language: "markdown", label: "Markdown" },
+      { language: "html", label: "HTML" },
+      { language: "javascript", label: "JavaScript" },
+      { language: "json", label: "JSON" },
+    ],
+  },
+};
+
 const ResponseMarkdownEditor = ({
   value,
   teacherComment,
@@ -37,134 +197,16 @@ const ResponseMarkdownEditor = ({
   saving,
   error,
 }: ResponseMarkdownEditorProps) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const editorRef = useRef<ToastEditor | null>(null);
+  const editorRef = useRef<LessonResponseEditor | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const onChangeRef = useRef(onChange);
-  const suppressChangeRef = useRef(false);
-  const userInteractedRef = useRef(false);
-
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    const options: EditorOptions = {
-      el: container,
-      initialValue: value,
-      initialEditType: "wysiwyg",
-      previewStyle: "vertical",
-      height: "320px",
-      hideModeSwitch: true,
-      usageStatistics: false,
-      autofocus: false,
-      toolbarItems: [
-        ["heading", "bold", "italic", "strike"],
-        ["hr", "quote"],
-        ["ul", "ol", "task"],
-        ["table", "link"],
-        ["code", "codeblock"],
-      ],
-    };
-    const editor = new ToastEditor(options);
-    editor.on("change", () => {
-      if (suppressChangeRef.current) {
-        suppressChangeRef.current = false;
-        return;
-      }
-      if (!userInteractedRef.current) {
-        return;
-      }
-      onChangeRef.current(editor.getMarkdown());
-    });
-    editorRef.current = editor;
-    return () => {
-      editor.destroy();
-      editorRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor) {
+    if (!editor || editor.getData() === value) {
       return;
     }
-    const currentValue = editor.getMarkdown();
-    if (currentValue === value) {
-      return;
-    }
-    suppressChangeRef.current = true;
-    editor.setMarkdown(value, false);
+    editor.setData(value || "");
   }, [value]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    const markInteracted = () => {
-      userInteractedRef.current = true;
-    };
-    container.addEventListener("keydown", markInteracted, true);
-    container.addEventListener("beforeinput", markInteracted, true);
-    container.addEventListener("paste", markInteracted, true);
-    container.addEventListener("cut", markInteracted, true);
-    container.addEventListener("drop", markInteracted, true);
-
-    const toolbar = container.querySelector(".toastui-editor-toolbar");
-    if (!toolbar) {
-      return () => {
-        container.removeEventListener("keydown", markInteracted, true);
-        container.removeEventListener("beforeinput", markInteracted, true);
-        container.removeEventListener("paste", markInteracted, true);
-        container.removeEventListener("cut", markInteracted, true);
-        container.removeEventListener("drop", markInteracted, true);
-      };
-    }
-
-    const actionHost = document.createElement("div");
-    actionHost.className = "response-editor-toolbar-actions";
-
-    const attachButton = document.createElement("button");
-    attachButton.type = "button";
-    attachButton.className = "response-editor-toolbar-action";
-    attachButton.setAttribute("aria-label", "Attach files");
-    attachButton.innerHTML = renderToStaticMarkup(
-      <AttachFileRoundedIcon fontSize="small" />
-    );
-    attachButton.onclick = () => fileInputRef.current?.click();
-
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.className = "response-editor-toolbar-action";
-    saveButton.setAttribute("aria-label", "Save response");
-    saveButton.innerHTML = renderToStaticMarkup(
-      <SaveRoundedIcon fontSize="small" />
-    );
-    saveButton.disabled = !dirty || saving;
-    saveButton.onclick = () => {
-      if (!saveButton.disabled) {
-        onSave();
-      }
-    };
-
-    actionHost.appendChild(attachButton);
-    actionHost.appendChild(saveButton);
-    toolbar.appendChild(actionHost);
-
-    return () => {
-      actionHost.remove();
-      container.removeEventListener("keydown", markInteracted, true);
-      container.removeEventListener("beforeinput", markInteracted, true);
-      container.removeEventListener("paste", markInteracted, true);
-      container.removeEventListener("cut", markInteracted, true);
-      container.removeEventListener("drop", markInteracted, true);
-    };
-  }, [dirty, onSave, saving]);
 
   return (
     <Box className="response-editor-shell">
@@ -189,7 +231,52 @@ const ResponseMarkdownEditor = ({
         }}
       >
         <Box className="response-editor-box">
-          <Box ref={containerRef} />
+          <Box className="response-editor-header">
+            <Box className="response-editor-header-note">
+              Rich text, headings, tables, subscript, superscript, and symbols are supported.
+            </Box>
+            <Box className="response-editor-toolbar-actions">
+              <button
+                type="button"
+                className="response-editor-toolbar-action"
+                aria-label="Attach files"
+                title="Attach files"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <AttachFileRoundedIcon fontSize="small" />
+              </button>
+              <button
+                type="button"
+                className="response-editor-toolbar-action"
+                aria-label="Save response"
+                title="Save response"
+                disabled={!dirty || saving}
+                onClick={() => {
+                  if (!dirty || saving) {
+                    return;
+                  }
+                  onSave();
+                }}
+              >
+                <SaveRoundedIcon fontSize="small" />
+              </button>
+            </Box>
+          </Box>
+          <CKEditor
+            editor={LessonResponseEditor}
+            data={value || ""}
+            disabled={saving}
+            onReady={(editor) => {
+              registerChemistrySpecialCharacters(editor);
+              editorRef.current = editor as LessonResponseEditor;
+            }}
+            onChange={(_, editor) => {
+              const nextValue = editor.getData();
+              if (nextValue !== value) {
+                onChange(nextValue);
+              }
+            }}
+          />
         </Box>
       </Box>
       {attachments.length ? (
