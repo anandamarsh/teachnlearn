@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Box } from "@mui/material";
-import { ExerciseResponseSaveState, ExerciseStatus } from "../../state/types";
+import {
+  ExerciseResponseRecord,
+  ExerciseResponseSaveState,
+  ExerciseStatus,
+} from "../../state/types";
 
 type ExerciseDotsProps = {
   count: number;
   currentIndex: number;
   statuses: ExerciseStatus[];
   responseSaveStates?: ExerciseResponseSaveState[];
+  responseRecords?: ExerciseResponseRecord[];
   maxUnlockedIndex: number;
   onSelect: (index: number) => void;
 };
@@ -16,6 +21,7 @@ const ExerciseDots = ({
   currentIndex,
   statuses,
   responseSaveStates,
+  responseRecords,
   maxUnlockedIndex,
   onSelect,
 }: ExerciseDotsProps) => {
@@ -79,10 +85,19 @@ const ExerciseDots = ({
       >
         {Array.from({ length: count }).map((_, idx) => {
           const status = statuses[idx] ?? "unattempted";
-          const isLatest = idx === maxUnlockedIndex;
           const isDisplayed = idx === currentIndex;
           const responseState = responseSaveStates?.[idx];
-          const dotState = responseState ? `response-${responseState}` : status;
+          const responseRecord = responseRecords?.[idx];
+          const reviewStatus = responseRecord?.reviewStatus || null;
+          const hasAttemptedResponse = Boolean(
+            responseRecord?.answerMarkdown?.trim() ||
+              responseRecord?.attachments?.length,
+          );
+          const dotState = reviewStatus
+            ? reviewStatus
+            : responseState && hasAttemptedResponse
+              ? "response-attempted"
+              : status;
           const latestClass =
             !responseState && status === "unattempted" && isDisplayed ? "latest" : "";
           const isLocked = idx > maxUnlockedIndex;

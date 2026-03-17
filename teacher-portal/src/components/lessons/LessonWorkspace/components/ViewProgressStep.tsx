@@ -59,11 +59,38 @@ type ViewProgressStepProps = {
   }) => void;
 };
 
+const deriveResponseState = (
+  response: {
+    answered: boolean;
+    reviewStatus?: "approved" | "rejected" | null;
+  },
+) => {
+  if (response.reviewStatus === "approved" || response.reviewStatus === "rejected") {
+    return response.reviewStatus;
+  }
+  return response.answered ? "answered" : "unanswered";
+};
+
 const dotSx = {
   width: 12,
   height: 12,
   borderRadius: "999px",
   flexShrink: 0,
+};
+
+const getResponseStateColor = (
+  value: "unanswered" | "answered" | "approved" | "rejected",
+) => {
+  if (value === "approved") {
+    return "#2e7d32";
+  }
+  if (value === "rejected") {
+    return "#c62828";
+  }
+  if (value === "answered") {
+    return "#ef6c00";
+  }
+  return "#bdbdbd";
 };
 
 const BottomUpTransition = forwardRef(function BottomUpTransition(
@@ -372,6 +399,7 @@ const StudentResponsesDialog = ({
   auth0Audience,
   getAccessTokenSilently,
   onNotify,
+  onStatusSaved,
 }: {
   student: TeacherLessonProgressStudent | null;
   open: boolean;
@@ -381,6 +409,11 @@ const StudentResponsesDialog = ({
   auth0Audience: string;
   getAccessTokenSilently?: GetAccessTokenSilently;
   onNotify: (message: string, severity: "success" | "error") => void;
+  onStatusSaved?: (
+    studentId: string,
+    questionKey: string,
+    reviewStatus: "approved" | "rejected" | null,
+  ) => void;
 }) => {
   const [slideIndex, setSlideIndex] = useState(0);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>(
@@ -389,6 +422,9 @@ const StudentResponsesDialog = ({
   const [savedComments, setSavedComments] = useState<Record<string, string>>(
     {},
   );
+  const [savedReviewStatuses, setSavedReviewStatuses] = useState<
+    Record<string, "approved" | "rejected" | null>
+  >({});
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
   const [fullscreenAttachment, setFullscreenAttachment] =
     useState<TeacherLessonProgressAttachment | null>(null);
@@ -412,8 +448,15 @@ const StudentResponsesDialog = ({
         response.teacherComment || "",
       ]),
     );
+    const nextReviewStatuses = Object.fromEntries(
+      student.responses.map((response) => [
+        response.questionKey,
+        response.reviewStatus || null,
+      ]),
+    ) as Record<string, "approved" | "rejected" | null>;
     setCommentDrafts(nextComments);
     setSavedComments(nextComments);
+    setSavedReviewStatuses(nextReviewStatuses);
   }, [student]);
 
   useEffect(() => {
@@ -456,12 +499,19 @@ const StudentResponsesDialog = ({
       ? `${apiBaseUrl}${attachment.previewPath}`
       : undefined;
 
-  const saveComment = async () => {
+  const saveTeacherReview = async (
+    nextReviewStatus: "approved" | "rejected" | null,
+  ) => {
     if (!student || !activeResponse || !getAccessTokenSilently) {
       return;
     }
     const nextComment = commentDrafts[commentsKey] || "";
-    if (nextComment === (savedComments[commentsKey] || "")) {
+    const currentReviewStatus =
+      savedReviewStatuses[commentsKey] ?? activeResponse.reviewStatus ?? null;
+    if (
+      nextComment === (savedComments[commentsKey] || "") &&
+      nextReviewStatus === currentReviewStatus
+    ) {
       return;
     }
     setSavingCommentKey(commentsKey);
@@ -479,12 +529,18 @@ const StudentResponsesDialog = ({
           promptTitle: activeResponse.promptTitle || "",
           questionHtml: activeResponse.questionHtml || "",
           teacherComment: nextComment,
+          reviewStatus: nextReviewStatus,
         },
       );
       setSavedComments((current) => ({
         ...current,
         [commentsKey]: nextComment,
       }));
+      setSavedReviewStatuses((current) => ({
+        ...current,
+        [commentsKey]: nextReviewStatus,
+      }));
+      onStatusSaved?.(student.id, commentsKey, nextReviewStatus);
       onNotify("Data has been saved", "success");
     } catch (error) {
       onNotify(
@@ -497,6 +553,14 @@ const StudentResponsesDialog = ({
       setSavingCommentKey(null);
     }
   };
+
+  const activeReviewStatus =
+    savedReviewStatuses[commentsKey] ?? activeResponse?.reviewStatus ?? null;
+  const activeResponseState = activeReviewStatus
+    ? activeReviewStatus
+    : activeResponse?.answered
+      ? "answered"
+      : "unanswered";
 
   return (
     <Dialog
@@ -629,20 +693,31 @@ const StudentResponsesDialog = ({
                   <ChevronLeftRoundedIcon />
                 </Box>
                 <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
-                  {responses.map((response, idx) => (
-                    <Box
-                      key={response.questionKey}
-                      sx={{
-                        ...dotSx,
-                        bgcolor: response.answered ? "#2e7d32" : "#c7c7c7",
-                        outline:
-                          idx === slideIndex
-                            ? "2px solid rgba(46,125,50,0.35)"
-                            : "none",
-                        outlineOffset: 2,
-                      }}
-                    />
-                  ))}
+                  {responses.map((response, idx) => {
+                    const responseReviewStatus =
+                      savedReviewStatuses[response.questionKey] ??
+                      response.reviewStatus ??
+                      null;
+                    const responseState = responseReviewStatus
+                      ? responseReviewStatus
+                      : response.answered
+                        ? "answered"
+                        : "unanswered";
+                    return (
+                      <Box
+                        key={response.questionKey}
+                        sx={{
+                          ...dotSx,
+                          bgcolor: getResponseStateColor(responseState),
+                          outline:
+                            idx === slideIndex
+                              ? "2px solid rgba(0,0,0,0.22)"
+                              : "none",
+                          outlineOffset: 2,
+                        }}
+                      />
+                    );
+                  })}
                 </Box>
                 <Box
                   component="button"
@@ -775,31 +850,90 @@ const StudentResponsesDialog = ({
                         justifyContent: "space-between",
                         gap: 2,
                         mb: 1.5,
+                        flexWrap: "wrap",
                       }}
                     >
                       <Typography sx={{ fontWeight: 800 }}>Comments</Typography>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        disabled={
-                          !commentDirty || savingCommentKey === commentsKey
-                        }
-                        sx={{
-                          color:
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Button
+                          variant={
+                            activeReviewStatus === "approved"
+                              ? "contained"
+                              : "outlined"
+                          }
+                          size="small"
+                          disabled={
+                            !activeResponse.answered ||
+                            savingCommentKey === commentsKey
+                          }
+                          onClick={() => {
+                            void saveTeacherReview("approved");
+                          }}
+                          sx={{
+                            color:
+                              activeReviewStatus === "approved"
+                                ? "#fff"
+                                : "#2e7d32",
+                            borderColor: "rgba(46,125,50,0.4)",
+                            bgcolor:
+                              activeReviewStatus === "approved"
+                                ? "#2e7d32"
+                                : undefined,
+                          }}
+                        >
+                          Approved
+                        </Button>
+                        <Button
+                          variant={
+                            activeReviewStatus === "rejected"
+                              ? "contained"
+                              : "outlined"
+                          }
+                          size="small"
+                          disabled={
+                            !activeResponse.answered ||
+                            savingCommentKey === commentsKey
+                          }
+                          onClick={() => {
+                            void saveTeacherReview("rejected");
+                          }}
+                          sx={{
+                            color:
+                              activeReviewStatus === "rejected"
+                                ? "#fff"
+                                : "#c62828",
+                            borderColor: "rgba(198,40,40,0.4)",
+                            bgcolor:
+                              activeReviewStatus === "rejected"
+                                ? "#c62828"
+                                : undefined,
+                          }}
+                        >
+                          Rejected
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          disabled={
                             !commentDirty || savingCommentKey === commentsKey
-                              ? undefined
-                              : "#9a3412",
-                          borderColor:
-                            !commentDirty || savingCommentKey === commentsKey
-                              ? undefined
-                              : "rgba(154,52,18,0.4)",
-                        }}
-                        onClick={() => {
-                          void saveComment();
-                        }}
-                      >
-                        Save
-                      </Button>
+                          }
+                          sx={{
+                            color:
+                              !commentDirty || savingCommentKey === commentsKey
+                                ? undefined
+                                : "#9a3412",
+                            borderColor:
+                              !commentDirty || savingCommentKey === commentsKey
+                                ? undefined
+                                : "rgba(154,52,18,0.4)",
+                          }}
+                          onClick={() => {
+                            void saveTeacherReview(activeReviewStatus);
+                          }}
+                        >
+                          Save
+                        </Button>
+                      </Stack>
                     </Box>
                     <TextField
                       key={commentsKey}
@@ -1037,6 +1171,57 @@ const ViewProgressStep = ({
   const [selectedStudent, setSelectedStudent] =
     useState<TeacherLessonProgressStudent | null>(null);
 
+  const handleStatusSaved = (
+    studentId: string,
+    questionKey: string,
+    reviewStatus: "approved" | "rejected" | null,
+  ) => {
+    setPayload((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        students: current.students.map((student) => {
+          if (student.id !== studentId) {
+            return student;
+          }
+          const responses = student.responses.map((response) =>
+            response.questionKey === questionKey
+              ? {
+                  ...response,
+                  reviewStatus,
+                }
+              : response,
+          );
+          return {
+            ...student,
+            responses,
+            questionStates: responses.map((response) => deriveResponseState(response)),
+          };
+        }),
+      };
+    });
+    setSelectedStudent((current) => {
+      if (!current || current.id !== studentId) {
+        return current;
+      }
+      const responses = current.responses.map((response) =>
+        response.questionKey === questionKey
+          ? {
+              ...response,
+              reviewStatus,
+            }
+          : response,
+      );
+      return {
+        ...current,
+        responses,
+        questionStates: responses.map((response) => deriveResponseState(response)),
+      };
+    });
+  };
+
   useEffect(() => {
     if (!enabled || !apiBaseUrl || !lessonId || !getAccessTokenSilently) {
       return;
@@ -1136,7 +1321,7 @@ const ViewProgressStep = ({
               key={student.id || student.name}
               onClick={() => setSelectedStudent(student)}
               sx={{
-                width: "20rem",
+                width: "100%",
                 maxWidth: "100%",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -1159,12 +1344,12 @@ const ViewProgressStep = ({
                   gap: 0.75,
                 }}
               >
-                {student.questionStates.map((answered, idx) => (
+                {student.questionStates.map((state, idx) => (
                   <Box
                     key={`${student.name}_${idx}`}
                     sx={{
                       ...dotSx,
-                      bgcolor: answered ? "#2e7d32" : "#bdbdbd",
+                      bgcolor: getResponseStateColor(state),
                     }}
                   />
                 ))}
@@ -1183,6 +1368,7 @@ const ViewProgressStep = ({
         auth0Audience={auth0Audience}
         getAccessTokenSilently={getAccessTokenSilently}
         onNotify={onNotify}
+        onStatusSaved={handleStatusSaved}
       />
     </Stack>
   );

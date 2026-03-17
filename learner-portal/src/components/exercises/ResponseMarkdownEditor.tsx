@@ -13,6 +13,7 @@ import type { ResponseAttachment } from "../../state/types";
 type ResponseMarkdownEditorProps = {
   value: string;
   teacherComment?: string;
+  reviewStatus?: "approved" | "rejected" | null;
   onChange: (value: string) => void;
   onSave: () => void;
   onAttachFiles: (files: FileList | null) => void;
@@ -26,6 +27,7 @@ type ResponseMarkdownEditorProps = {
 const ResponseMarkdownEditor = ({
   value,
   teacherComment,
+  reviewStatus,
   onChange,
   onSave,
   onAttachFiles,
@@ -217,6 +219,29 @@ const ResponseMarkdownEditor = ({
               </IconButton>
             </Box>
           ))}
+        </Box>
+      ) : null}
+      {reviewStatus ? (
+        <Box
+          sx={{
+            mt: 1.5,
+            display: "inline-flex",
+            alignItems: "center",
+            px: 1.25,
+            py: 0.5,
+            borderRadius: "999px",
+            fontSize: "0.78rem",
+            fontWeight: 800,
+            color: reviewStatus === "approved" ? "#1b5e20" : "#b71c1c",
+            backgroundColor:
+              reviewStatus === "approved" ? "#e8f5e9" : "#ffebee",
+            border:
+              reviewStatus === "approved"
+                ? "1px solid rgba(46,125,50,0.24)"
+                : "1px solid rgba(198,40,40,0.24)",
+          }}
+        >
+          {reviewStatus === "approved" ? "Approved" : "Rejected"}
         </Box>
       ) : null}
       {teacherComment?.trim() ? (

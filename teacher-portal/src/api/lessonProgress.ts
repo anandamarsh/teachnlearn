@@ -31,6 +31,7 @@ export type TeacherLessonProgressAttachment = {
 export type TeacherLessonProgressResponse = TeacherLessonProgressQuestion & {
   answerMarkdown: string;
   teacherComment?: string;
+  reviewStatus?: "approved" | "rejected" | null;
   attachments: TeacherLessonProgressAttachment[];
   answered: boolean;
 };
@@ -40,7 +41,7 @@ export type TeacherLessonProgressStudent = {
   name: string;
   status: "answered" | "part_answered" | "unanswered";
   answeredCount: number;
-  questionStates: boolean[];
+  questionStates: Array<"unanswered" | "answered" | "approved" | "rejected">;
   responses: TeacherLessonProgressResponse[];
 };
 
@@ -78,6 +79,7 @@ export const saveTeacherLessonComment = async (
     promptTitle: string;
     questionHtml: string;
     teacherComment: string;
+    reviewStatus?: "approved" | "rejected" | null;
   }
 ) => {
   const response = await fetch(endpoint, {
@@ -89,5 +91,5 @@ export const saveTeacherLessonComment = async (
   if (!response.ok) {
     throw new Error(extractError(data, "Failed to save teacher comment"));
   }
-  return data as { teacherComment?: string };
+  return data as { teacherComment?: string; reviewStatus?: "approved" | "rejected" | null };
 };

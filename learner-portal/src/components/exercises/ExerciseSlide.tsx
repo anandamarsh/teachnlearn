@@ -554,6 +554,7 @@ const ExerciseSlide = ({
                     key={`response-${slideIndex}-${responseRecord?.exerciseIndex ?? slideIndex}`}
                     value={responseRecord?.answerMarkdown || ""}
                     teacherComment={responseRecord?.teacherComment || ""}
+                    reviewStatus={responseRecord?.reviewStatus || null}
                     attachments={responseRecord?.attachments || []}
                     dirty={Boolean(responseDirty)}
                     saving={Boolean(responseSaving)}

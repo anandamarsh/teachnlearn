@@ -20,6 +20,12 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
         lowered_type = str(content_type or "").strip().lower()
         return lowered_name.endswith(".pdf") or "pdf" in lowered_type
 
+    def normalize_review_status(value: object) -> str | None:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"approved", "rejected"}:
+            return normalized
+        return None
+
     def build_teacher_lesson_progress(email: str, lesson_id: str) -> dict:
         sanitized_email = sanitize_email(email)
         lesson = store.get(email, lesson_id)
@@ -179,6 +185,7 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
                     "questionHtml": saved_question_html,
                     "answerMarkdown": str(item.get("answerMarkdown") or ""),
                     "teacherComment": str(item.get("teacherComment") or ""),
+                    "reviewStatus": normalize_review_status(item.get("reviewStatus")),
                     "attachments": decorated_attachments,
                 }
 
@@ -216,6 +223,7 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
                 answered = bool(answer_markdown.strip() or attachments)
                 if answered:
                     answered_count += 1
+                review_status = normalize_review_status(saved.get("reviewStatus"))
                 response_items.append(
                     {
                         "questionKey": question["questionKey"],
@@ -225,6 +233,7 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
                         "questionHtml": saved.get("questionHtml") or question["questionHtml"],
                         "answerMarkdown": answer_markdown,
                         "teacherComment": str(saved.get("teacherComment") or ""),
+                        "reviewStatus": review_status,
                         "attachments": attachments,
                         "answered": answered,
                     }
@@ -246,7 +255,10 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
                     "name": student_name,
                     "status": status,
                     "answeredCount": answered_count,
-                    "questionStates": [item["answered"] for item in response_items],
+                    "questionStates": [
+                        item["reviewStatus"] or ("answered" if item["answered"] else "unanswered")
+                        for item in response_items
+                    ],
                     "responses": response_items,
                 }
             )
@@ -378,6 +390,7 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
         prompt_title = str(payload.get("promptTitle") or "").strip()
         question_html = str(payload.get("questionHtml") or "").strip()
         teacher_comment = str(payload.get("teacherComment") or "")
+        review_status = normalize_review_status(payload.get("reviewStatus"))
         exercise_index = payload.get("exerciseIndex")
         if not section_key or not isinstance(exercise_index, int):
             return json_error("sectionKey and exerciseIndex are required", 400)
@@ -451,6 +464,7 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
                     continue
                 updated_item = dict(item)
                 updated_item["teacherComment"] = teacher_comment
+                updated_item["reviewStatus"] = review_status
                 if prompt_title:
                     updated_item["promptTitle"] = prompt_title
                 if question_html:
@@ -464,6 +478,7 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
                         "questionHtml": question_html,
                         "answerMarkdown": "",
                         "teacherComment": teacher_comment,
+                        "reviewStatus": review_status,
                         "attachments": [],
                     }
                 )
@@ -478,7 +493,12 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
             )
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
-        return JSONResponse({"teacherComment": teacher_comment})
+        return JSONResponse(
+            {
+                "teacherComment": teacher_comment,
+                "reviewStatus": review_status,
+            }
+        )
 
     @mcp.custom_route("/teacher/profile", methods=["PUT"])
     async def put_profile(request: Request) -> JSONResponse:

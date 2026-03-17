@@ -91,6 +91,10 @@
   background: #b0b0b0;
 }
 
+.exercise-dot.response-attempted {
+  background: #1565c0;
+}
+
 .exercise-dot.response-dirty {
   background: #c62828;
 }
@@ -112,7 +116,7 @@
 }
 
 .exercise-dot.displayed {
-  border: 2px solid #ffffff;
+  border: 2px solid transparent;
 }
 
 .exercise-dot.displayed.unattempted {
@@ -127,12 +131,32 @@
   box-shadow: 0 0 0 2px #c62828;
 }
 
+.exercise-dot.approved {
+  background: #2e7d32;
+}
+
+.exercise-dot.rejected {
+  background: #c62828;
+}
+
+.exercise-dot.displayed.approved {
+  box-shadow: 0 0 0 2px #2e7d32;
+}
+
+.exercise-dot.displayed.rejected {
+  box-shadow: 0 0 0 2px #c62828;
+}
+
 .exercise-dot.displayed.latest {
   box-shadow: 0 0 0 2px #b0b0b0;
 }
 
 .exercise-dot.displayed.response-default {
   box-shadow: 0 0 0 2px #b0b0b0;
+}
+
+.exercise-dot.displayed.response-attempted {
+  box-shadow: 0 0 0 2px #1565c0;
 }
 
 .exercise-dot.displayed.response-dirty {

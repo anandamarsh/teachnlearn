@@ -28,6 +28,7 @@ export type ExerciseResponseDraft = {
   questionHtml: string;
   answerMarkdown: string;
   teacherComment?: string;
+  reviewStatus?: "approved" | "rejected" | null;
   attachments: ResponseAttachmentDraft[];
 };
 
@@ -63,6 +64,7 @@ export const saveSectionResponses = async (
       questionHtml: responseItem.questionHtml,
       answerMarkdown: responseItem.answerMarkdown,
       teacherComment: responseItem.teacherComment || "",
+      reviewStatus: responseItem.reviewStatus || null,
       attachments: responseItem.attachments.map((attachment) => ({
         id: attachment.id,
         name: attachment.name,

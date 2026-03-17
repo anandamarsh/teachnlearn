@@ -74,6 +74,7 @@ export type ExerciseResponseRecord = {
   questionHtml: string;
   answerMarkdown: string;
   teacherComment?: string;
+  reviewStatus?: "approved" | "rejected" | null;
   attachments: ResponseAttachment[];
 };
 

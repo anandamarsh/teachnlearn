@@ -187,6 +187,7 @@ const ExercisesSection = ({
       questionHtml: exercise.question_html || "",
       answerMarkdown: "",
       teacherComment: "",
+      reviewStatus: null,
       attachments: [],
     }),
     []
@@ -278,6 +279,7 @@ const ExercisesSection = ({
             questionHtml: saved.questionHtml || exercise.question_html || "",
             answerMarkdown: saved.answerMarkdown || "",
             teacherComment: saved.teacherComment || "",
+            reviewStatus: saved.reviewStatus || null,
             attachments: (saved.attachments || []).map((attachment) => ({
               ...attachment,
             })),
@@ -393,6 +395,7 @@ const ExercisesSection = ({
               ...draft,
               answerMarkdown: savedDraft.answerMarkdown || "",
               teacherComment: savedDraft.teacherComment || "",
+              reviewStatus: savedDraft.reviewStatus || null,
               attachments: (savedDraft.attachments || []).map((attachment) => ({
                 ...attachment,
               })),
@@ -2162,6 +2165,7 @@ self.onmessage = async (event) => {
             currentIndex={exerciseIndex}
             statuses={exerciseStatuses}
             responseSaveStates={freeResponseMode ? responseSaveStates : undefined}
+            responseRecords={freeResponseMode ? responseDrafts : undefined}
             maxUnlockedIndex={
               freeResponseMode ? Math.max(exercises.length - 1, 0) : maxExerciseIndex
             }

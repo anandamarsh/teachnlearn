@@ -19,6 +19,12 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         lowered_type = str(content_type or "").strip().lower()
         return lowered_name.endswith(".pdf") or "pdf" in lowered_type
 
+    def normalize_review_status(value: object) -> str | None:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"approved", "rejected"}:
+            return normalized
+        return None
+
     def ensure_student_authenticated(request: Request) -> tuple[dict | None, JSONResponse | None]:
         session = get_student_session(request, settings)
         if session:
@@ -55,6 +61,9 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
                         )
                     normalized_attachments.append(normalized)
             normalized_item = dict(item)
+            normalized_item["reviewStatus"] = normalize_review_status(
+                normalized_item.get("reviewStatus")
+            )
             normalized_item["attachments"] = normalized_attachments
             decorated.append(normalized_item)
         return {
@@ -306,6 +315,11 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
             for attachment in response.get("attachments", [])
             if isinstance(attachment, dict)
         }
+        existing_by_index = {
+            int(response.get("exerciseIndex") or -1): response
+            for response in existing_payload.get("responses", [])
+            if isinstance(response, dict) and isinstance(response.get("exerciseIndex"), int)
+        }
         retained_storage_keys: set[str] = set()
 
         for response_item in raw_responses:
@@ -317,6 +331,7 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
             answer_markdown = str(response_item.get("answerMarkdown") or "")
             prompt_title = str(response_item.get("promptTitle") or "")
             question_html = str(response_item.get("questionHtml") or "")
+            existing_response = existing_by_index.get(exercise_index) or {}
             attachments = response_item.get("attachments")
             normalized_attachments: list[dict] = []
             if isinstance(attachments, list):
@@ -378,6 +393,10 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
                     "questionHtml": question_html,
                     "answerMarkdown": answer_markdown,
                     "teacherComment": str(response_item.get("teacherComment") or ""),
+                    "reviewStatus": normalize_review_status(
+                        response_item.get("reviewStatus")
+                        or existing_response.get("reviewStatus")
+                    ),
                     "attachments": normalized_attachments,
                 }
             )
