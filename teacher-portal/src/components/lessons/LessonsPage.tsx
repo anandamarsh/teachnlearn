@@ -14,6 +14,7 @@ type LessonsPageProps = {
   onCreateLesson: () => void;
   onDuplicateLesson: () => void;
   onDeleteLesson: () => void;
+  onDeleteLessonById: (lessonId: string) => Promise<boolean>;
   showDelete: boolean;
   onSelectLesson: (lessonId: string) => void;
   onUpdateTitle: (lessonId: string, title: string) => Promise<Lesson | null>;
@@ -46,6 +47,7 @@ const LessonsPage = ({
   onCreateLesson,
   onDuplicateLesson,
   onDeleteLesson,
+  onDeleteLessonById,
   showDelete,
   onSelectLesson,
   onUpdateTitle,
@@ -89,6 +91,7 @@ const LessonsPage = ({
           onSelectLesson={onSelectLesson}
           onToggleLeft={() => setLeftOpen((prev) => !prev)}
           onUploadIcon={onUploadIcon}
+          onDeleteLesson={onDeleteLessonById}
           onNotify={onNotify}
         />
       </Drawer>

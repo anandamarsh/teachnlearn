@@ -11,6 +11,8 @@ from .s3 import get_s3_client, sanitize_email
 
 
 class LessonStoreBase:
+    _SECTION_CONTENTS_KEY = "sectionContents"
+
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._lock = threading.Lock()
@@ -64,6 +66,51 @@ class LessonStoreBase:
 
     def _section_default_body(self, section_key: str) -> bytes:
         return b"[]" if self._section_base_key(section_key) == "exercises" else b""
+
+    def _section_default_value(self, section_key: str) -> str:
+        return "[]" if self._section_base_key(section_key) == "exercises" else ""
+
+    def _get_section_contents_map(self, lesson: dict[str, Any]) -> dict[str, str]:
+        payload = lesson.get(self._SECTION_CONTENTS_KEY)
+        if isinstance(payload, dict):
+            return {
+                str(key): str(value if value is not None else "")
+                for key, value in payload.items()
+            }
+        return {}
+
+    def _get_section_content(self, lesson: dict[str, Any], section_key: str) -> str | None:
+        return self._get_section_contents_map(lesson).get(section_key)
+
+    def _set_section_content(
+        self, lesson: dict[str, Any], section_key: str, content: str
+    ) -> None:
+        contents = self._get_section_contents_map(lesson)
+        contents[section_key] = content
+        lesson[self._SECTION_CONTENTS_KEY] = contents
+
+    def _delete_section_content(self, lesson: dict[str, Any], section_key: str) -> None:
+        contents = self._get_section_contents_map(lesson)
+        if section_key not in contents:
+            return
+        contents.pop(section_key, None)
+        lesson[self._SECTION_CONTENTS_KEY] = contents
+
+    def _get_exercise_generator_code(self, lesson: dict[str, Any]) -> str | None:
+        meta = lesson.get("exerciseGenerator")
+        if not isinstance(meta, dict):
+            return None
+        code = meta.get("code")
+        if code is None:
+            return None
+        return str(code)
+
+    def _set_exercise_generator_code(self, lesson: dict[str, Any], code: str) -> None:
+        meta = lesson.get("exerciseGenerator")
+        if not isinstance(meta, dict):
+            meta = {}
+        meta["code"] = code
+        lesson["exerciseGenerator"] = meta
 
     def _icon_key(self, sanitized_email: str, lesson_id: str, extension: str) -> str:
         safe_extension = extension.lstrip(".").lower()

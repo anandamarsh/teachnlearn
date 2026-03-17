@@ -42,6 +42,7 @@ import FormatQuoteRoundedIcon from "@mui/icons-material/FormatQuoteRounded";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import RedoRoundedIcon from "@mui/icons-material/RedoRounded";
+import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
 import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
@@ -56,10 +57,8 @@ import {
   type GetAccessTokenSilently,
 } from "../../../auth/buildAuthHeaders";
 import {
-  extractLessonPageQuestions,
   publishApprovedQuestionsLesson,
   type LessonPageQuestionItem,
-  type LessonPageQuestionUsage,
 } from "../../../api/lessons";
 import { extractPageColumns } from "../../../lib/extractPageQuestions";
 
@@ -114,7 +113,6 @@ type SourceDocument = {
   pageTextQuestionStates: QuestionReviewState[][];
   pageQuestions: string[];
   pageQuestionDetails: Array<LessonPageQuestionItem[] | null>;
-  pageQuestionUsage: Array<PageQuestionUsageRecord | null>;
   extractedText: string;
   titleCandidates: string[];
   headingCandidates: string[];
@@ -161,12 +159,6 @@ type ApprovedQuestionPage = {
   questions: string[];
   questionIndexes: number[];
   states: QuestionReviewState[];
-};
-
-type PageQuestionUsageRecord = LessonPageQuestionUsage & {
-  pageNumber: number;
-  extractedAt: string;
-  requestId?: string | null;
 };
 
 type JsonNodeProps = {
@@ -271,9 +263,6 @@ const sentenceSplit = (text: string) =>
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => cleanLine(sentence))
     .filter(Boolean);
-
-const formatCostCents = (value: number) =>
-  `${value.toFixed(value < 0.1 ? 3 : 2)}c`;
 
 const questionsToEditorText = (
   pageQuestionDetails: Array<LessonPageQuestionItem[] | null>,
@@ -401,9 +390,7 @@ const normalizeStoredApprovedQuestionPages = (
                 : null,
             questions,
             questionIndexes: questions.map((_, questionIndex) => questionIndex),
-            states: questions.map(
-              (): QuestionReviewState => "accepted",
-            ),
+            states: questions.map((): QuestionReviewState => "accepted"),
           };
         })
         .filter((page): page is ApprovedQuestionPage => Boolean(page))
@@ -449,6 +436,7 @@ const QuestionsAccordionList = ({
   const [isEditingPageNumber, setIsEditingPageNumber] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [pageNumberDraft, setPageNumberDraft] = useState("");
+  const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const editorRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   useEffect(() => {
@@ -456,9 +444,47 @@ const QuestionsAccordionList = ({
     setPageNumberDraft(
       page?.detectedPageNumber != null ? String(page.detectedPageNumber) : "",
     );
+    setQuestionDrafts({});
     setIsEditingTitle(false);
     setIsEditingPageNumber(false);
   }, [page?.pageNumber, page?.title, page?.detectedPageNumber]);
+
+  const getQuestionDraft = (key: string, fallback: string) =>
+    Object.prototype.hasOwnProperty.call(questionDrafts, key)
+      ? questionDrafts[key] ?? ""
+      : fallback;
+
+  const setQuestionDraft = (key: string, value: string) => {
+    setQuestionDrafts((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const clearQuestionDraft = (key: string) => {
+    setQuestionDrafts((current) => {
+      if (!Object.prototype.hasOwnProperty.call(current, key)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const saveQuestionDraft = (
+    key: string,
+    pageNumber: number,
+    questionIndex: number,
+    persistedValue: string,
+  ) => {
+    const nextValue = getQuestionDraft(key, persistedValue);
+    if (nextValue === persistedValue) {
+      return;
+    }
+    onUpdateQuestion?.(pageNumber, questionIndex, nextValue);
+    clearQuestionDraft(key);
+  };
 
   const runEditorCommand = (key: string, command: "undo" | "redo") => {
     const editor = editorRefs.current[key];
@@ -490,12 +516,7 @@ const QuestionsAccordionList = ({
       selectedText +
       suffix +
       currentValue.slice(selectionEnd);
-    const [pageNumberText, questionIndexText] = key.split("_");
-    onUpdateQuestion?.(
-      Number(pageNumberText),
-      Number(questionIndexText),
-      nextValue,
-    );
+    setQuestionDraft(key, nextValue);
     queueMicrotask(() => {
       const nextEditor = editorRefs.current[key];
       if (!nextEditor) {
@@ -526,12 +547,7 @@ const QuestionsAccordionList = ({
       .join("\n");
     const nextValue =
       currentValue.slice(0, start) + nextBlock + currentValue.slice(end);
-    const [pageNumberText, questionIndexText] = key.split("_");
-    onUpdateQuestion?.(
-      Number(pageNumberText),
-      Number(questionIndexText),
-      nextValue,
-    );
+    setQuestionDraft(key, nextValue);
     queueMicrotask(() => {
       const nextEditor = editorRefs.current[key];
       nextEditor?.focus();
@@ -666,6 +682,8 @@ const QuestionsAccordionList = ({
                     page.questionIndexes?.[index] ?? index;
                   const questionKey = `${page.pageNumber}_${sourceQuestionIndex}`;
                   const isEditing = editingKey === questionKey;
+                  const questionDraft = getQuestionDraft(questionKey, question);
+                  const questionDirty = questionDraft !== question;
                   const reviewState = page.states[index] || "untouched";
                   const badgeColor =
                     reviewState === "accepted" ? "#2e7d32" : "#9e9e9e";
@@ -796,7 +814,9 @@ const QuestionsAccordionList = ({
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setEditingKey((current) =>
-                                    current === questionKey ? null : questionKey,
+                                    current === questionKey
+                                      ? null
+                                      : questionKey,
                                   );
                                 }}
                                 disabled={isEditing}
@@ -918,24 +938,43 @@ const QuestionsAccordionList = ({
                                     <RedoRoundedIcon fontSize="small" />
                                   </IconButton>
                                 </Stack>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => setEditingKey(null)}
+                                <Stack
+                                  direction="row"
+                                  spacing={0.25}
+                                  alignItems="center"
                                 >
-                                  <CloseRoundedIcon fontSize="small" />
-                                </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      saveQuestionDraft(
+                                        questionKey,
+                                        page.pageNumber,
+                                        sourceQuestionIndex,
+                                        question,
+                                      )
+                                    }
+                                    disabled={!questionDirty}
+                                  >
+                                    <SaveRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => {
+                                      clearQuestionDraft(questionKey);
+                                      setEditingKey(null);
+                                    }}
+                                  >
+                                    <CloseRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                </Stack>
                               </Stack>
                               <TextField
                                 multiline
                                 fullWidth
                                 minRows={8}
-                                value={question}
+                                value={questionDraft}
                                 onChange={(event) =>
-                                  onUpdateQuestion?.(
-                                    page.pageNumber,
-                                    sourceQuestionIndex,
-                                    event.target.value,
-                                  )
+                                  setQuestionDraft(questionKey, event.target.value)
                                 }
                                 inputRef={(element) => {
                                   editorRefs.current[questionKey] = element;
@@ -1479,13 +1518,6 @@ const loadDraft = (lessonId: string): BuilderDraft => {
                     : null,
                 )
               : Array.from({ length: pageCount }, () => null);
-            const pageQuestionUsage = Array.isArray(typed.pageQuestionUsage)
-              ? typed.pageQuestionUsage.map((entry) =>
-                  entry && typeof entry === "object"
-                    ? (entry as PageQuestionUsageRecord)
-                    : null,
-                )
-              : Array.from({ length: pageCount }, () => null);
             return {
               ...typed,
               pageTitles: Array.from(
@@ -1513,10 +1545,6 @@ const loadDraft = (lessonId: string): BuilderDraft => {
                 { length: pageCount },
                 (_, index) => pageQuestionDetails[index] || null,
               ),
-              pageQuestionUsage: Array.from(
-                { length: pageCount },
-                (_, index) => pageQuestionUsage[index] || null,
-              ),
             };
           })
         : [],
@@ -1528,7 +1556,13 @@ const loadDraft = (lessonId: string): BuilderDraft => {
   }
 };
 
-const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
+const EmptyState = ({
+  hasLessons,
+  onCreateLesson,
+}: {
+  hasLessons: boolean;
+  onCreateLesson: () => void;
+}) => (
   <Box
     sx={{
       minHeight: "65vh",
@@ -1540,15 +1574,27 @@ const EmptyState = ({ hasLessons }: { hasLessons: boolean }) => (
       color: "text.secondary",
     }}
   >
-    <Typography variant="h4" fontWeight={700}>
-      {hasLessons
-        ? "Select a lesson template"
-        : "Create your first lesson template"}
-    </Typography>
-    <Typography>
-      The new teacher workflow starts from source material, concepts, and
-      section drafts.
-    </Typography>
+    {hasLessons ? (
+      <Typography variant="h4" fontWeight={700}>
+        Select a lesson template
+      </Typography>
+    ) : (
+      <Button
+        variant="outlined"
+        color="primary"
+        onClick={onCreateLesson}
+        sx={{
+          borderRadius: "999px",
+          px: 2.25,
+          py: 0.9,
+          fontSize: "1.05rem",
+          fontWeight: 700,
+          textTransform: "none",
+        }}
+      >
+        Create your first lesson
+      </Button>
+    )}
   </Box>
 );
 
@@ -1663,7 +1709,9 @@ const StepShell = ({
               {label}
             </Typography>
             {summaryNode ? (
-              <Box sx={{ display: "flex", alignItems: "center" }}>{summaryNode}</Box>
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                {summaryNode}
+              </Box>
             ) : null}
             {!summaryNode && summaryText ? (
               <Typography
@@ -2151,13 +2199,11 @@ const LessonWorkspace = ({
   const sourceFullscreenRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<BuilderDraft>(emptyDraft);
   const [titleDraft, setTitleDraft] = useState("");
-  const [summaryDraft, setSummaryDraft] = useState("");
   const [previewDocuments, setPreviewDocuments] = useState<PreviewDocument[]>(
     [],
   );
   const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
   const [activePreviewPage, setActivePreviewPage] = useState(1);
-  const [analyzingDocument, setAnalyzingDocument] = useState(false);
   const [localOcringDocument, setLocalOcringDocument] = useState(false);
   const [localOcrProgress, setLocalOcrProgress] = useState({
     current: 0,
@@ -2168,7 +2214,6 @@ const LessonWorkspace = ({
   );
   const [resizingSourcePane, setResizingSourcePane] = useState(false);
   const [sourceFullscreenOpen, setSourceFullscreenOpen] = useState(false);
-  const [usageDialogOpen, setUsageDialogOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
@@ -2192,10 +2237,8 @@ const LessonWorkspace = ({
       previewUrlsRef.current = [];
       setDraft(emptyDraft());
       setTitleDraft("");
-      setSummaryDraft("");
       setPreviewDocuments([]);
       setActivePreviewId(null);
-      setUsageDialogOpen(false);
       setExpandedStep(null);
       setRerunNotice("");
       setProgressSummaryText(
@@ -2216,15 +2259,15 @@ const LessonWorkspace = ({
     previewUrlsRef.current = [];
     setDraft(loadDraft(lesson.id));
     setTitleDraft(lesson.title || "");
-    setSummaryDraft(lesson.summary || "");
     setPreviewDocuments([]);
     setActivePreviewId(null);
     setActivePreviewPage(1);
-    setUsageDialogOpen(false);
     setExpandedStep(null);
     setRerunNotice("");
     if (lessonChanged) {
-      setProgressSummaryText("0 students - 0 answered, 0 part-answered, 0 unanswered");
+      setProgressSummaryText(
+        "0 students - 0 answered, 0 part-answered, 0 unanswered",
+      );
       setProgressSummaryStats({
         studentCount: 0,
         answeredCount: 0,
@@ -2356,10 +2399,14 @@ const LessonWorkspace = ({
     draft.workflowState === "review" ||
     draft.workflowState === "published" ||
     draft.sections.length > 0 ||
-    String(lesson?.status || "").toLowerCase().includes("publish");
+    String(lesson?.status || "")
+      .toLowerCase()
+      .includes("publish");
   const isPublicLesson =
     draft.workflowState === "published" ||
-    String(lesson?.status || "").toLowerCase().includes("publish");
+    String(lesson?.status || "")
+      .toLowerCase()
+      .includes("publish");
 
   const activePreview =
     previewDocuments.find((document) => document.id === activePreviewId) ||
@@ -2369,9 +2416,6 @@ const LessonWorkspace = ({
     draft.sourceDocuments.find(
       (document) => document.id === activePreview?.id,
     ) || null;
-  const activeQuestionUsage =
-    activeSourceDocument?.pageQuestionUsage.find((entry) => Boolean(entry)) ||
-    null;
   const activeExtractedTextPreview = activeSourceDocument
     ? activeSourceDocument.pageTextQuestions
         .map((questions, index) => ({
@@ -2386,10 +2430,11 @@ const LessonWorkspace = ({
   const activeExtractedQuestionsText = activeSourceDocument
     ? questionsToEditorText(activeSourceDocument.pageQuestionDetails)
     : "";
-  const canAnalyzeSource = Boolean(activePreview?.file && activeSourceDocument);
 
   if (!lesson) {
-    return <EmptyState hasLessons={hasLessons} />;
+    return (
+      <EmptyState hasLessons={hasLessons} onCreateLesson={onCreateLesson} />
+    );
   }
 
   const sourceComplete = approvedQuestionsCount > 0;
@@ -2419,13 +2464,6 @@ const LessonWorkspace = ({
     }
   };
 
-  const saveSummary = async () => {
-    if (summaryDraft === (lesson.summary || "")) {
-      return;
-    }
-    await onUpdateContent(lesson.id, summaryDraft);
-  };
-
   const inspectPdfDocument = async (file: File): Promise<SourceDocument> => {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const pdfWorker =
@@ -2446,7 +2484,6 @@ const LessonWorkspace = ({
       pageTextQuestionStates: Array.from({ length: pdf.numPages }, () => []),
       pageQuestions: Array.from({ length: pdf.numPages }, () => ""),
       pageQuestionDetails: Array.from({ length: pdf.numPages }, () => null),
-      pageQuestionUsage: Array.from({ length: pdf.numPages }, () => null),
       extractedText: "",
       titleCandidates: [],
       headingCandidates: [],
@@ -2810,94 +2847,6 @@ const LessonWorkspace = ({
     }
   };
 
-  const runLlmOnCurrentDocument = async () => {
-    if (!lesson || !activeSourceDocument || !activePreview?.file) {
-      return;
-    }
-    if (!getAccessTokenSilently || !apiBaseUrl || !auth0Audience) {
-      onNotify(
-        "OCR extraction is not configured in the teacher portal",
-        "error",
-      );
-      return;
-    }
-    setAnalyzingDocument(true);
-    try {
-      const headers = await buildAuthHeaders(
-        getAccessTokenSilently,
-        auth0Audience,
-      );
-      const extraction = await extractLessonPageQuestions(
-        `${apiBaseUrl}/lesson/id/${lesson.id}/question-extraction`,
-        headers,
-        {
-          file: activePreview.file,
-          pageCount: activeSourceDocument.pages,
-        },
-      );
-      const usage: PageQuestionUsageRecord = {
-        ...extraction.usage,
-        pageNumber: 1,
-        extractedAt: extraction.extractedAt,
-        requestId: extraction.requestId ?? null,
-      };
-
-      updateDraft((current) => ({
-        ...current,
-        sourceDocuments: current.sourceDocuments.map((document) => {
-          if (document.id !== activeSourceDocument.id) {
-            return document;
-          }
-          const nextPageQuestions = Array.from(
-            { length: document.pages },
-            (_, index) => extraction.pageQuestions[index] || "",
-          );
-          const nextPageQuestionDetails = Array.from(
-            { length: document.pages },
-            (_, index) => extraction.pageQuestionDetails[index] || null,
-          );
-          const nextPageQuestionUsage = Array.from(
-            { length: document.pages },
-            (_, index) => (index === 0 ? usage : null),
-          );
-          return {
-            ...document,
-            pageQuestions: nextPageQuestions,
-            pageQuestionDetails: nextPageQuestionDetails,
-            pageQuestionUsage: nextPageQuestionUsage,
-            questionCandidates:
-              deriveQuestionCandidatesFromPages(nextPageQuestions),
-          };
-        }),
-      }));
-      const extractedPageCount = extraction.pageQuestions.filter((page) =>
-        page.trim(),
-      ).length;
-      if (!extractedPageCount) {
-        onNotify(
-          `OCR completed. No questions detected. Cost ${formatCostCents(usage.costCents)}.`,
-          "error",
-        );
-        return;
-      }
-      onNotify(
-        `OCR completed for ${extractedPageCount} page${extractedPageCount === 1 ? "" : "s"}. Cost ${formatCostCents(
-          usage.costCents,
-        )}.`,
-        "success",
-      );
-    } catch (error) {
-      const detail =
-        error instanceof Error
-          ? error.message
-          : "Could not extract questions from PDF";
-      console.error("Document question extraction failed", error);
-      onNotify(detail, "error");
-    } finally {
-      setAnalyzingDocument(false);
-    }
-  };
-
   const handleConceptGeneration = () => {
     updateDraft((current) => ({
       ...current,
@@ -2925,7 +2874,10 @@ const LessonWorkspace = ({
     }
     setPublishing(true);
     try {
-      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      const headers = await buildAuthHeaders(
+        getAccessTokenSilently,
+        auth0Audience,
+      );
       await publishApprovedQuestionsLesson(
         `${apiBaseUrl}/lesson/id/${lesson.id}/publish-approved-questions`,
         headers,
@@ -2937,11 +2889,14 @@ const LessonWorkspace = ({
             detectedPageNumber: page.detectedPageNumber,
             questions: page.questions,
           })),
-        }
+        },
       );
       const updated = await onUpdateStatus(lesson.id, "published");
       if (!updated) {
-        onNotify("Lesson was published but local status could not be refreshed", "error");
+        onNotify(
+          "Lesson was published but local status could not be refreshed",
+          "error",
+        );
         return;
       }
       updateDraft((current) => ({
@@ -2952,7 +2907,10 @@ const LessonWorkspace = ({
       setRerunNotice("");
       onNotify("Approved questions published", "success");
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Failed to publish approved questions";
+      const detail =
+        error instanceof Error
+          ? error.message
+          : "Failed to publish approved questions";
       onNotify(detail, "error");
     } finally {
       setPublishing(false);
@@ -3011,7 +2969,9 @@ const LessonWorkspace = ({
         <IconButton
           size="small"
           onClick={() => void runLocalOcrOnCurrentDocument()}
-          disabled={!canAnalyzeSource || localOcringDocument}
+          disabled={
+            !activePreview?.file || !activeSourceDocument || localOcringDocument
+          }
           sx={{ color: "#fff", px: 0.75, borderRadius: "10px" }}
         >
           {localOcringDocument ? (
@@ -3319,34 +3279,13 @@ const LessonWorkspace = ({
             onBlur={saveTitle}
             fullWidth
             variant="standard"
-            placeholder="New lesson template"
+            placeholder="New Lesson"
             InputProps={{
               disableUnderline: true,
               sx: {
                 fontSize: "2.25rem",
                 fontWeight: 800,
                 lineHeight: 1.1,
-                px: 0,
-                py: 0,
-              },
-            }}
-          />
-          <TextField
-            value={summaryDraft}
-            onChange={(event) => setSummaryDraft(event.target.value)}
-            onBlur={saveSummary}
-            fullWidth
-            variant="standard"
-            multiline
-            minRows={2}
-            placeholder="Add a short report summary."
-            InputProps={{
-              disableUnderline: true,
-              sx: {
-                mt: 1,
-                fontSize: "1rem",
-                fontWeight: 700,
-                color: "text.secondary",
                 px: 0,
                 py: 0,
               },
@@ -3367,8 +3306,7 @@ const LessonWorkspace = ({
               height: 38,
               px: 1.5,
               borderRadius: "999px",
-              backgroundColor:
-                isPublicLesson ? "#2e7d32" : "#ef6c00",
+              backgroundColor: isPublicLesson ? "#2e7d32" : "#ef6c00",
               color: "common.white",
               display: "inline-flex",
               alignItems: "center",
@@ -3425,71 +3363,6 @@ const LessonWorkspace = ({
           ) : null}
         </StepShell>
       </Box>
-      <Dialog
-        open={usageDialogOpen}
-        onClose={() => setUsageDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography fontWeight={800} sx={{ fontSize: "1.1rem" }}>
-              AI Extraction Cost
-            </Typography>
-            <IconButton onClick={() => setUsageDialogOpen(false)}>
-              <CloseRoundedIcon />
-            </IconButton>
-          </Stack>
-          {activeQuestionUsage ? (
-            <>
-              <Typography>
-                {formatCostCents(activeQuestionUsage.costCents)} for this
-                document
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Model: {activeQuestionUsage.model}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Input tokens: {activeQuestionUsage.inputTokens}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Output tokens: {activeQuestionUsage.outputTokens}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total tokens: {activeQuestionUsage.totalTokens}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Cached input tokens: {activeQuestionUsage.cachedInputTokens}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Extracted at:{" "}
-                {new Date(activeQuestionUsage.extractedAt).toLocaleString()}
-              </Typography>
-              {activeQuestionUsage.requestId ? (
-                <Typography variant="body2" color="text.secondary">
-                  Request ID: {activeQuestionUsage.requestId}
-                </Typography>
-              ) : null}
-            </>
-          ) : (
-            <Typography color="text.secondary">
-              No AI extraction usage is available for this document yet.
-            </Typography>
-          )}
-          <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 1 }}>
-            <Button
-              variant="contained"
-              onClick={() => setUsageDialogOpen(false)}
-            >
-              Close
-            </Button>
-          </Box>
-        </Box>
-      </Dialog>
       <Dialog
         open={sourceFullscreenOpen}
         onClose={() => {
@@ -3621,26 +3494,30 @@ const LessonWorkspace = ({
         label="View Progress"
         summaryNode={
           stepEnabled.progress ? (
-          <Typography
-            component="span"
-            sx={{ fontSize: "1rem", color: "text.secondary", fontWeight: 700 }}
-          >
-            <Box component="span" sx={{ color: "#1565c0", fontWeight: 800 }}>
-              {progressSummaryStats.studentCount} students
-            </Box>
-            {" - "}
-            <Box component="span" sx={{ color: "#2e7d32", fontWeight: 800 }}>
-              {progressSummaryStats.answeredCount} answered
-            </Box>
-            {", "}
-            <Box component="span" sx={{ color: "#ef6c00", fontWeight: 800 }}>
-              {progressSummaryStats.partAnsweredCount} part-answered
-            </Box>
-            {", "}
-            <Box component="span" sx={{ color: "#c62828", fontWeight: 800 }}>
-              {progressSummaryStats.unansweredCount} unanswered
-            </Box>
-          </Typography>
+            <Typography
+              component="span"
+              sx={{
+                fontSize: "1rem",
+                color: "text.secondary",
+                fontWeight: 700,
+              }}
+            >
+              <Box component="span" sx={{ color: "#1565c0", fontWeight: 800 }}>
+                {progressSummaryStats.studentCount} students
+              </Box>
+              {" - "}
+              <Box component="span" sx={{ color: "#2e7d32", fontWeight: 800 }}>
+                {progressSummaryStats.answeredCount} answered
+              </Box>
+              {", "}
+              <Box component="span" sx={{ color: "#ef6c00", fontWeight: 800 }}>
+                {progressSummaryStats.partAnsweredCount} part-answered
+              </Box>
+              {", "}
+              <Box component="span" sx={{ color: "#c62828", fontWeight: 800 }}>
+                {progressSummaryStats.unansweredCount} unanswered
+              </Box>
+            </Typography>
           ) : null
         }
         expanded={expandedStep === "progress"}
@@ -3669,7 +3546,6 @@ const LessonWorkspace = ({
           onSummaryStatsChange={setProgressSummaryStats}
         />
       </StepShell>
-
     </Box>
   );
 };

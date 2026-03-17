@@ -1,23 +1,10 @@
-import json
 from datetime import datetime, timezone
 from typing import Any
-
-from botocore.exceptions import ClientError
 
 from .s3 import sanitize_email
 
 
 class LessonStoreExerciseGenerator:
-    _EXERCISE_GENERATOR_FILENAME = "exercise.js"
-
-    def _exercise_generator_filename(self) -> str:
-        return self._EXERCISE_GENERATOR_FILENAME
-
-    def _exercise_generator_key(
-        self, sanitized_email: str, lesson_id: str, filename: str
-    ) -> str:
-        return self._section_key(sanitized_email, lesson_id, filename)
-
     def _clear_exercise_generator(
         self,
         sanitized_email: str,
@@ -25,23 +12,6 @@ class LessonStoreExerciseGenerator:
         lesson: dict[str, Any],
         next_mode: str | None = None,
     ) -> None:
-        meta = lesson.get("exerciseGenerator")
-        if isinstance(meta, dict):
-            filename = meta.get("filename")
-            if not filename:
-                filename = self._exercise_generator_filename()
-            if filename:
-                storage_key = self._exercise_generator_key(
-                    sanitized_email, lesson_id, filename
-                )
-                try:
-                    self._s3_client.delete_object(
-                        Bucket=self._settings.s3_bucket,
-                        Key=storage_key,
-                    )
-                except ClientError as exc:
-                    if exc.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
-                        raise
         lesson.pop("exerciseGenerator", None)
         if next_mode is not None:
             lesson["exerciseMode"] = next_mode
@@ -55,49 +25,26 @@ class LessonStoreExerciseGenerator:
             lesson = self.get(email, lesson_id)
             if lesson is None:
                 return None
-            existing = lesson.get("exerciseGenerator") or {}
-            filename = self._exercise_generator_filename()
-            existing_filename = existing.get("filename")
-            if existing_filename and existing_filename != filename:
-                self._clear_exercise_generator(sanitized, lesson_id, lesson)
-            storage_key = self._exercise_generator_key(sanitized, lesson_id, filename)
-            self._s3_client.put_object(
-                Bucket=self._settings.s3_bucket,
-                Key=storage_key,
-                Body=code.encode("utf-8"),
-                ContentType="application/javascript",
-            )
             now = datetime.now(timezone.utc).isoformat()
             sections = lesson.get("sections") or {}
+            filename = sections.get("exercises") or self._section_filename("exercises")
             sections["exercises"] = filename
             lesson["sections"] = sections
-            exercises_filename = sections.get("exercises")
-            if exercises_filename:
-                exercises_key = self._section_key(
-                    sanitized, lesson_id, exercises_filename
-                )
-                try:
-                    self._s3_client.delete_object(
-                        Bucket=self._settings.s3_bucket,
-                        Key=exercises_key,
-                    )
-                except ClientError as exc:
-                    if exc.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
-                        raise
-                meta_map = lesson.get("sectionsMeta") or {}
-                meta = meta_map.get("exercises") or {}
-                meta_payload = {
-                    "key": "exercises",
-                    "updatedAt": now,
-                    "version": int(meta.get("version", 0)) + 1,
-                    "contentLength": 0,
-                }
-                meta_map["exercises"] = meta_payload
-                lesson["sectionsMeta"] = meta_map
+            self._set_section_content(lesson, "exercises", code)
+            meta_map = lesson.get("sectionsMeta") or {}
+            meta = meta_map.get("exercises") or {}
+            meta_payload = {
+                "key": "exercises",
+                "updatedAt": now,
+                "version": int(meta.get("version", 0)) + 1,
+                "contentLength": 0,
+            }
+            meta_map["exercises"] = meta_payload
+            lesson["sectionsMeta"] = meta_map
             meta = {
                 "updatedAt": now,
-                "filename": filename,
                 "contentLength": len(code),
+                "code": code,
             }
             lesson["exerciseGenerator"] = meta
             lesson["exerciseMode"] = "generator"
@@ -152,29 +99,22 @@ class LessonStoreExerciseGenerator:
     def get_exercise_generator_sanitized(
         self, sanitized_email: str, lesson_id: str
     ) -> dict[str, Any] | None:
-        meta = self.get_exercise_generator_meta_sanitized(sanitized_email, lesson_id)
-        if not meta:
+        lesson = self.get_sanitized(sanitized_email, lesson_id)
+        if not lesson:
             return None
-        filename = meta.get("filename")
-        if not filename:
-            filename = self._exercise_generator_filename()
-        storage_key = self._exercise_generator_key(sanitized_email, lesson_id, filename)
-        try:
-            obj = self._s3_client.get_object(
-                Bucket=self._settings.s3_bucket,
-                Key=storage_key,
-            )
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
-                return None
-            raise
-        content = obj["Body"].read()
-        content_type = obj.get("ContentType") or "application/javascript"
+        meta = lesson.get("exerciseGenerator")
+        if not isinstance(meta, dict):
+            return None
+        code = self._get_exercise_generator_code(lesson)
+        if code is None:
+            return None
         return {
-            "content": content,
-            "contentType": content_type,
+            "content": code.encode("utf-8"),
+            "contentType": "application/javascript",
             "meta": meta,
         }
 
     def _serialize_lesson(self, lesson: dict[str, Any]) -> bytes:
+        import json
+
         return json.dumps(lesson, indent=2).encode("utf-8")

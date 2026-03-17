@@ -372,6 +372,7 @@ const SectionEditor = ({
 }: SectionEditorProps) => {
   const editorRef = useRef<ClassicEditor | null>(null);
   const isSyncingRef = useRef(false);
+  const [htmlDraft, setHtmlDraft] = useState(content || "");
   const [sourceOpen, setSourceOpen] = useState(false);
   const [sourceValue, setSourceValue] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState<SourceLanguage>("html");
@@ -392,6 +393,10 @@ const SectionEditor = ({
   const jsonContainerNodeRef = useRef<HTMLDivElement | null>(null);
   const isJsonSection = editorKey === "exercises" || /^exercises-\d+$/.test(editorKey);
   const generatorActive = Boolean(exerciseGeneratorActive);
+  const normalizedContent = stripEditorArtifacts(content || "");
+  const normalizedHtmlDraft = stripEditorArtifacts(htmlDraft || "");
+  const htmlDirty = normalizedHtmlDraft !== normalizedContent;
+  const effectiveDirty = isJsonSection ? Boolean(dirty) : htmlDirty;
 
   const getSourceSeed = (language: SourceLanguage, fallback: string) => {
     const draft = sourceDraftsRef.current[language];
@@ -414,6 +419,16 @@ const SectionEditor = ({
 
   useEffect(() => {
     if (!isEditing) {
+      setHtmlDraft(content || "");
+      return;
+    }
+    if (!htmlDirty) {
+      setHtmlDraft(content || "");
+    }
+  }, [content, htmlDirty, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
       return;
     }
     const instance = editorRef.current;
@@ -421,15 +436,14 @@ const SectionEditor = ({
       return;
     }
     const currentData = stripEditorArtifacts(instance.getData());
-    const normalizedContent = stripEditorArtifacts(content ?? "");
-    if (currentData !== normalizedContent) {
+    if (currentData !== normalizedHtmlDraft) {
       isSyncingRef.current = true;
-      instance.setData(content || "");
+      instance.setData(htmlDraft || "");
       window.setTimeout(() => {
         isSyncingRef.current = false;
       }, 0);
     }
-  }, [content, isEditing]);
+  }, [htmlDraft, isEditing, normalizedHtmlDraft]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -615,8 +629,16 @@ const SectionEditor = ({
       {isEditing ? (
         <>
           <IconButton
-            onClick={() => onSave()}
-            disabled={Boolean(saving || disabled || !dirty)}
+            onClick={async () => {
+              if (isJsonSection) {
+                await onSave();
+                return;
+              }
+              const cleaned = stripEditorArtifacts(htmlDraft);
+              onChange(cleaned);
+              await onSave(cleaned, "html");
+            }}
+            disabled={Boolean(saving || disabled || !effectiveDirty)}
             sx={{
               position: "absolute",
               top: "2rem",
@@ -630,10 +652,11 @@ const SectionEditor = ({
           </IconButton>
           <IconButton
             onClick={() => {
-              if (!content) {
+              const value = isJsonSection ? content : htmlDraft;
+              if (!value) {
                 return;
               }
-              navigator.clipboard.writeText(content);
+              navigator.clipboard.writeText(value);
             }}
             sx={{
               position: "absolute",
@@ -648,7 +671,7 @@ const SectionEditor = ({
           </IconButton>
           <IconButton
             onClick={() => {
-              if (dirty) {
+              if (effectiveDirty) {
                 onDirtyClose();
               } else {
                 onCancelEdit();
@@ -674,7 +697,9 @@ const SectionEditor = ({
                 : "html";
               const fallback = isJsonSection
                 ? content ?? ""
-                : stripEditorArtifacts(editorRef.current?.getData() ?? content ?? "");
+                : stripEditorArtifacts(
+                    editorRef.current?.getData() ?? htmlDraft ?? ""
+                  );
               const startValue = getSourceSeed(language, fallback);
               const { formatted, error } = await formatSource(startValue, language);
               setSourceValue(formatted);
@@ -712,7 +737,7 @@ const SectionEditor = ({
               <CKEditor
                 key={editorKey}
                 editor={LessonHtmlEditor}
-                data={content || ""}
+                data={htmlDraft || ""}
                 disabled={disabled}
                 onReady={(editor) => {
                   editorRef.current = editor;
@@ -722,7 +747,7 @@ const SectionEditor = ({
                   if (!instance || isSyncingRef.current) {
                     return;
                   }
-                  onChange(instance.getData());
+                  setHtmlDraft(instance.getData());
                 }}
               />
             )}
@@ -845,16 +870,9 @@ const SectionEditor = ({
                     setSourceValue(cleaned);
                     const instance = editorRef.current;
                     if (sourceLanguage === "html") {
-                      if (!instance) {
-                        setSourceOpen(false);
-                        return;
-                      }
-                      isSyncingRef.current = true;
-                      instance.setData(cleaned);
+                      setHtmlDraft(cleaned);
                       onChange(cleaned);
-                      window.setTimeout(() => {
-                        isSyncingRef.current = false;
-                      }, 0);
+                      await onSave(cleaned, "html");
                     } else if (sourceLanguage === "json") {
                       onChange(cleaned);
                       const saved = await onSave(cleaned, "json");

@@ -60,17 +60,33 @@ class LessonStoreSections:
                 entry["updated_at"] = lesson.get("updated_at")
                 break
         self._save_index(sanitized_email, entries)
-    def _initialize_sections(
-        self, sanitized_email: str, lesson_id: str, sections: dict[str, str]
+    def _read_legacy_section_content(
+        self,
+        sanitized_email: str,
+        lesson_id: str,
+        filename: str,
+        section_key: str,
+    ) -> str | None:
+        key = self._section_key(sanitized_email, lesson_id, filename)
+        try:
+            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                return None
+            raise
+        return obj["Body"].read().decode("utf-8")
+
+    def _delete_legacy_section_object(
+        self, sanitized_email: str, lesson_id: str, filename: str | None
     ) -> None:
-        for section_key, filename in sections.items():
-            storage_key = self._section_key(sanitized_email, lesson_id, filename)
-            self._s3_client.put_object(
-                Bucket=self._settings.s3_bucket,
-                Key=storage_key,
-                Body=self._section_default_body(section_key),
-                ContentType=self._section_content_type(section_key),
-            )
+        if not filename:
+            return
+        key = self._section_key(sanitized_email, lesson_id, filename)
+        try:
+            self._s3_client.delete_object(Bucket=self._settings.s3_bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
+                raise
 
     def get_sections_index(self, email: str, lesson_id: str) -> dict[str, Any] | None:
         lesson = self.get(email, lesson_id)
@@ -110,23 +126,21 @@ class LessonStoreSections:
         filename = index.get("sections", {}).get(section_key)
         if not filename:
             return None
-        key = self._section_key(sanitized, lesson_id, filename)
-        try:
-            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
-                if self._section_base_key(section_key) == "exercises":
-                    return {"key": section_key, "content": []}
-                return None
-            raise
-        content = obj["Body"].read().decode("utf-8")
+        content = self._get_section_content(lesson or {}, section_key)
+        if content is None:
+            content = self._read_legacy_section_content(
+                sanitized, lesson_id, filename, section_key
+            )
+        if content is None:
+            if self._section_base_key(section_key) == "exercises":
+                return {"key": section_key, "content": []}
+            return None
         if self._section_base_key(section_key) == "exercises":
-            if filename.endswith(".js"):
+            if (lesson or {}).get("exerciseMode") == "generator":
                 return {
                     "key": section_key,
                     "contentHtml": content,
-                    "contentType": obj.get("ContentType")
-                    or "application/javascript",
+                    "contentType": "application/javascript",
                     "exerciseMode": exercise_mode or "generator",
                 }
             payload = json.loads(content) if content.strip() else []
@@ -144,23 +158,21 @@ class LessonStoreSections:
         filename = index.get("sections", {}).get(section_key)
         if not filename:
             return None
-        key = self._section_key(sanitized_email, lesson_id, filename)
-        try:
-            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
-                if self._section_base_key(section_key) == "exercises":
-                    return {"key": section_key, "content": []}
-                return None
-            raise
-        content = obj["Body"].read().decode("utf-8")
+        content = self._get_section_content(lesson or {}, section_key)
+        if content is None:
+            content = self._read_legacy_section_content(
+                sanitized_email, lesson_id, filename, section_key
+            )
+        if content is None:
+            if self._section_base_key(section_key) == "exercises":
+                return {"key": section_key, "content": []}
+            return None
         if self._section_base_key(section_key) == "exercises":
-            if filename.endswith(".js"):
+            if (lesson or {}).get("exerciseMode") == "generator":
                 return {
                     "key": section_key,
                     "contentHtml": content,
-                    "contentType": obj.get("ContentType")
-                    or "application/javascript",
+                    "contentType": "application/javascript",
                     "exerciseMode": exercise_mode or "generator",
                 }
             payload = json.loads(content) if content.strip() else []
@@ -206,25 +218,11 @@ class LessonStoreSections:
             filename = self._section_filename(section_key)
             sections[section_key] = filename
             lesson["sections"] = self._order_sections(sections)
-        key = self._section_key(sanitized, lesson_id, filename)
-        try:
-            self._s3_client.head_object(Bucket=self._settings.s3_bucket, Key=key)
-            exists = True
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") == "404":
-                exists = False
-            elif exc.response.get("Error", {}).get("Code") == "NoSuchKey":
-                exists = False
-            else:
-                raise
-        if not exists and not allow_create:
+        existing_content = self._get_section_content(lesson, section_key)
+        if existing_content is None and not allow_create and section_key not in sections:
             return None
-        self._s3_client.put_object(
-            Bucket=self._settings.s3_bucket,
-            Key=key,
-            Body=content_html.encode("utf-8"),
-            ContentType=self._section_content_type(section_key),
-        )
+        self._set_section_content(lesson, section_key, content_html)
+        self._delete_legacy_section_object(sanitized, lesson_id, filename)
         now = datetime.now(timezone.utc).isoformat()
         meta_map = lesson.get("sectionsMeta") or {}
         meta = meta_map.get(section_key) or {}
@@ -281,13 +279,8 @@ class LessonStoreSections:
         filename = self._section_filename(new_key)
         sections[new_key] = filename
         lesson["sections"] = self._order_sections(sections)
-        key = self._section_key(sanitized, lesson_id, filename)
-        self._s3_client.put_object(
-            Bucket=self._settings.s3_bucket,
-            Key=key,
-            Body=content_html.encode("utf-8"),
-            ContentType=self._section_content_type(new_key),
-        )
+        self._set_section_content(lesson, new_key, content_html)
+        self._delete_legacy_section_object(sanitized, lesson_id, filename)
         now = datetime.now(timezone.utc).isoformat()
         meta_map = lesson.get("sectionsMeta") or {}
         meta_payload = {
@@ -333,15 +326,9 @@ class LessonStoreSections:
         filename = sections.get(section_key)
         if not filename:
             return None
-        key = self._section_key(sanitized, lesson_id, filename)
-        try:
-            obj = self._s3_client.get_object(Bucket=self._settings.s3_bucket, Key=key)
-            raw = obj["Body"].read().decode("utf-8")
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
-                raw = ""
-            else:
-                raise
+        raw = self._get_section_content(lesson, section_key)
+        if raw is None:
+            raw = self._read_legacy_section_content(sanitized, lesson_id, filename, section_key) or ""
         existing: list[Any]
         if raw.strip():
             payload = json.loads(raw)
@@ -352,12 +339,8 @@ class LessonStoreSections:
             existing = []
         existing.extend(items)
         updated_payload = json.dumps(existing, indent=2)
-        self._s3_client.put_object(
-            Bucket=self._settings.s3_bucket,
-            Key=key,
-            Body=updated_payload.encode("utf-8"),
-            ContentType=self._section_content_type("exercises"),
-        )
+        self._set_section_content(lesson, section_key, updated_payload)
+        self._delete_legacy_section_object(sanitized, lesson_id, filename)
         now = datetime.now(timezone.utc).isoformat()
         meta_map = lesson.get("sectionsMeta") or {}
         meta = meta_map.get(section_key) or {}
@@ -391,12 +374,8 @@ class LessonStoreSections:
         filename = sections.get(section_key)
         if not filename:
             return False
-        storage_key = self._section_key(sanitized, lesson_id, filename)
-        try:
-            self._s3_client.delete_object(Bucket=self._settings.s3_bucket, Key=storage_key)
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
-                raise
+        self._delete_section_content(lesson, section_key)
+        self._delete_legacy_section_object(sanitized, lesson_id, filename)
         sections.pop(section_key, None)
         lesson["sections"] = self._order_sections(sections)
         meta_map = lesson.get("sectionsMeta") or {}

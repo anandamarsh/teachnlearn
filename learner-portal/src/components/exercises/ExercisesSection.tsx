@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import {
+  Alert,
   Box,
   Button,
   Dialog,
@@ -16,6 +17,7 @@ import {
   DialogTitle,
   Fab,
   IconButton,
+  Snackbar,
   Typography,
 } from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
@@ -156,6 +158,7 @@ const ExercisesSection = ({
   const [responseErrorByIndex, setResponseErrorByIndex] = useState<Record<number, string | null>>(
     {}
   );
+  const [saveNoticeOpen, setSaveNoticeOpen] = useState(false);
   const magicPin = useMemo(
     () =>
       String(lessonId || "")
@@ -405,6 +408,7 @@ const ExercisesSection = ({
               : "default";
           })
         );
+        setSaveNoticeOpen(true);
       } catch (err) {
         setResponseErrorByIndex((prev) => ({
           ...prev,
@@ -2191,6 +2195,21 @@ self.onmessage = async (event) => {
       ) : (
         <Typography>No exercises available.</Typography>
       )}
+      <Snackbar
+        open={saveNoticeOpen}
+        autoHideDuration={2500}
+        onClose={() => setSaveNoticeOpen(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSaveNoticeOpen(false)}
+          severity="success"
+          variant="filled"
+          sx={{ alignItems: "center" }}
+        >
+          Answer has been saved
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

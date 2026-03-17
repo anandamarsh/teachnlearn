@@ -22,11 +22,7 @@ def _b64url_decode(value: str) -> bytes:
 
 
 def _get_student_session_secret(settings: Settings) -> str:
-    return (
-        settings.student_session_secret
-        or settings.custom_gpt_api_key
-        or "dev-insecure-student-session-secret"
-    )
+    return settings.student_session_secret or "dev-insecure-student-session-secret"
 
 
 def create_student_session_token(

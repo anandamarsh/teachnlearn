@@ -226,10 +226,6 @@ function App() {
     setDuplicateOpen(false);
   };
 
-  const normalizedStatus = (selectedLesson?.status || "").toLowerCase().trim();
-  const isSelectedPublished =
-    normalizedStatus.includes("publish") || normalizedStatus.includes("active");
-
   useEffect(() => {
     if (error) {
       notify(error, "error");
@@ -372,7 +368,8 @@ function App() {
           onCreateLesson={handleCreateLesson}
           onDuplicateLesson={() => setDuplicateOpen(true)}
           onDeleteLesson={() => setDeleteOpen(true)}
-          showDelete={Boolean(selectedLesson) && !isSelectedPublished}
+          onDeleteLessonById={deleteLesson}
+          showDelete={Boolean(selectedLesson)}
           onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           onUpdateTitle={handleUpdateTitle}
           onUpdateContent={handleUpdateContent}
@@ -414,7 +411,7 @@ function App() {
         }}
         showPrimaryAction={page === "lessons" || page === "students"}
         onDeleteLesson={() => setDeleteOpen(true)}
-        showDelete={page === "lessons" && Boolean(selectedLesson) && !isSelectedPublished}
+        showDelete={page === "lessons" && Boolean(selectedLesson)}
         onAuthClick={() => loginWithRedirect()}
         onLogout={handleLogout}
       />
@@ -482,7 +479,15 @@ function App() {
           severity={snackbar.severity}
           onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
           variant="filled"
-          sx={{ py: 0.5 }}
+          sx={{
+            py: 0.5,
+            ...(snackbar.severity === "success"
+              ? {
+                  bgcolor: "success.main",
+                  color: "#fff",
+                }
+              : {}),
+          }}
         >
           {snackbar.message}
         </Alert>

@@ -15,6 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
@@ -28,6 +29,7 @@ type LessonsListProps = {
   onSelectLesson: (lessonId: string) => void;
   onToggleLeft: () => void;
   onUploadIcon: (lessonId: string, file: File) => Promise<string | null>;
+  onDeleteLesson: (lessonId: string) => Promise<boolean>;
   onNotify: (message: string, severity: "success" | "error") => void;
 };
 
@@ -39,6 +41,7 @@ const LessonsList = ({
   onSelectLesson,
   onToggleLeft,
   onUploadIcon,
+  onDeleteLesson,
   onNotify,
 }: LessonsListProps) => {
   const [iconDialogOpen, setIconDialogOpen] = useState(false);
@@ -48,6 +51,9 @@ const LessonsList = ({
   const [iconError, setIconError] = useState("");
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [deleteLesson, setDeleteLesson] = useState<Lesson | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingLesson, setDeletingLesson] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -134,6 +140,28 @@ const LessonsList = ({
       return;
     }
     resetIconDialog();
+  };
+
+  const resetDeleteDialog = () => {
+    setDeleteLesson(null);
+    setDeleteConfirmText("");
+    setDeletingLesson(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteLesson) {
+      return;
+    }
+    if (deleteConfirmText.trim().toLowerCase() !== "delete") {
+      return;
+    }
+    setDeletingLesson(true);
+    const deleted = await onDeleteLesson(deleteLesson.id);
+    setDeletingLesson(false);
+    if (deleted) {
+      onNotify("Lesson deleted", "success");
+      resetDeleteDialog();
+    }
   };
   const getStatusBadgeColor = (status?: string | null) => {
     const normalized = (status || "").toLowerCase().trim();
@@ -384,9 +412,37 @@ const LessonsList = ({
                       </Typography>
                     }
                     secondary={
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {derivedStatus}
-                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mt: 0.5 }}>
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            px: 0.9,
+                            py: 0.15,
+                            borderRadius: "999px",
+                            border: "1px solid rgba(0,0,0,0.12)",
+                            color: "text.secondary",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            textTransform: "capitalize",
+                            backgroundColor: "#fff",
+                          }}
+                        >
+                          {derivedStatus}
+                        </Box>
+                        <IconButton
+                          size="small"
+                          aria-label={`Delete ${lesson.title}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteLesson(lesson);
+                            setDeleteConfirmText("");
+                          }}
+                          sx={{ color: "error.main", p: 0.25 }}
+                        >
+                          <DeleteRoundedIcon fontSize="inherit" />
+                        </IconButton>
+                      </Box>
                     }
                   />
                 ) : null}
@@ -473,6 +529,44 @@ const LessonsList = ({
               {uploadingIcon ? "Uploading..." : "Upload"}
             </Button>
           </Box>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(deleteLesson)} onClose={resetDeleteDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete lesson</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            This will permanently delete this lesson. Type <strong>Delete</strong> to confirm.
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            {deleteLesson?.title}
+          </Typography>
+          <input
+            value={deleteConfirmText}
+            onChange={(event) => setDeleteConfirmText(event.target.value)}
+            placeholder="Type Delete"
+            style={{
+              width: "100%",
+              padding: "0.875rem 1rem",
+              borderRadius: "0.75rem",
+              border: "1px solid rgba(0,0,0,0.18)",
+              font: "inherit",
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={resetDeleteDialog} disabled={deletingLesson}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              void handleConfirmDelete();
+            }}
+            disabled={deletingLesson || deleteConfirmText.trim().toLowerCase() !== "delete"}
+          >
+            {deletingLesson ? "Deleting..." : "Delete"}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

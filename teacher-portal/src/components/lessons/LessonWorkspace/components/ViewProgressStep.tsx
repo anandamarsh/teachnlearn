@@ -923,8 +923,17 @@ const StudentResponsesDialog = ({
         open={saveNoticeOpen}
         autoHideDuration={2500}
         onClose={() => setSaveNoticeOpen(false)}
-        message="Data has been saved"
-      />
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSaveNoticeOpen(false)}
+          severity="success"
+          variant="filled"
+          sx={{ bgcolor: "success.main", color: "#fff" }}
+        >
+          Data has been saved
+        </Alert>
+      </Snackbar>
       <Dialog
         open={Boolean(fullscreenAttachment)}
         onClose={() => setFullscreenAttachment(null)}

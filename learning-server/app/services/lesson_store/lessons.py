@@ -132,6 +132,7 @@ class LessonStoreLessons:
 
             sections = {"lesson": self._section_filename("lesson")}
             lesson["sections"] = sections
+            self._set_section_content(lesson, "lesson", lesson_html)
             previous_meta = (lesson.get("sectionsMeta") or {}).get("lesson") or {}
             lesson["sectionsMeta"] = {
                 "lesson": {
@@ -143,16 +144,6 @@ class LessonStoreLessons:
             }
 
             lesson_key = self._lesson_key(sanitized, lesson_id)
-            lesson_section_key = self._section_key(sanitized, lesson_id, sections["lesson"])
-            self._s3_client.put_object(
-                Bucket=self._settings.s3_bucket,
-                Key=lesson_section_key,
-                Body=lesson_html.encode("utf-8"),
-                ContentType=self._section_content_type("lesson"),
-            )
-            print(
-                f"[PUBLISH][DEBUG] store.publish_approved_questions: wrote lesson section key={lesson_section_key}"
-            )
             self._s3_client.put_object(
                 Bucket=self._settings.s3_bucket,
                 Key=lesson_key,
@@ -286,6 +277,7 @@ class LessonStoreLessons:
             lesson_id = self._generate_id(sanitized, entries)
             sections = {key: self._section_filename(key) for key in self._sections}
             sections_meta = {}
+            section_contents: dict[str, str] = {}
             for key in sections:
                 default_body = self._section_default_body(key)
                 sections_meta[key] = {
@@ -294,6 +286,7 @@ class LessonStoreLessons:
                     "version": 1,
                     "contentLength": len(default_body.strip()),
                 }
+                section_contents[key] = self._section_default_value(key)
             lesson = Lesson(
                 id=lesson_id,
                 title=title,
@@ -308,7 +301,11 @@ class LessonStoreLessons:
             )
             ensure_lesson_prefix(sanitized, lesson_id, self._settings)
             lesson_key = self._lesson_key(sanitized, lesson_id)
-            lesson_payload = lesson.__dict__ | {"sections": sections, "sectionsMeta": sections_meta}
+            lesson_payload = lesson.__dict__ | {
+                "sections": sections,
+                "sectionsMeta": sections_meta,
+                self._SECTION_CONTENTS_KEY: section_contents,
+            }
             exercise_config_value = lesson_payload.pop("exercise_config", None)
             if exercise_config_value is not None:
                 lesson_payload["exerciseConfig"] = exercise_config_value
@@ -318,7 +315,6 @@ class LessonStoreLessons:
                 Body=json.dumps(lesson_payload, indent=2).encode("utf-8"),
                 ContentType="application/json",
             )
-            self._initialize_sections(sanitized, lesson_id, sections)
             entries.append(
                 {
                     "id": lesson_id,
@@ -502,6 +498,11 @@ class LessonStoreLessons:
                 key: {"key": key, "updatedAt": now, "version": 1}
                 for key in sections
             }
+            source_section_contents = self._get_section_contents_map(lesson)
+            section_contents = {
+                key: source_section_contents.get(key, self._section_default_value(key))
+                for key in sections
+            }
             ensure_lesson_prefix(sanitized, new_id, self._settings)
             lesson_payload = {
                 "id": new_id,
@@ -516,7 +517,16 @@ class LessonStoreLessons:
                 "updated_at": now,
                 "sections": sections,
                 "sectionsMeta": sections_meta,
+                self._SECTION_CONTENTS_KEY: section_contents,
             }
+            if "approvedQuestions" in lesson:
+                lesson_payload["approvedQuestions"] = lesson.get("approvedQuestions")
+            if "exerciseConfig" in lesson:
+                lesson_payload["exerciseConfig"] = lesson.get("exerciseConfig")
+            if "exerciseMode" in lesson:
+                lesson_payload["exerciseMode"] = lesson.get("exerciseMode")
+            if "exerciseGenerator" in lesson:
+                lesson_payload["exerciseGenerator"] = lesson.get("exerciseGenerator")
             lesson_key = self._lesson_key(sanitized, new_id)
             self._s3_client.put_object(
                 Bucket=self._settings.s3_bucket,
@@ -524,26 +534,6 @@ class LessonStoreLessons:
                 Body=json.dumps(lesson_payload, indent=2).encode("utf-8"),
                 ContentType="application/json",
             )
-            for key, filename in sections.items():
-                source_key = self._section_key(sanitized, lesson_id, filename)
-                dest_key = self._section_key(sanitized, new_id, filename)
-                try:
-                    self._s3_client.copy_object(
-                        Bucket=self._settings.s3_bucket,
-                        CopySource={"Bucket": self._settings.s3_bucket, "Key": source_key},
-                        Key=dest_key,
-                        ContentType=self._section_content_type(key),
-                    )
-                except ClientError as exc:
-                    if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
-                        self._s3_client.put_object(
-                            Bucket=self._settings.s3_bucket,
-                            Key=dest_key,
-                            Body=self._section_default_body(key),
-                            ContentType=self._section_content_type(key),
-                        )
-                    else:
-                        raise
             entries.append(
                 {
                     "id": new_id,

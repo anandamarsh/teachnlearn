@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.routes import lesson_http, lesson_mcp
@@ -101,9 +100,6 @@ lesson_http.register_routes(mcp, store, settings, events)
 lesson_mcp.register_routes(mcp, store, settings, events)
 
 app = mcp.http_app(middleware=middleware)
-static_dir = Path(__file__).resolve().parent.parent / "public" / "llm-assets"
-if static_dir.exists():
-    app.mount("/llm-assets", StaticFiles(directory=static_dir), name="llm-assets")
 
 
 async def lesson_updates_socket(websocket: WebSocket) -> None:

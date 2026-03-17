@@ -27,7 +27,7 @@ const EmptyState = ({ hasLessons }: EmptyStateProps) => (
     ) : (
       <>
         <Typography variant="h3" sx={{ mb: 1, color: "#1565c0" }}>
-          Create your first lesson template
+          Create your first lesson
         </Typography>
         <Typography color="text.secondary">
           Start a generic class lesson, then specialize it later.

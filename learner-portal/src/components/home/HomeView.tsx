@@ -5,7 +5,6 @@ import {
   Button,
   CircularProgress,
   Paper,
-  Popper,
   Stack,
   TextField,
   Typography,
@@ -36,22 +35,12 @@ const HomeView = ({
   onLogin,
   onSelectLesson,
 }: HomeViewProps) => {
-  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null);
-  const [hoverLesson, setHoverLesson] = useState<CatalogLesson | null>(null);
   const [name, setName] = useState("");
   const [passcode, setPasscode] = useState<string[]>(() =>
     Array(PASSCODE_LENGTH).fill("")
   );
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const normalizedPasscode = useMemo(() => passcode.join(""), [passcode]);
-
-  useEffect(() => {
-    return () => {
-      setHoverAnchor(null);
-      setHoverLesson(null);
-    };
-  }, []);
-
   const updatePasscodeDigit = (index: number, value: string) => {
     const nextChar = value.replace(/[^a-z0-9]/gi, "").slice(-1).toUpperCase();
     setPasscode((prev) => {
@@ -146,14 +135,6 @@ const HomeView = ({
             <Button
               className="home-tile"
               onClick={() => onSelectLesson(lesson)}
-              onMouseEnter={(event) => {
-                setHoverAnchor(event.currentTarget);
-                setHoverLesson(lesson);
-              }}
-              onMouseLeave={() => {
-                setHoverAnchor(null);
-                setHoverLesson(null);
-              }}
               sx={{ minWidth: 0, minHeight: 0, padding: 0 }}
             >
               {lesson.requiresLogin ? (
@@ -181,53 +162,6 @@ const HomeView = ({
           </Box>
         ))}
       </Box>
-      <Popper
-        open={Boolean(
-          hoverAnchor && hoverLesson && document.body.contains(hoverAnchor)
-        )}
-        anchorEl={hoverAnchor}
-        placement="bottom"
-        modifiers={[
-          { name: "offset", options: { offset: [0, 8] } },
-          { name: "preventOverflow", options: { padding: 12 } },
-          { name: "flip", options: { padding: 12 } },
-        ]}
-        onMouseLeave={() => {
-          setHoverAnchor(null);
-          setHoverLesson(null);
-        }}
-      >
-        <Paper
-          elevation={8}
-          sx={{ p: 2, maxWidth: 320, borderRadius: 2 }}
-          onMouseEnter={() => {
-            if (hoverLesson && hoverAnchor) {
-              setHoverLesson(hoverLesson);
-              setHoverAnchor(hoverAnchor);
-            }
-          }}
-          onMouseLeave={() => {
-            setHoverAnchor(null);
-            setHoverLesson(null);
-          }}
-        >
-          <Stack spacing={1}>
-            <Box className="lesson-popover-title">
-              <Typography variant="subtitle1" fontWeight={700}>
-                {hoverLesson?.title || ""}
-              </Typography>
-              {hoverLesson?.id ? (
-                <Typography variant="caption" className="lesson-popover-id">
-                  {hoverLesson.id}
-                </Typography>
-              ) : null}
-            </Box>
-            <Typography variant="body2">
-              {hoverLesson?.content || "No description provided."}
-            </Typography>
-          </Stack>
-        </Paper>
-      </Popper>
     </Stack>
   );
 };

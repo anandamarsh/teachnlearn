@@ -10,6 +10,7 @@ import {
   IconButton,
   LinearProgress,
   Stack,
+  TextField,
   Typography,
   Button,
 } from "@mui/material";
@@ -130,6 +131,7 @@ const Students = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<TeacherStudent | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const persistedStudentsRef = useRef<TeacherStudent[]>([]);
   const lastAddSignalRef = useRef(addStudentSignal);
 
@@ -237,7 +239,7 @@ const Students = ({
   }, [addStudentSignal, handleAddStudent]);
 
   const handleConfirmDelete = () => {
-    if (!deleteTarget) {
+    if (!deleteTarget || deleteConfirmText.trim().toLowerCase() !== "delete") {
       return;
     }
     const nextStudents = persistedStudentsRef.current.filter(
@@ -245,6 +247,7 @@ const Students = ({
     );
     setStudents(nextStudents);
     setDeleteTarget(null);
+    setDeleteConfirmText("");
     void persistStudents(nextStudents, "Student deleted");
   };
 
@@ -299,7 +302,10 @@ const Students = ({
                     <IconButton
                       color="error"
                       aria-label={`Delete ${student.name}`}
-                      onClick={() => setDeleteTarget(student)}
+                      onClick={() => {
+                        setDeleteTarget(student);
+                        setDeleteConfirmText("");
+                      }}
                     >
                       <DeleteRoundedIcon />
                     </IconButton>
@@ -317,13 +323,33 @@ const Students = ({
         <DialogContent>
           <Alert severity="warning" sx={{ mt: 1 }}>
             {deleteTarget
-              ? `${deleteTarget.name} will be removed from this roster.`
-              : "This student will be removed from this roster."}
+              ? `${deleteTarget.name} will be removed from your list of students. Type Delete to confirm.`
+              : "This student will be removed from your list of students. Type Delete to confirm."}
           </Alert>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            label="Type Delete"
+            value={deleteConfirmText}
+            onChange={(event) => setDeleteConfirmText(event.target.value)}
+            sx={{ mt: 2 }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button color="error" onClick={handleConfirmDelete}>
+          <Button
+            onClick={() => {
+              setDeleteTarget(null);
+              setDeleteConfirmText("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            onClick={handleConfirmDelete}
+            disabled={deleteConfirmText.trim().toLowerCase() !== "delete"}
+          >
             Delete
           </Button>
         </DialogActions>

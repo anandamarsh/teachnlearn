@@ -73,6 +73,11 @@ const SkillCodeEditor = ({
 }: SkillCodeEditorProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -83,7 +88,9 @@ const SkillCodeEditor = ({
       parent: container,
       state: EditorState.create({
         doc: value,
-        extensions: buildExtensions(language, onChange),
+        extensions: buildExtensions(language, (nextValue) => {
+          onChangeRef.current(nextValue);
+        }),
       }),
     });
     viewRef.current = view;
@@ -91,7 +98,7 @@ const SkillCodeEditor = ({
       view.destroy();
       viewRef.current = null;
     };
-  }, [language, onChange]);
+  }, [language]);
 
   useEffect(() => {
     const view = viewRef.current;
