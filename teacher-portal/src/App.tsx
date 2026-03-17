@@ -473,7 +473,11 @@ function App() {
         open={snackbar.open}
         autoHideDuration={4000}
         onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        sx={{
+          zIndex: 2147483647,
+          top: { xs: 16, md: 24 },
+        }}
       >
         <Alert
           severity={snackbar.severity}

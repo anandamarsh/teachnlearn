@@ -80,11 +80,16 @@ def register_catalog_routes(mcp, store: LessonStore, settings: Settings) -> None
         return candidate
     @mcp.custom_route("/catalog/lessons", methods=["GET"])
     async def list_catalog_lessons(request: Request) -> JSONResponse:
-        _, auth_error = ensure_student_authenticated(request)
+        session, auth_error = ensure_student_authenticated(request)
         if auth_error is not None:
             return auth_error
         try:
-            lessons = store.list_published_catalog()
+            teacher_id = str((session or {}).get("teacher") or "").strip()
+            lessons = [
+                lesson
+                for lesson in store.list_published_catalog()
+                if str(lesson.get("teacher") or "").strip() == teacher_id
+            ]
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         return JSONResponse({"lessons": lessons})

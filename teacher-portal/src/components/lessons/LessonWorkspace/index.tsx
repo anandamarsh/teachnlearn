@@ -954,6 +954,11 @@ const QuestionsAccordionList = ({
                                       )
                                     }
                                     disabled={!questionDirty}
+                                    sx={{
+                                      color: !questionDirty
+                                        ? "text.disabled"
+                                        : "#9a3412",
+                                    }}
                                   >
                                     <SaveRoundedIcon fontSize="small" />
                                   </IconButton>
@@ -2054,11 +2059,7 @@ const PdfPreviewCanvas = ({
           border: fullscreen
             ? "1px solid rgba(255,255,255,0.14)"
             : "1px solid rgba(255,255,255,0.14)",
-          opacity: 0.1,
-          transition: "opacity 0.18s ease",
-          "&:hover": {
-            opacity: 1,
-          },
+          opacity: 1,
         }}
       >
         <IconButton
@@ -3169,6 +3170,7 @@ const LessonWorkspace = ({
           <QuestionsAccordionList
             page={activeExtractedTextPreview}
             fullscreen={fullscreen}
+            summaryMaxChars={fullscreen ? 24 : 80}
             onUpdatePageTitle={(pageNumber, nextTitle) => {
               if (!activeSourceDocument) {
                 return;

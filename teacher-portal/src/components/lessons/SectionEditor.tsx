@@ -645,7 +645,10 @@ const SectionEditor = ({
               mt: "3px",
               right: 44,
               zIndex: 2,
-              color: "text.secondary",
+              color:
+                Boolean(saving || disabled || !effectiveDirty)
+                  ? "text.disabled"
+                  : "#9a3412",
             }}
           >
             <SaveRoundedIcon />

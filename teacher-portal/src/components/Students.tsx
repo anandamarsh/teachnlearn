@@ -15,6 +15,7 @@ import {
   Button,
 } from "@mui/material";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import {
   buildAuthHeaders,
   type GetAccessTokenSilently,
@@ -95,10 +96,13 @@ const createStudentName = (existingNames: Set<string>) => {
 const createStudentPasscode = () =>
   String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
 
-const formatStudentPasscode = (passcode: string) => {
-  const digits = String(passcode || "").replace(/\D/g, "").slice(0, 6);
-  if (digits.length !== 6) {
-    return passcode;
+const formatStudentPasscode = (passcode: string) =>
+  String(passcode || "").replace(/\D/g, "").slice(0, 6);
+
+const formatStudentPasscodeDisplay = (passcode: string) => {
+  const digits = formatStudentPasscode(passcode);
+  if (digits.length <= 3) {
+    return digits;
   }
   return `${digits.slice(0, 3)}-${digits.slice(3)}`;
 };
@@ -130,6 +134,9 @@ const Students = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [editTarget, setEditTarget] = useState<TeacherStudent | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPasscode, setEditPasscode] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<TeacherStudent | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const persistedStudentsRef = useRef<TeacherStudent[]>([]);
@@ -251,6 +258,37 @@ const Students = ({
     void persistStudents(nextStudents, "Student deleted");
   };
 
+  const handleConfirmEdit = () => {
+    if (!editTarget) {
+      return;
+    }
+    const trimmedName = editName.trim();
+    const trimmedPasscode = editPasscode.replace(/\D/g, "").slice(0, 6);
+    if (!trimmedName) {
+      setError("Student name is required");
+      return;
+    }
+    if (trimmedPasscode.length !== 6) {
+      setError("Student number must be 6 digits");
+      return;
+    }
+    const nextStudents = persistedStudentsRef.current.map(
+      (student: TeacherStudent) =>
+        student.id === editTarget.id
+          ? {
+              ...student,
+              name: trimmedName,
+              passcode: trimmedPasscode,
+            }
+          : student
+    );
+    setStudents(nextStudents);
+    setEditTarget(null);
+    setEditName("");
+    setEditPasscode("");
+    void persistStudents(nextStudents, "Student updated");
+  };
+
   return (
     <Container maxWidth="sm" sx={{ minHeight: "100vh", pt: "6.5rem", pb: 14 }}>
       <Stack spacing={3} alignItems="center">
@@ -290,7 +328,7 @@ const Students = ({
                       color: "text.secondary",
                     }}
                   >
-                    {formatStudentPasscode(student.passcode)}
+                    {formatStudentPasscodeDisplay(student.passcode)}
                   </Typography>
                   <Typography
                     fontWeight={700}
@@ -299,6 +337,17 @@ const Students = ({
                     {student.name}
                   </Typography>
                   <Box sx={{ flexShrink: 0 }}>
+                    <IconButton
+                      aria-label={`Edit ${student.name}`}
+                      onClick={() => {
+                        setEditTarget(student);
+                        setEditName(student.name);
+                        setEditPasscode(student.passcode);
+                        setError("");
+                      }}
+                    >
+                      <EditRoundedIcon />
+                    </IconButton>
                     <IconButton
                       color="error"
                       aria-label={`Delete ${student.name}`}
@@ -351,6 +400,68 @@ const Students = ({
             disabled={deleteConfirmText.trim().toLowerCase() !== "delete"}
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(editTarget)} onClose={() => setEditTarget(null)}>
+        <DialogTitle>Edit student</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            label="Student nickname"
+            value={editName}
+            onChange={(event) => setEditName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleConfirmEdit();
+              }
+            }}
+            sx={{ mt: 1 }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            label="PIN"
+            value={formatStudentPasscode(editPasscode)}
+            onChange={(event) =>
+              setEditPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleConfirmEdit();
+              }
+            }}
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setEditTarget(null);
+              setEditName("");
+              setEditPasscode("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmEdit}
+            disabled={!editName.trim() || editPasscode.replace(/\D/g, "").length !== 6 || saving}
+            sx={{
+              color:
+                !editName.trim() ||
+                editPasscode.replace(/\D/g, "").length !== 6 ||
+                saving
+                  ? undefined
+                  : "#9a3412",
+            }}
+          >
+            Save
           </Button>
         </DialogActions>
       </Dialog>

@@ -10,7 +10,6 @@ import {
   Alert,
   Box,
   ButtonBase,
-  Snackbar,
   Dialog,
   IconButton,
   LinearProgress,
@@ -391,7 +390,6 @@ const StudentResponsesDialog = ({
     {},
   );
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
-  const [saveNoticeOpen, setSaveNoticeOpen] = useState(false);
   const [fullscreenAttachment, setFullscreenAttachment] =
     useState<TeacherLessonProgressAttachment | null>(null);
   const [selectedAttachmentId, setSelectedAttachmentId] = useState<
@@ -487,7 +485,7 @@ const StudentResponsesDialog = ({
         ...current,
         [commentsKey]: nextComment,
       }));
-      setSaveNoticeOpen(true);
+      onNotify("Data has been saved", "success");
     } catch (error) {
       onNotify(
         error instanceof Error
@@ -786,6 +784,16 @@ const StudentResponsesDialog = ({
                         disabled={
                           !commentDirty || savingCommentKey === commentsKey
                         }
+                        sx={{
+                          color:
+                            !commentDirty || savingCommentKey === commentsKey
+                              ? undefined
+                              : "#9a3412",
+                          borderColor:
+                            !commentDirty || savingCommentKey === commentsKey
+                              ? undefined
+                              : "rgba(154,52,18,0.4)",
+                        }}
                         onClick={() => {
                           void saveComment();
                         }}
@@ -929,21 +937,6 @@ const StudentResponsesDialog = ({
           )}
         </Box>
       </Box>
-      <Snackbar
-        open={saveNoticeOpen}
-        autoHideDuration={2500}
-        onClose={() => setSaveNoticeOpen(false)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          onClose={() => setSaveNoticeOpen(false)}
-          severity="success"
-          variant="filled"
-          sx={{ bgcolor: "success.main", color: "#fff" }}
-        >
-          Data has been saved
-        </Alert>
-      </Snackbar>
       <Dialog
         open={Boolean(fullscreenAttachment)}
         onClose={() => setFullscreenAttachment(null)}
