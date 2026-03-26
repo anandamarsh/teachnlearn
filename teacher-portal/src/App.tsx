@@ -72,6 +72,16 @@ const isAuthCallbackUrl = (search: string) => {
   );
 };
 
+const getSanitizedAuthPath = (location: Location) => {
+  const params = new URLSearchParams(location.search);
+  params.delete("code");
+  params.delete("state");
+  params.delete("error");
+  params.delete("error_description");
+  const nextSearch = params.toString();
+  return `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+};
+
 function App() {
   const {
     isAuthenticated,
@@ -316,6 +326,23 @@ function App() {
       </Box>
     );
   }
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (isAuthenticated) {
+      return;
+    }
+    if (!isAuthCallbackUrl(window.location.search)) {
+      return;
+    }
+    const nextPath = getSanitizedAuthPath(window.location);
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (nextPath !== currentPath) {
+      window.history.replaceState({}, document.title, nextPath);
+    }
+  }, [isAuthenticated, isLoading]);
 
   useEffect(() => {
     if (isAuthCallbackUrl(window.location.search)) {
