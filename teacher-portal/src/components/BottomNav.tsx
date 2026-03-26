@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Avatar, Box, Button, Menu, MenuItem, Paper } from "@mui/material";
+import { Avatar, Box, Button, ListItemText, Menu, MenuItem, Paper } from "@mui/material";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
@@ -8,11 +8,15 @@ import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 type BottomNavProps = {
   isAuthenticated: boolean;
   userAvatar?: string | null;
+  authEmail?: string | null;
+  effectiveAccountEmail?: string | null;
+  canSwitchAccounts?: boolean;
   currentPage: "lessons" | "students";
   onLessonsClick: () => void;
   onStudentsClick: () => void;
   onAuthClick: () => void;
   onLogout: () => void;
+  onManageAccounts?: () => void;
   onPrimaryAction: () => void;
   showPrimaryAction: boolean;
   onDeleteLesson: () => void;
@@ -22,11 +26,15 @@ type BottomNavProps = {
 const BottomNav = ({
   isAuthenticated,
   userAvatar,
+  authEmail,
+  effectiveAccountEmail,
+  canSwitchAccounts,
   currentPage,
   onLessonsClick,
   onStudentsClick,
   onAuthClick,
   onLogout,
+  onManageAccounts,
   onPrimaryAction,
   showPrimaryAction,
   onDeleteLesson,
@@ -36,6 +44,14 @@ const BottomNav = ({
   const isStudents = currentPage === "students";
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const menuOpen = Boolean(menuAnchor);
+  const normalizedAuthEmail = String(authEmail || "").trim().toLowerCase();
+  const normalizedEffectiveEmail = String(effectiveAccountEmail || "")
+    .trim()
+    .toLowerCase();
+  const impersonating =
+    Boolean(normalizedAuthEmail) &&
+    Boolean(normalizedEffectiveEmail) &&
+    normalizedEffectiveEmail !== normalizedAuthEmail;
 
   return (
     <Paper
@@ -160,6 +176,25 @@ const BottomNav = ({
           anchorOrigin={{ vertical: "top", horizontal: "center" }}
           transformOrigin={{ vertical: "bottom", horizontal: "center" }}
         >
+          <MenuItem
+            disabled
+            sx={{ opacity: "1 !important" }}
+          >
+            <ListItemText
+              primary={impersonating ? `Viewing as ${effectiveAccountEmail}` : authEmail || "Account"}
+              secondary={impersonating ? `Signed in as ${authEmail}` : "Signed in"}
+            />
+          </MenuItem>
+          {canSwitchAccounts ? (
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                onManageAccounts?.();
+              }}
+            >
+              Switch account
+            </MenuItem>
+          ) : null}
           <MenuItem
             onClick={() => {
               setMenuAnchor(null);

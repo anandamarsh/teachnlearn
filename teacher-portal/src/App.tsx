@@ -8,7 +8,12 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  InputLabel,
   LinearProgress,
+  ListSubheader,
+  MenuItem,
+  Select,
   Snackbar,
   TextField,
   Typography,
@@ -19,6 +24,11 @@ import LessonsPage from "./components/lessons/LessonsPage";
 import Students from "./components/Students";
 import { useLessons } from "./hooks/useLessons";
 import { buildAuthHeaders } from "./auth/buildAuthHeaders";
+import {
+  clearStoredEffectiveAccount,
+  getStoredEffectiveAccount,
+  setStoredEffectiveAccount,
+} from "./auth/effectiveAccount";
 
 const apiBaseUrl = import.meta.env.VITE_TEACHNLEARN_API || "";
 const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || "";
@@ -71,6 +81,15 @@ function App() {
     getAccessTokenSilently,
     user,
   } = useAuth0();
+  const authEmail = String(user?.email || "").trim().toLowerCase();
+  const [effectiveAccount, setEffectiveAccount] = useState(() => getStoredEffectiveAccount());
+  const [availableAccounts, setAvailableAccounts] = useState<
+    { email: string; name: string; school: string }[]
+  >([]);
+  const [accountsDialogOpen, setAccountsDialogOpen] = useState(false);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [accountsError, setAccountsError] = useState("");
+  const scopeKey = effectiveAccount || authEmail || "self";
 
   const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
   const configError = !apiBaseUrl || !auth0Audience;
@@ -106,6 +125,7 @@ function App() {
         color,
       }));
     },
+    scopeKey,
   });
 
   const [snackbar, setSnackbar] = useState<{
@@ -134,9 +154,53 @@ function App() {
   const handleLogout = useCallback(() => {
     setOtpCode("");
     setOtpStatus("idle");
+    setEffectiveAccount("");
+    clearStoredEffectiveAccount();
     window.sessionStorage.removeItem(otpStorageKey);
     logout({ logoutParams: { returnTo: window.location.origin } });
   }, [logout]);
+
+  const canSwitchAccounts = availableAccounts.length > 0;
+
+  const fetchAvailableAccounts = useCallback(async () => {
+    if (!apiBaseUrl || !auth0Audience || !isAuthenticated) {
+      return;
+    }
+    setAccountsLoading(true);
+    setAccountsError("");
+    try {
+      const headers = await buildAuthHeaders(getAccessTokenSilently, auth0Audience);
+      const response = await fetch(`${apiBaseUrl}/teacher/accounts`, {
+        method: "GET",
+        headers,
+      });
+      if (response.status === 403) {
+        setAvailableAccounts([]);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("Failed to load accounts");
+      }
+      const data = (await response.json()) as {
+        accounts?: { email?: string; name?: string; school?: string }[];
+      };
+      const accounts = Array.isArray(data.accounts)
+        ? data.accounts
+            .map((account) => ({
+              email: String(account.email || "").trim().toLowerCase(),
+              name: String(account.name || ""),
+              school: String(account.school || ""),
+            }))
+            .filter((account) => Boolean(account.email))
+        : [];
+      setAvailableAccounts(accounts);
+    } catch (error) {
+      setAvailableAccounts([]);
+      setAccountsError(error instanceof Error ? error.message : "Failed to load accounts");
+    } finally {
+      setAccountsLoading(false);
+    }
+  }, [apiBaseUrl, auth0Audience, getAccessTokenSilently, isAuthenticated]);
 
   const handleCreateLesson = async () => {
     if (!isAuthenticated) {
@@ -278,6 +342,29 @@ function App() {
   }, [isAuthenticated, isLoading]);
 
   useEffect(() => {
+    if (!authEmail) {
+      setEffectiveAccount("");
+      clearStoredEffectiveAccount();
+      return;
+    }
+    const stored = getStoredEffectiveAccount();
+    if (stored && stored !== authEmail) {
+      setEffectiveAccount(stored);
+      return;
+    }
+    setEffectiveAccount("");
+    clearStoredEffectiveAccount();
+  }, [authEmail]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !authEmail) {
+      setAvailableAccounts([]);
+      return;
+    }
+    void fetchAvailableAccounts();
+  }, [authEmail, fetchAvailableAccounts, isAuthenticated]);
+
+  useEffect(() => {
     const onPopState = () => {
       const pathname = window.location.pathname;
       setPage(getPageFromPath(pathname));
@@ -392,6 +479,7 @@ function App() {
     >
       {page === "lessons" ? (
         <LessonsPage
+          key={scopeKey}
           lessons={lessons}
           selectedLesson={selectedLesson}
           selectedLessonId={selectedLessonId}
@@ -421,6 +509,7 @@ function App() {
       ) : null}
       {page === "students" ? (
         <Students
+          key={scopeKey}
           apiBaseUrl={apiBaseUrl}
           auth0Audience={auth0Audience}
           getAccessTokenSilently={getAccessTokenSilently}
@@ -432,6 +521,9 @@ function App() {
       <BottomNav
         isAuthenticated={isAuthenticated}
         userAvatar={user?.picture}
+        authEmail={authEmail}
+        effectiveAccountEmail={effectiveAccount || authEmail}
+        canSwitchAccounts={canSwitchAccounts}
         currentPage={page}
         onLessonsClick={() => setPage("lessons")}
         onStudentsClick={() => setPage("students")}
@@ -447,6 +539,7 @@ function App() {
         showDelete={page === "lessons" && Boolean(selectedLesson)}
         onAuthClick={() => loginWithRedirect()}
         onLogout={handleLogout}
+        onManageAccounts={() => setAccountsDialogOpen(true)}
       />
       <Dialog
         open={deleteOpen}
@@ -499,6 +592,61 @@ function App() {
           <Button onClick={() => setDuplicateOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleConfirmDuplicate}>
             Duplicate
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={accountsDialogOpen}
+        onClose={() => setAccountsDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Switch account</DialogTitle>
+        <DialogContent>
+          {accountsError ? (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {accountsError}
+            </Alert>
+          ) : null}
+          {accountsLoading ? <LinearProgress sx={{ mt: 1 }} /> : null}
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="account-switch-label">Teacher account</InputLabel>
+            <Select
+              labelId="account-switch-label"
+              label="Teacher account"
+              value={effectiveAccount || authEmail}
+              onChange={(event) => {
+                const nextValue = String(event.target.value || "").trim().toLowerCase();
+                if (!nextValue || nextValue === authEmail) {
+                  clearStoredEffectiveAccount();
+                  setEffectiveAccount("");
+                  return;
+                }
+                setStoredEffectiveAccount(nextValue);
+                setEffectiveAccount(nextValue);
+              }}
+            >
+              <ListSubheader>Your account</ListSubheader>
+              <MenuItem value={authEmail}>{authEmail || "Current login"}</MenuItem>
+              <ListSubheader>All accounts</ListSubheader>
+              {availableAccounts.map((account) => (
+                <MenuItem key={account.email} value={account.email}>
+                  {account.name ? `${account.name} (${account.email})` : account.email}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            The selected account becomes your effective teacher account for lessons, students,
+            and lesson editing until you switch back.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => void fetchAvailableAccounts()} disabled={accountsLoading}>
+            Refresh
+          </Button>
+          <Button onClick={() => setAccountsDialogOpen(false)} variant="contained">
+            Close
           </Button>
         </DialogActions>
       </Dialog>

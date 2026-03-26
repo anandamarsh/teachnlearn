@@ -5,11 +5,16 @@ from botocore.exceptions import ClientError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.core.auth import get_request_email
+from app.core.auth import (
+    get_authenticated_email,
+    get_request_email,
+    is_superuser_email,
+    resolve_effective_email,
+)
 from app.core.otp import verify_otp
 from app.core.settings import Settings
 from app.services.lesson_store import LessonStore
-from app.services.lesson_store.s3 import sanitize_email
+from app.services.lesson_store.s3 import desanitize_email, sanitize_email
 
 from .common import content_disposition, json_error, presigned_object_url
 
@@ -308,6 +313,36 @@ def register_profile_routes(mcp, store: LessonStore, settings: Settings) -> None
         except (RuntimeError, ClientError) as exc:
             return json_error(str(exc), 500)
         return JSONResponse(profile)
+
+    @mcp.custom_route("/teacher/accounts", methods=["GET"])
+    async def get_teacher_accounts(request: Request) -> JSONResponse:
+        authenticated_email = get_authenticated_email(request, None, settings)
+        if not is_superuser_email(authenticated_email):
+            return json_error("forbidden", 403)
+        requested_effective_email = request.headers.get("x-effective-account") or request.query_params.get(
+            "effective_account"
+        )
+        effective_email = resolve_effective_email(authenticated_email, requested_effective_email)
+        try:
+            accounts = []
+            for sanitized_email in sorted(set(store.list_account_prefixes())):
+                profile = store.get_profile_sanitized(sanitized_email)
+                accounts.append(
+                    {
+                        "email": desanitize_email(sanitized_email),
+                        "name": str(profile.get("name") or ""),
+                        "school": str(profile.get("school") or ""),
+                    }
+                )
+        except (RuntimeError, ClientError) as exc:
+            return json_error(str(exc), 500)
+        return JSONResponse(
+            {
+                "authenticatedEmail": authenticated_email,
+                "effectiveEmail": effective_email,
+                "accounts": accounts,
+            }
+        )
 
     @mcp.custom_route("/teacher/lesson/{lesson_id}/progress", methods=["GET"])
     async def get_teacher_lesson_progress(request: Request) -> JSONResponse:

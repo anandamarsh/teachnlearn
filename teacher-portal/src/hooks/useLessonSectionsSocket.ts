@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { GetAccessTokenSilently } from "../auth/buildAuthHeaders";
+import { appendEffectiveAccountQueryParam } from "../auth/effectiveAccount";
 
 type UseLessonSectionsSocketOptions = {
   apiBaseUrl: string;
@@ -18,7 +19,7 @@ const buildLessonsWsUrl = (apiBaseUrl: string, token: string) => {
   const wsBase = trimmed.replace(/^http/, "ws");
   const url = new URL(`${wsBase}/ws/lessons`);
   url.searchParams.set("token", token);
-  return url.toString();
+  return appendEffectiveAccountQueryParam(url).toString();
 };
 
 export const useLessonSectionsSocket = ({

@@ -1,3 +1,5 @@
+import { getEffectiveAccountHeader } from "./effectiveAccount";
+
 export type GetAccessTokenSilently = (options?: {
   authorizationParams?: { audience?: string };
 }) => Promise<string>;
@@ -9,8 +11,10 @@ export const buildAuthHeaders = async (
   const token = await getAccessTokenSilently({
     authorizationParams: { audience },
   });
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
+  Object.assign(headers, getEffectiveAccountHeader());
+  return headers;
 };

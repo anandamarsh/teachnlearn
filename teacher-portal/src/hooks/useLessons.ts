@@ -18,6 +18,7 @@ type UseLessonsOptions = {
   isAuthenticated: boolean;
   getAccessTokenSilently: GetAccessTokenSilently;
   onPulse?: (color: "success" | "error") => void;
+  scopeKey?: string;
 };
 
 export const useLessons = ({
@@ -26,6 +27,7 @@ export const useLessons = ({
   isAuthenticated,
   getAccessTokenSilently,
   onPulse,
+  scopeKey,
 }: UseLessonsOptions) => {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
@@ -79,7 +81,7 @@ export const useLessons = ({
     } finally {
       setLoading(false);
     }
-  }, [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint]);
+  }, [auth0Audience, getAccessTokenSilently, isAuthenticated, lessonsEndpoint, scopeKey]);
 
   const refreshLesson = useCallback(
     async (lessonId: string) => {
@@ -128,6 +130,7 @@ export const useLessons = ({
     isAuthenticated,
     lessonsEndpoint,
     selectedLessonId,
+    scopeKey,
   ]);
 
   const { wsConnected } = useLessonsSocket({

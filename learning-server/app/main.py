@@ -11,7 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.routes import lesson_http, lesson_mcp
-from app.core.auth import get_email_from_token
+from app.core.auth import get_email_from_token, resolve_effective_email
 from app.core.settings import get_settings, parse_cors_origins
 from app.services.lesson_events import LessonEventHub
 from app.services.lesson_store import LessonStore
@@ -89,6 +89,7 @@ if cors_origins:
             allow_headers=[
                 "Content-Type",
                 "Authorization",
+                "X-Effective-Account",
                 "mcp-protocol-version",
                 "mcp-session-id",
             ],
@@ -118,6 +119,14 @@ async def lesson_updates_socket(websocket: WebSocket) -> None:
         email = get_email_from_token(token, settings)
     else:
         email = websocket.query_params.get("email", "").strip() or None
+    try:
+        email = resolve_effective_email(
+            email,
+            websocket.query_params.get("effective_account", "").strip() or None,
+        )
+    except Exception:
+        await websocket.close(code=4403)
+        return
     if not email:
         await websocket.close(code=4401)
         return

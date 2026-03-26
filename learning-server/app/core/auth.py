@@ -7,6 +7,33 @@ from starlette.requests import Request
 from app.core.settings import Settings
 from app.core.otp import verify_otp
 
+SUPERUSER_EMAILS = {"amarsh.anand@gmail.com"}
+EFFECTIVE_ACCOUNT_HEADER = "x-effective-account"
+EFFECTIVE_ACCOUNT_QUERY_PARAM = "effective_account"
+
+
+def normalize_email(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def is_superuser_email(email: str | None) -> bool:
+    return normalize_email(email) in SUPERUSER_EMAILS
+
+
+def resolve_effective_email(
+    authenticated_email: str | None,
+    requested_email: str | None,
+) -> str:
+    authenticated = normalize_email(authenticated_email)
+    requested = normalize_email(requested_email)
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not requested or requested == authenticated:
+        return authenticated
+    if not is_superuser_email(authenticated):
+        raise HTTPException(status_code=403, detail="Impersonation not allowed")
+    return requested
+
 
 def get_jwks(domain: str) -> dict:
     jwks_url = f"https://{domain}/.well-known/jwks.json"
@@ -69,6 +96,20 @@ def fetch_userinfo_email(token: str, domain: str) -> str | None:
 
 
 def get_request_email(request: Request, payload: dict | None, settings: Settings) -> str:
+    authenticated_email = get_authenticated_email(request, payload, settings)
+    requested_effective_email = request.headers.get(
+        EFFECTIVE_ACCOUNT_HEADER
+    ) or request.query_params.get(EFFECTIVE_ACCOUNT_QUERY_PARAM)
+    effective_email = resolve_effective_email(authenticated_email, requested_effective_email)
+    if effective_email != authenticated_email:
+        print(
+            "AUTH DEBUG: Superuser impersonation active, "
+            f"authenticated={authenticated_email}, effective={effective_email}"
+        )
+    return effective_email
+
+
+def get_authenticated_email(request: Request, payload: dict | None, settings: Settings) -> str:
     auth = request.headers.get("authorization", "")
     token = None
     if auth.lower().startswith("bearer "):
@@ -82,7 +123,7 @@ def get_request_email(request: Request, payload: dict | None, settings: Settings
         if not verify_otp(query_email, query_passcode, settings):
             print("AUTH DEBUG: Query passcode invalid or expired for email")
             raise HTTPException(status_code=403, detail="Invalid or expired OTP")
-        normalized = query_email.strip().lower()
+        normalized = normalize_email(query_email)
         print(f"AUTH DEBUG: Authorized by query OTP, email: {normalized}")
         return normalized
 
@@ -109,7 +150,7 @@ def get_request_email(request: Request, payload: dict | None, settings: Settings
         if not email:
             print("AUTH DEBUG: Auth0 JWT validated but email not found in token or userinfo")
             raise HTTPException(status_code=401, detail="Email not found in token")
-        normalized = str(email).strip().lower()
+        normalized = normalize_email(email)
         print(f"AUTH DEBUG: Authorized by Auth0 JWT, email: {normalized}")
         return normalized
 
@@ -139,9 +180,9 @@ def get_email_from_token(token: str, settings: Settings) -> str | None:
                 email = value
                 break
     if email:
-        return str(email).strip().lower()
+        return normalize_email(email)
     fetched = fetch_userinfo_email(token, settings.auth0_domain)
-    return fetched.strip().lower() if fetched else None
+    return normalize_email(fetched) if fetched else None
 
 
 def is_auth0_bearer_request(request: Request, settings: Settings) -> bool:

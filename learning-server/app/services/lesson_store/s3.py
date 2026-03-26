@@ -23,6 +23,13 @@ def sanitize_email(email: str) -> str:
     return "".join(sanitized).strip("_")
 
 
+def desanitize_email(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return text.replace("_at_", "@").replace("_dot_", ".")
+
+
 def ensure_lesson_prefix(sanitized_email: str, lesson_id: str, settings: Settings) -> None:
     if not settings.s3_bucket:
         raise RuntimeError("S3 bucket not configured")
