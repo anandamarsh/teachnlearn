@@ -17,7 +17,6 @@ import {
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
-import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import { Lesson } from "../../state/lessonTypes";
 
@@ -289,9 +288,6 @@ const LessonsList = ({
                     "&:hover .lesson-icon-action": {
                       opacity: 1,
                     },
-                    "&:hover .lesson-link-action": {
-                      opacity: 1,
-                    },
                   }}
                 >
                 <ListItemIcon
@@ -356,36 +352,6 @@ const LessonsList = ({
                       }}
                     >
                       <EditRoundedIcon fontSize="inherit" />
-                    </IconButton>
-                    <IconButton
-                      className="lesson-link-action"
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!lesson.iconUrl) {
-                          onNotify("No icon URL to copy yet", "error");
-                          return;
-                        }
-                        navigator.clipboard
-                          .writeText(lesson.iconUrl)
-                          .then(() => onNotify("Icon URL copied", "success"))
-                          .catch(() => onNotify("Failed to copy icon URL", "error"));
-                      }}
-                      sx={{
-                        position: "absolute",
-                        bottom: 4,
-                        left: 4,
-                        opacity: 0,
-                        transition: "opacity 0.2s ease",
-                        backgroundColor: "rgba(255,255,255,0.92)",
-                        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-                        zIndex: 2,
-                        "&:hover": {
-                          backgroundColor: "rgba(255,255,255,1)",
-                        },
-                      }}
-                    >
-                      <LinkRoundedIcon fontSize="inherit" />
                     </IconButton>
                     {iconSrc ? (
                       <img
